@@ -1,0 +1,1 @@
+python script/run.py -c config/transductive/inference.yaml --dataset CoDExSmall --epochs 0 --bpe null --gpus null --ckpt '/Users/lukas/Workspace/Uni/BachelorsThesis/ULTRA/ckpts/ultra_4g.pth'

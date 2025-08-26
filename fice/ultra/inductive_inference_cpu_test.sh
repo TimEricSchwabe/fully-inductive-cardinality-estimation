@@ -1,0 +1,2 @@
+python script/run.py -c config/inductive/inference.yaml --dataset FB15k237Inductive --version v1 --epochs 0 --bpe null --gpus null --ckpt '/Users/lukas/Workspace/Uni/BachelorsThesis/ULTRA/ckpts/ultra_4g.pth'
+# python script/run.py -c config/inductive/inference.yaml --dataset lubm --version v1 --epochs 0 --bpe null --gpus null --ckpt '/Users/lukas/Workspace/Uni/BachelorsThesis/ULTRA/ckpts/ultra_4g.pth'
