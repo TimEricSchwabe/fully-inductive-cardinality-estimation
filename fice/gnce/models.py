@@ -1,12 +1,85 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv
+from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv
 from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from typing import Callable, Optional, Union
 from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch import Tensor
 from torch_geometric.nn.inits import reset
+import torch.nn as nn
+
+class QueryGNN(torch.nn.Module):
+
+    def __init__(self, hidden_dim, dropout=0.0, train_eps=False):
+        super().__init__()
+
+        self.dropout = dropout
+
+
+        def gine_mlp():
+            # The MLP used inside each GINEConv (applied after aggregation)
+            return nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
+
+        self.convs = nn.ModuleList([
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+        ])
+
+        self.bns = nn.ModuleList([
+            nn.BatchNorm1d(hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+        ])
+
+        # 2-layer MLP head to a single scalar (linear activation)
+        # Input dimension is hidden_dim + 1 to account for graph_size concatenation
+        self.head = nn.Sequential(
+            nn.Linear(hidden_dim + 1, hidden_dim),
+            nn.ReLU(),
+            nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, x, edge_index, batch=None, edge_attr=None, graph_size=None):
+
+        if batch is None:
+            batch = x.new_zeros(x.size(0), dtype=torch.long)
+
+
+
+        for conv, bn in zip(self.convs, self.bns):
+            if edge_attr is not None:
+                x = conv(x, edge_index, edge_attr)
+            else:
+                x = conv(x, edge_index)
+            x = bn(x)
+            x = F.relu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+
+        # Global add pooling over nodes -> graph embedding
+        g = global_add_pool(x, batch)
+
+
+        # Adding the graph size |E| to the final MLP
+        if graph_size.dim() == 1 and graph_size.size(0) == 1:
+            graph_size_expanded = graph_size.expand(g.size(0))
+        else:
+            graph_size_expanded = graph_size
+        
+        # Concatenate along feature dimension
+        g_with_size = torch.cat([g, graph_size_expanded.unsqueeze(-1)], dim=-1)
+
+
+        out = self.head(g_with_size)     # [batch_size, 1]
+        return out.squeeze(-1)           # [batch_size]
+
+
 
 
 class TripleConv(MessagePassing):
