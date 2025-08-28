@@ -56,17 +56,31 @@ class RelNBFNet(BaseNBFNet):
 
     
     def bellmanford(self, data, h_index, separate_grad=False):
-        batch_size = len(h_index)
+        # Support multiple seed relations per batch item.
+        # If h_index is 1D: shape [B], we seed one relation per batch item (original behavior).
+        # If h_index is 2D: shape [B, K], we seed K relations per batch item while keeping batch size B.
+        if h_index.dim() == 2:
+            batch_size, num_seeds = h_index.shape
+            query = torch.ones(batch_size, self.dims[0], device=h_index.device, dtype=torch.float)
 
-        # initialize initial nodes (relations of interest in the batcj) with all ones
-        query = torch.ones(h_index.shape[0], self.dims[0], device=h_index.device, dtype=torch.float)
-        index = h_index.unsqueeze(-1).expand_as(query)
+            # initial (boundary) condition - initialize all node states as zeros
+            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
 
-        # initial (boundary) condition - initialize all node states as zeros
-        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
-        #boundary = torch.zeros(data.num_nodes, *query.shape, device=h_index.device)
-        # Indicator function: by the scatter operation we put ones as init features of source (index) nodes
-        boundary.scatter_add_(1, index.unsqueeze(1), query.unsqueeze(1))
+            # For each batch item and each seed relation, scatter ones into the corresponding node slot
+            index = h_index.unsqueeze(-1).expand(batch_size, num_seeds, self.dims[0])  # (B, K, D)
+            ones = torch.ones(batch_size, num_seeds, self.dims[0], device=h_index.device)  # (B, K, D)
+            boundary.scatter_add_(1, index, ones)
+        else:
+            batch_size = len(h_index)
+
+            # initialize initial nodes (relations of interest in the batch) with all ones
+            query = torch.ones(h_index.shape[0], self.dims[0], device=h_index.device, dtype=torch.float)
+            index = h_index.unsqueeze(-1).expand_as(query)
+
+            # initial (boundary) condition - initialize all node states as zeros
+            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
+            # Indicator function: by the scatter operation we put ones as init features of source (index) nodes
+            boundary.scatter_add_(1, index.unsqueeze(1), query.unsqueeze(1))
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=h_index.device)
 

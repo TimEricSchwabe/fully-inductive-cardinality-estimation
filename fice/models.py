@@ -51,6 +51,9 @@ class FICE(nn.Module):
         # batch shape: (bs, 1+num_negs, 3)
         # relations are the same all positive and negative triples, so we can extract only one from the first triple among 1+nug_negs
         query_rels = batch[:, 0, 2]
+        #TODO: Testing conditioning on multiple relations within a single query (batch size = 1)
+        # Provide shape [1, K] to seed K relations at once
+        query_rels = torch.tensor([[183, 44]], device=data.relation_graph.edge_index.device)
         relation_representations = self.relation_model(data.relation_graph, query=query_rels)
         node_representations = self.entity_model(data, relation_representations, batch)
 
