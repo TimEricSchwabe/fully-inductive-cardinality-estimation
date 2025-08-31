@@ -11,7 +11,7 @@ import torch.nn as nn
 
 class QueryGNN(torch.nn.Module):
 
-    def __init__(self, hidden_dim, dropout=0.0, train_eps=False):
+    def __init__(self, hidden_dim: int, dropout: float = 0.0, train_eps: bool =False):
         super().__init__()
 
         self.dropout = dropout

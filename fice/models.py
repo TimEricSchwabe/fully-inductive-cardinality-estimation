@@ -6,7 +6,6 @@ from fice.gnce.models import QueryGNN
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
-# from fice.gnce.cardinality_estimation import GNCE
 
 
 class FICE(nn.Module):
@@ -36,7 +35,7 @@ class FICE(nn.Module):
             'layer_norm': True,
         })
 
-
+        # generate_occurences()
 
         # adding a bit more flexibility to initializing proper rel/ent classes from the configs
         self.relation_model = globals()[rel_model_cfg.pop('class')](**rel_model_cfg)
@@ -53,7 +52,7 @@ class FICE(nn.Module):
         query_rels = batch[:, 0, 2]
         #TODO: Testing conditioning on multiple relations within a single query (batch size = 1)
         # Provide shape [1, K] to seed K relations at once
-        query_rels = torch.tensor([[183, 44]], device=data.relation_graph.edge_index.device)
+        query_rels = torch.tensor([[83, 44]], device=data.relation_graph.edge_index.device)
         relation_representations = self.relation_model(data.relation_graph, query=query_rels)
         node_representations = self.entity_model(data, relation_representations, batch)
 

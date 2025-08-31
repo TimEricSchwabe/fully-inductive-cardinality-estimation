@@ -1,12 +1,14 @@
 import os
-import csv
+import pathlib
 import shutil
 import torch
+import json
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from torch_geometric.datasets import RelLinkPredDataset, WordNet18RR
+from torch_scatter import scatter_add
+from typing import Optional, Dict, List
 
 from fice.ultra.tasks import build_relation_graph
-
 
 class GrailInductiveDataset(InMemoryDataset):
 
@@ -197,6 +199,7 @@ def FB15k237(root):
                         num_relations=dataset.num_relations)
     
     # build relation graphs
+
     train_data = build_relation_graph(train_data)
     valid_data = build_relation_graph(valid_data)
     test_data = build_relation_graph(test_data)
@@ -1069,7 +1072,7 @@ class JointDataset(InMemoryDataset):
         self.graphs = [self.datasets_map[ds](root=root) for ds in graphs]
         self.num_graphs = len(graphs)
         super().__init__(root, transform, pre_transform)
-        self.data = torch.load(self.processed_paths[0], weights_only=False)
+        self.data, self.slice = torch.load(self.processed_paths[0], weights_only=False)
 
     @property
     def raw_dir(self):
@@ -1094,10 +1097,112 @@ class JointDataset(InMemoryDataset):
 
         torch.save((train_data, valid_data, test_data), self.processed_paths[0])
 
+# TODO: Make the nt_path file optinal
+class NTDatasets(InMemoryDataset):
+    def __init__(self, root: str, nt_path: str, dataset_name: Optional[str] = None, transform=None, pre_transform=None):
 
-# class LUBM(InductiveDataset):
-#     urls = [
+        self.root = pathlib.Path(root)
+        self.nt_path = pathlib.Path(nt_path)
+        self.dataset_name = dataset_name if dataset_name is not None else self.nt_path.stem
 
-#     ]
-#     name = "lubm"
+
+        super().__init__(root=self.root)
+        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+
+
+    @property
+    def processed_file_names(self):
+        return [f"{self.dataset_name}.pt"]
+
+    @property
+    def raw_file_names(self):
+        return [self.nt_path.name]
+
+    # @property
+    # def raw_dir(self):
+    #     return super().raw_dir
+
+    # @property
+    # def processed_dir(self):
+    #     return super().processed_dir
+
+
+    def process(self):
+        edge_index = []
+        edge_type = []
+        with open(self.nt_path, 'r') as file:
+            preprocessed_file_data = [line.strip()[:-2].split(' ') for line in file.readlines()]
+
+        # Create id mapping and count occurrences
+        entity_to_id = {}
+        relation_to_id = {}
+        occurrences: Dict[List[int, int, int]] = {}
+        mapped_triplets = []
+        for triplet in preprocessed_file_data:
+            s, p, o = triplet
+
+            # count occurrences: [head_count, relation_count, tail_count]
+            occurrences.setdefault(s, [0, 0, 0])[0] += 1
+            occurrences.setdefault(p, [0, 0, 0])[1] += 1
+            occurrences.setdefault(o, [0, 0, 0])[2] += 1
+
+            if s not in entity_to_id:
+                entity_to_id[s] = len(entity_to_id)
+            if o not in entity_to_id:
+                entity_to_id[o] = len(entity_to_id)
+            if p not in relation_to_id:
+                relation_to_id[p] = len(relation_to_id)
+            mapped_triplets.append((entity_to_id[s], relation_to_id[p], entity_to_id[o]))
+
+        num_nodes = len(entity_to_id)
+        num_relations = len(relation_to_id)
+
+        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_entity_to_id.json"), 'w') as f:
+            json.dump(entity_to_id, f)
+        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_relation_to_id.json"), 'w') as f:
+            json.dump(relation_to_id, f)
+
+        # TODO: Eventell unnötig, weil es ja im Data Objekt gespeichert wird
+        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_occurrences.json"), 'w') as f:
+            json.dump(occurrences, f)
+
+
+
+
+        triplets = torch.tensor(mapped_triplets)
+        edge_index = triplets[:, [0, 2]].t().contiguous()
+        edge_type = triplets[:, [1]].t().contiguous()[0]
+
+        data = Data(
+            edge_index=edge_index,
+            edge_type=edge_type,
+            num_nodes=num_nodes,
+            num_relations=num_relations 
+        )
+        occurrences_relations_tensor = torch.zeros((num_relations, 3), dtype=torch.long)
+        occurrences_nodes_tensor = torch.zeros((num_nodes, 3), dtype=torch.long)
+
+        # Map entities and relations to respective idx and save as tensors in data
+        for key, counts in occurrences.items():
+            if key in entity_to_id:
+                idx = entity_to_id[key]
+                occurrences_nodes_tensor[idx] = torch.tensor(counts, dtype=torch.long)
+            elif key in relation_to_id:
+                idx = relation_to_id[key]
+                occurrences_relations_tensor[idx] = torch.tensor(counts, dtype=torch.long)
+            else:
+                raise ValueError(f"Key {key} not found in either entity or relation mapping.")
+
+        data.occurrences_relations = occurrences_relations_tensor
+        data.occurrences_nodes = occurrences_nodes_tensor
+
+        # Build realtion graph 
+        data = build_relation_graph(data)
+        # data.relation_graph = relation_graph # Muss nicht gemacht werden, passiert schon in build_relation_graph
+        assert data.relation_graph is not None, "Relation graph not built"
+        # HACK:
+        # self.collate needed to stay consistend with the rest of the ultra datasets
+        torch.save(self.collate([data]), os.path.join(self.processed_dir, f'{self.dataset_name}.pt')) # TODO: use pathlib instead of os.path.join
+        return None
+    
 

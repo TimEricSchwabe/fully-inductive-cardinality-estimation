@@ -21,8 +21,13 @@ if __name__ == "__main__":
     # 1. Load dataset
     # Using FB15k-237 for demonstration. It will be downloaded if not present.
     print("Loading dataset...")
-    dataset = datasets.FB15k237(root="data/fb15k237")
-    train_data = dataset[0]
+    # dataset = datasets.FB15k237(root="data/fb15k237")
+    # train_data = dataset[0]
+    root = "data/swdf/"
+    nt_path =  "data/swdf/raw/swdf.nt"
+
+    dataset = datasets.NTDatasets(root=root, nt_path=nt_path)
+    dataset = dataset[0]
     print("Dataset loaded.")
 
     
@@ -36,14 +41,17 @@ if __name__ == "__main__":
 
     # 3. Create a single data point for forward pass
     # We take the first triple from the training set.
-    h_index = train_data.target_edge_index[0, 0:1]
-    t_index = train_data.target_edge_index[1, 0:1]
-    r_index = train_data.target_edge_type[0:1]
+    print(dataset.edge_type)
+    print(dataset.edge_type.shape)
+    h_index = dataset.edge_index[0, 0:1]
+    t_index = dataset.edge_index[1, 0:1]
+    r_index = dataset.edge_type[0:1]
+    print(h_index, t_index, r_index )
 
     # Create a "batch" with a single positive sample.
     # The model expects a shape of (batch_size, num_samples, 3).
     # Here, batch_size=1, num_samples=1.
-    batch = torch.stack([h_index, t_index, r_index], dim=1).unsqueeze(1)
+    batch = torch.stack([h_index, t_index, r_index], dim=1).unsqueeze(1)    
 
 
     #########################################################
@@ -82,7 +90,7 @@ if __name__ == "__main__":
 
 
     # Getting a cardinality prediction from the combined model
-    log_cardinality_pred = model(train_data, batch, query_features, query_edge_index, embedding_indices, edge_attr, edge_embedding_indices, graph_size)
+    log_cardinality_pred = model(dataset, batch, query_features, query_edge_index, embedding_indices, edge_attr, edge_embedding_indices, graph_size)
     true_cardinality = torch.tensor([0.3], device=device)
     loss   = F.mse_loss(log_cardinality_pred, true_cardinality)
     loss.backward()
