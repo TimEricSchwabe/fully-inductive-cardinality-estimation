@@ -1722,6 +1722,7 @@ class NTQueries(InMemoryDataset):
             if relation in self.global_relation_mapping:
                 relation_embedding_indices[idx] = self.global_relation_mapping[relation]
 
+        # Query and edge features with occurrences
         feat_dim = 64
         query_entity_features = torch.zeros(
             len(local_entity_mapping), feat_dim + 3, dtype=torch.float, device=self.device
