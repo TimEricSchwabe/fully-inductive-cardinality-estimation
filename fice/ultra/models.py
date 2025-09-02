@@ -221,7 +221,7 @@ class EntityNBFNet(BaseNBFNet):
 
         # message passing and updated node representations
         output = self.bellmanford(data, h_index[:, 0], r_index[:, 0])  # (num_nodes, batch_size, feature_dim）
-        feature = output["node_feature"] # TODO: feature vectors are 128 long (double that specified)
+        feature = output["node_feature"] 
         return feature
 
 

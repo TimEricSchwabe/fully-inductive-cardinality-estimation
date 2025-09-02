@@ -6,13 +6,21 @@ import json
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
 from torch_geometric.datasets import RelLinkPredDataset, WordNet18RR
 from torch_scatter import scatter_add
-from typing import Optional, Dict, List
+from typing import Optional, Dict, List, Tuple
 
 from fice.ultra.tasks import build_relation_graph
 
+
 class GrailInductiveDataset(InMemoryDataset):
 
-    def __init__(self, root, version, transform=None, pre_transform=build_relation_graph, merge_valid_test=True):
+    def __init__(
+        self,
+        root,
+        version,
+        transform=None,
+        pre_transform=build_relation_graph,
+        merge_valid_test=True,
+    ):
         self.version = version
         assert version in ["v1", "v2", "v3", "v4"]
 
@@ -43,7 +51,11 @@ class GrailInductiveDataset(InMemoryDataset):
     @property
     def raw_file_names(self):
         return [
-            "train_ind.txt", "valid_ind.txt", "test_ind.txt", "train.txt", "valid.txt"
+            "train_ind.txt",
+            "valid_ind.txt",
+            "test_ind.txt",
+            "train.txt",
+            "valid.txt",
         ]
 
     def download(self):
@@ -111,7 +123,9 @@ class GrailInductiveDataset(InMemoryDataset):
         test_fact_type = edge_type[test_fact_slice]
 
         # add flipped triplets for the fact graphs
-        train_fact_index = torch.cat([train_fact_index, train_fact_index.flip(0)], dim=-1)
+        train_fact_index = torch.cat(
+            [train_fact_index, train_fact_index.flip(0)], dim=-1
+        )
         train_fact_type = torch.cat([train_fact_type, train_fact_type + num_relations])
         test_fact_index = torch.cat([test_fact_index, test_fact_index.flip(0)], dim=-1)
         test_fact_type = torch.cat([test_fact_type, test_fact_type + num_relations])
@@ -121,21 +135,45 @@ class GrailInductiveDataset(InMemoryDataset):
         # by default, SOTA models on Grail datasets merge inductive valid and test splits as the final test split
         # with this choice, the validation set is that of the transductive train (on the seen graph)
         # by default it's turned on but you can experiment with turning this option off
-        test_slice = slice(sum(num_samples[:3]), sum(num_samples)) if self.merge_valid_test else slice(sum(num_samples[:4]), sum(num_samples))
-        
-        train_data = Data(edge_index=train_fact_index, edge_type=train_fact_type, num_nodes=len(inv_train_entity_vocab),
-                          target_edge_index=edge_index[:, train_slice], target_edge_type=edge_type[train_slice], num_relations=num_relations*2)
-        valid_data = Data(edge_index=train_fact_index, edge_type=train_fact_type, num_nodes=len(inv_train_entity_vocab),
-                          target_edge_index=edge_index[:, valid_slice], target_edge_type=edge_type[valid_slice], num_relations=num_relations*2)
-        test_data = Data(edge_index=test_fact_index, edge_type=test_fact_type, num_nodes=len(inv_test_entity_vocab),
-                         target_edge_index=edge_index[:, test_slice], target_edge_type=edge_type[test_slice], num_relations=num_relations*2)
+        test_slice = (
+            slice(sum(num_samples[:3]), sum(num_samples))
+            if self.merge_valid_test
+            else slice(sum(num_samples[:4]), sum(num_samples))
+        )
+
+        train_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=len(inv_train_entity_vocab),
+            target_edge_index=edge_index[:, train_slice],
+            target_edge_type=edge_type[train_slice],
+            num_relations=num_relations * 2,
+        )
+        valid_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=len(inv_train_entity_vocab),
+            target_edge_index=edge_index[:, valid_slice],
+            target_edge_type=edge_type[valid_slice],
+            num_relations=num_relations * 2,
+        )
+        test_data = Data(
+            edge_index=test_fact_index,
+            edge_type=test_fact_type,
+            num_nodes=len(inv_test_entity_vocab),
+            target_edge_index=edge_index[:, test_slice],
+            target_edge_type=edge_type[test_slice],
+            num_relations=num_relations * 2,
+        )
 
         if self.pre_transform is not None:
             train_data = self.pre_transform(train_data)
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
 
     def __repr__(self):
         return "%s(%s)" % (self.name, self.version)
@@ -148,13 +186,14 @@ class FB15k237Inductive(GrailInductiveDataset):
         "https://raw.githubusercontent.com/kkteru/grail/master/data/fb237_%s_ind/valid.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/fb237_%s_ind/test.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/fb237_%s/train.txt",
-        "https://raw.githubusercontent.com/kkteru/grail/master/data/fb237_%s/valid.txt"
+        "https://raw.githubusercontent.com/kkteru/grail/master/data/fb237_%s/valid.txt",
     ]
 
     name = "IndFB15k237"
 
     def __init__(self, root, version):
         super().__init__(root, version)
+
 
 class WN18RRInductive(GrailInductiveDataset):
 
@@ -163,7 +202,7 @@ class WN18RRInductive(GrailInductiveDataset):
         "https://raw.githubusercontent.com/kkteru/grail/master/data/WN18RR_%s_ind/valid.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/WN18RR_%s_ind/test.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/WN18RR_%s/train.txt",
-        "https://raw.githubusercontent.com/kkteru/grail/master/data/WN18RR_%s/valid.txt"
+        "https://raw.githubusercontent.com/kkteru/grail/master/data/WN18RR_%s/valid.txt",
     ]
 
     name = "IndWN18RR"
@@ -171,13 +210,14 @@ class WN18RRInductive(GrailInductiveDataset):
     def __init__(self, root, version):
         super().__init__(root, version)
 
+
 class NELLInductive(GrailInductiveDataset):
     urls = [
         "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s_ind/train.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s_ind/valid.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s_ind/test.txt",
         "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s/train.txt",
-        "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s/valid.txt"
+        "https://raw.githubusercontent.com/kkteru/grail/master/data/nell_%s/valid.txt",
     ]
     name = "IndNELL"
 
@@ -186,18 +226,33 @@ class NELLInductive(GrailInductiveDataset):
 
 
 def FB15k237(root):
-    dataset = RelLinkPredDataset(name="FB15k-237", root=root+"/fb15k237/")
+    dataset = RelLinkPredDataset(name="FB15k-237", root=root + "/fb15k237/")
     data = dataset.data
-    train_data = Data(edge_index=data.edge_index, edge_type=data.edge_type, num_nodes=data.num_nodes,
-                        target_edge_index=data.train_edge_index, target_edge_type=data.train_edge_type,
-                        num_relations=dataset.num_relations)
-    valid_data = Data(edge_index=data.edge_index, edge_type=data.edge_type, num_nodes=data.num_nodes,
-                        target_edge_index=data.valid_edge_index, target_edge_type=data.valid_edge_type,
-                        num_relations=dataset.num_relations)
-    test_data = Data(edge_index=data.edge_index, edge_type=data.edge_type, num_nodes=data.num_nodes,
-                        target_edge_index=data.test_edge_index, target_edge_type=data.test_edge_type,
-                        num_relations=dataset.num_relations)
-    
+    train_data = Data(
+        edge_index=data.edge_index,
+        edge_type=data.edge_type,
+        num_nodes=data.num_nodes,
+        target_edge_index=data.train_edge_index,
+        target_edge_type=data.train_edge_type,
+        num_relations=dataset.num_relations,
+    )
+    valid_data = Data(
+        edge_index=data.edge_index,
+        edge_type=data.edge_type,
+        num_nodes=data.num_nodes,
+        target_edge_index=data.valid_edge_index,
+        target_edge_type=data.valid_edge_type,
+        num_relations=dataset.num_relations,
+    )
+    test_data = Data(
+        edge_index=data.edge_index,
+        edge_type=data.edge_type,
+        num_nodes=data.num_nodes,
+        target_edge_index=data.test_edge_index,
+        target_edge_type=data.test_edge_type,
+        num_relations=dataset.num_relations,
+    )
+
     # build relation graphs
 
     train_data = build_relation_graph(train_data)
@@ -207,8 +262,9 @@ def FB15k237(root):
     dataset.data, dataset.slices = dataset.collate([train_data, valid_data, test_data])
     return dataset
 
+
 def WN18RR(root):
-    dataset = WordNet18RR(root=root+"/wn18rr/")
+    dataset = WordNet18RR(root=root + "/wn18rr/")
     # convert wn18rr into the same format as fb15k-237
     data = dataset.data
     num_nodes = int(data.edge_index.max()) + 1
@@ -217,19 +273,31 @@ def WN18RR(root):
     edge_type = data.edge_type[data.train_mask]
     edge_index = torch.cat([edge_index, edge_index.flip(0)], dim=-1)
     edge_type = torch.cat([edge_type, edge_type + num_relations])
-    train_data = Data(edge_index=edge_index, edge_type=edge_type, num_nodes=num_nodes,
-                        target_edge_index=data.edge_index[:, data.train_mask],
-                        target_edge_type=data.edge_type[data.train_mask],
-                        num_relations=num_relations*2)
-    valid_data = Data(edge_index=edge_index, edge_type=edge_type, num_nodes=num_nodes,
-                        target_edge_index=data.edge_index[:, data.val_mask],
-                        target_edge_type=data.edge_type[data.val_mask],
-                        num_relations=num_relations*2)
-    test_data = Data(edge_index=edge_index, edge_type=edge_type, num_nodes=num_nodes,
-                        target_edge_index=data.edge_index[:, data.test_mask],
-                        target_edge_type=data.edge_type[data.test_mask],
-                        num_relations=num_relations*2)
-    
+    train_data = Data(
+        edge_index=edge_index,
+        edge_type=edge_type,
+        num_nodes=num_nodes,
+        target_edge_index=data.edge_index[:, data.train_mask],
+        target_edge_type=data.edge_type[data.train_mask],
+        num_relations=num_relations * 2,
+    )
+    valid_data = Data(
+        edge_index=edge_index,
+        edge_type=edge_type,
+        num_nodes=num_nodes,
+        target_edge_index=data.edge_index[:, data.val_mask],
+        target_edge_type=data.edge_type[data.val_mask],
+        num_relations=num_relations * 2,
+    )
+    test_data = Data(
+        edge_index=edge_index,
+        edge_type=edge_type,
+        num_nodes=num_nodes,
+        target_edge_index=data.edge_index[:, data.test_mask],
+        target_edge_type=data.edge_type[data.test_mask],
+        num_relations=num_relations * 2,
+    )
+
     # build relation graphs
     train_data = build_relation_graph(train_data)
     valid_data = build_relation_graph(valid_data)
@@ -243,8 +311,10 @@ def WN18RR(root):
 class TransductiveDataset(InMemoryDataset):
 
     delimiter = None
-    
-    def __init__(self, root, transform=None, pre_transform=build_relation_graph, **kwargs):
+
+    def __init__(
+        self, root, transform=None, pre_transform=build_relation_graph, **kwargs
+    ):
 
         super().__init__(root, transform, pre_transform)
         self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
@@ -252,12 +322,12 @@ class TransductiveDataset(InMemoryDataset):
     @property
     def raw_file_names(self):
         return ["train.txt", "valid.txt", "test.txt"]
-    
+
     def download(self):
         for url, path in zip(self.urls, self.raw_paths):
             download_path = download_url(url, self.raw_dir)
             os.rename(download_path, path)
-    
+
     def load_file(self, triplet_file, inv_entity_vocab={}, inv_rel_vocab={}):
 
         triplets = []
@@ -265,7 +335,11 @@ class TransductiveDataset(InMemoryDataset):
 
         with open(triplet_file, "r", encoding="utf-8") as fin:
             for l in fin:
-                u, r, v = l.split() if self.delimiter is None else l.strip().split(self.delimiter)
+                u, r, v = (
+                    l.split()
+                    if self.delimiter is None
+                    else l.strip().split(self.delimiter)
+                )
                 if u not in inv_entity_vocab:
                     inv_entity_vocab[u] = entity_cnt
                     entity_cnt += 1
@@ -281,26 +355,34 @@ class TransductiveDataset(InMemoryDataset):
 
         return {
             "triplets": triplets,
-            "num_node": len(inv_entity_vocab), #entity_cnt,
+            "num_node": len(inv_entity_vocab),  # entity_cnt,
             "num_relation": rel_cnt,
             "inv_entity_vocab": inv_entity_vocab,
-            "inv_rel_vocab": inv_rel_vocab
+            "inv_rel_vocab": inv_rel_vocab,
         }
-    
+
     # default loading procedure: process train/valid/test files, create graphs from them
     def process(self):
 
         train_files = self.raw_paths[:3]
 
-        train_results = self.load_file(train_files[0], inv_entity_vocab={}, inv_rel_vocab={})
-        valid_results = self.load_file(train_files[1], 
-                        train_results["inv_entity_vocab"], train_results["inv_rel_vocab"])
-        test_results = self.load_file(train_files[2],
-                        train_results["inv_entity_vocab"], train_results["inv_rel_vocab"])
-        
+        train_results = self.load_file(
+            train_files[0], inv_entity_vocab={}, inv_rel_vocab={}
+        )
+        valid_results = self.load_file(
+            train_files[1],
+            train_results["inv_entity_vocab"],
+            train_results["inv_rel_vocab"],
+        )
+        test_results = self.load_file(
+            train_files[2],
+            train_results["inv_entity_vocab"],
+            train_results["inv_rel_vocab"],
+        )
+
         # in some datasets, there are several new nodes in the test set, eg 123,143 YAGO train adn 123,182 in YAGO test
         # for consistency with other experimental results, we'll include those in the full vocab and num nodes
-        num_node = test_results["num_node"] 
+        num_node = test_results["num_node"]
         # the same for rels: in most cases train == test for transductive
         # for AristoV4 train rels 1593, test 1604
         num_relations = test_results["num_relation"]
@@ -309,24 +391,50 @@ class TransductiveDataset(InMemoryDataset):
         valid_triplets = valid_results["triplets"]
         test_triplets = test_results["triplets"]
 
-        train_target_edges = torch.tensor([[t[0], t[1]] for t in train_triplets], dtype=torch.long).t()
+        train_target_edges = torch.tensor(
+            [[t[0], t[1]] for t in train_triplets], dtype=torch.long
+        ).t()
         train_target_etypes = torch.tensor([t[2] for t in train_triplets])
 
-        valid_edges = torch.tensor([[t[0], t[1]] for t in valid_triplets], dtype=torch.long).t()
+        valid_edges = torch.tensor(
+            [[t[0], t[1]] for t in valid_triplets], dtype=torch.long
+        ).t()
         valid_etypes = torch.tensor([t[2] for t in valid_triplets])
 
-        test_edges = torch.tensor([[t[0], t[1]] for t in test_triplets], dtype=torch.long).t()
+        test_edges = torch.tensor(
+            [[t[0], t[1]] for t in test_triplets], dtype=torch.long
+        ).t()
         test_etypes = torch.tensor([t[2] for t in test_triplets])
 
         train_edges = torch.cat([train_target_edges, train_target_edges.flip(0)], dim=1)
-        train_etypes = torch.cat([train_target_etypes, train_target_etypes+num_relations])
+        train_etypes = torch.cat(
+            [train_target_etypes, train_target_etypes + num_relations]
+        )
 
-        train_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                          target_edge_index=train_target_edges, target_edge_type=train_target_etypes, num_relations=num_relations*2)
-        valid_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                          target_edge_index=valid_edges, target_edge_type=valid_etypes, num_relations=num_relations*2)
-        test_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                         target_edge_index=test_edges, target_edge_type=test_etypes, num_relations=num_relations*2)
+        train_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=train_target_edges,
+            target_edge_type=train_target_etypes,
+            num_relations=num_relations * 2,
+        )
+        valid_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=valid_edges,
+            target_edge_type=valid_etypes,
+            num_relations=num_relations * 2,
+        )
+        test_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=test_edges,
+            target_edge_type=test_etypes,
+            num_relations=num_relations * 2,
+        )
 
         # build graphs of relations
         if self.pre_transform is not None:
@@ -334,11 +442,13 @@ class TransductiveDataset(InMemoryDataset):
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
 
     def __repr__(self):
         return "%s()" % (self.name)
-    
+
     @property
     def num_relations(self):
         return int(self.data.edge_type.max()) + 1
@@ -356,7 +466,6 @@ class TransductiveDataset(InMemoryDataset):
         return "data.pt"
 
 
-
 class CoDEx(TransductiveDataset):
 
     name = "codex"
@@ -365,7 +474,7 @@ class CoDEx(TransductiveDataset):
         "https://raw.githubusercontent.com/tsafavi/codex/master/data/triples/%s/valid.txt",
         "https://raw.githubusercontent.com/tsafavi/codex/master/data/triples/%s/test.txt",
     ]
-    
+
     def download(self):
         for url, path in zip(self.urls, self.raw_paths):
             download_path = download_url(url % self.name, self.raw_dir)
@@ -378,12 +487,13 @@ class CoDExSmall(CoDEx):
     #edge: 36543
     #relation: 42
     """
+
     url = "https://zenodo.org/record/4281094/files/codex-s.tar.gz"
     md5 = "63cd8186fc2aeddc154e20cf4a10087e"
     name = "codex-s"
 
     def __init__(self, root):
-        super(CoDExSmall, self).__init__(root=root, size='s')
+        super(CoDExSmall, self).__init__(root=root, size="s")
 
 
 class CoDExMedium(CoDEx):
@@ -392,11 +502,13 @@ class CoDExMedium(CoDEx):
     #edge: 206205
     #relation: 51
     """
+
     url = "https://zenodo.org/record/4281094/files/codex-m.tar.gz"
     md5 = "43e561cfdca1c6ad9cc2f5b1ca4add76"
     name = "codex-m"
+
     def __init__(self, root):
-        super(CoDExMedium, self).__init__(root=root, size='m')
+        super(CoDExMedium, self).__init__(root=root, size="m")
 
 
 class CoDExLarge(CoDEx):
@@ -405,11 +517,13 @@ class CoDExLarge(CoDEx):
     #edge: 612437
     #relation: 69
     """
+
     url = "https://zenodo.org/record/4281094/files/codex-l.tar.gz"
     md5 = "9a10f4458c4bd2b16ef9b92b677e0d71"
     name = "codex-l"
+
     def __init__(self, root):
-        super(CoDExLarge, self).__init__(root=root, size='l')
+        super(CoDExLarge, self).__init__(root=root, size="l")
 
 
 class NELL995(TransductiveDataset):
@@ -429,16 +543,29 @@ class NELL995(TransductiveDataset):
     @property
     def raw_file_names(self):
         return ["facts.txt", "train.txt", "valid.txt", "test.txt"]
-    
 
     def process(self):
         train_files = self.raw_paths[:4]
 
-        facts_results = self.load_file(train_files[0], inv_entity_vocab={}, inv_rel_vocab={})
-        train_results = self.load_file(train_files[1], facts_results["inv_entity_vocab"], facts_results["inv_rel_vocab"])
-        valid_results = self.load_file(train_files[2], train_results["inv_entity_vocab"], train_results["inv_rel_vocab"])
-        test_results = self.load_file(train_files[3], train_results["inv_entity_vocab"], train_results["inv_rel_vocab"])
-        
+        facts_results = self.load_file(
+            train_files[0], inv_entity_vocab={}, inv_rel_vocab={}
+        )
+        train_results = self.load_file(
+            train_files[1],
+            facts_results["inv_entity_vocab"],
+            facts_results["inv_rel_vocab"],
+        )
+        valid_results = self.load_file(
+            train_files[2],
+            train_results["inv_entity_vocab"],
+            train_results["inv_rel_vocab"],
+        )
+        test_results = self.load_file(
+            train_files[3],
+            train_results["inv_entity_vocab"],
+            train_results["inv_rel_vocab"],
+        )
+
         num_node = valid_results["num_node"]
         num_relations = train_results["num_relation"]
 
@@ -446,24 +573,50 @@ class NELL995(TransductiveDataset):
         valid_triplets = valid_results["triplets"]
         test_triplets = test_results["triplets"]
 
-        train_target_edges = torch.tensor([[t[0], t[1]] for t in train_triplets], dtype=torch.long).t()
+        train_target_edges = torch.tensor(
+            [[t[0], t[1]] for t in train_triplets], dtype=torch.long
+        ).t()
         train_target_etypes = torch.tensor([t[2] for t in train_triplets])
 
-        valid_edges = torch.tensor([[t[0], t[1]] for t in valid_triplets], dtype=torch.long).t()
+        valid_edges = torch.tensor(
+            [[t[0], t[1]] for t in valid_triplets], dtype=torch.long
+        ).t()
         valid_etypes = torch.tensor([t[2] for t in valid_triplets])
 
-        test_edges = torch.tensor([[t[0], t[1]] for t in test_triplets], dtype=torch.long).t()
+        test_edges = torch.tensor(
+            [[t[0], t[1]] for t in test_triplets], dtype=torch.long
+        ).t()
         test_etypes = torch.tensor([t[2] for t in test_triplets])
 
         train_edges = torch.cat([train_target_edges, train_target_edges.flip(0)], dim=1)
-        train_etypes = torch.cat([train_target_etypes, train_target_etypes+num_relations])
+        train_etypes = torch.cat(
+            [train_target_etypes, train_target_etypes + num_relations]
+        )
 
-        train_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                          target_edge_index=train_target_edges, target_edge_type=train_target_etypes, num_relations=num_relations*2)
-        valid_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                          target_edge_index=valid_edges, target_edge_type=valid_etypes, num_relations=num_relations*2)
-        test_data = Data(edge_index=train_edges, edge_type=train_etypes, num_nodes=num_node,
-                         target_edge_index=test_edges, target_edge_type=test_etypes, num_relations=num_relations*2)
+        train_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=train_target_edges,
+            target_edge_type=train_target_etypes,
+            num_relations=num_relations * 2,
+        )
+        valid_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=valid_edges,
+            target_edge_type=valid_etypes,
+            num_relations=num_relations * 2,
+        )
+        test_data = Data(
+            edge_index=train_edges,
+            edge_type=train_etypes,
+            num_nodes=num_node,
+            target_edge_index=test_edges,
+            target_edge_type=test_etypes,
+            num_relations=num_relations * 2,
+        )
 
         # build graphs of relations
         if self.pre_transform is not None:
@@ -471,7 +624,9 @@ class NELL995(TransductiveDataset):
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
 
 
 class ConceptNet100k(TransductiveDataset):
@@ -490,7 +645,7 @@ class DBpedia100k(TransductiveDataset):
         "https://raw.githubusercontent.com/iieir-km/ComplEx-NNE_AER/master/datasets/DB100K/_train.txt",
         "https://raw.githubusercontent.com/iieir-km/ComplEx-NNE_AER/master/datasets/DB100K/_valid.txt",
         "https://raw.githubusercontent.com/iieir-km/ComplEx-NNE_AER/master/datasets/DB100K/_test.txt",
-        ]
+    ]
     name = "dbp100k"
 
 
@@ -500,7 +655,7 @@ class YAGO310(TransductiveDataset):
         "https://raw.githubusercontent.com/DeepGraphLearning/KnowledgeGraphEmbedding/master/data/YAGO3-10/train.txt",
         "https://raw.githubusercontent.com/DeepGraphLearning/KnowledgeGraphEmbedding/master/data/YAGO3-10/valid.txt",
         "https://raw.githubusercontent.com/DeepGraphLearning/KnowledgeGraphEmbedding/master/data/YAGO3-10/test.txt",
-        ]
+    ]
     name = "yago310"
 
 
@@ -510,7 +665,7 @@ class Hetionet(TransductiveDataset):
         "https://www.dropbox.com/s/y47bt9oq57h6l5k/train.txt?dl=1",
         "https://www.dropbox.com/s/a0pbrx9tz3dgsff/valid.txt?dl=1",
         "https://www.dropbox.com/s/4dhrvg3fyq5tnu4/test.txt?dl=1",
-        ]
+    ]
     name = "hetionet"
 
 
@@ -525,7 +680,7 @@ class AristoV4(TransductiveDataset):
         download_path = download_url(self.url, self.raw_dir)
         extract_zip(download_path, self.raw_dir)
         os.unlink(download_path)
-        for oldname, newname in zip(['train', 'valid', 'test'], self.raw_paths):
+        for oldname, newname in zip(["train", "valid", "test"], self.raw_paths):
             os.rename(os.path.join(self.raw_dir, oldname), newname)
 
 
@@ -541,7 +696,7 @@ class SparserKG(TransductiveDataset):
     @property
     def raw_dir(self):
         return os.path.join(self.root, self.base_name, self.name, "raw")
-    
+
     @property
     def processed_dir(self):
         return os.path.join(self.root, self.base_name, self.name, "processed")
@@ -550,11 +705,22 @@ class SparserKG(TransductiveDataset):
         base_path = os.path.join(self.root, self.base_name)
         download_path = download_url(self.url, base_path)
         extract_zip(download_path, base_path)
-        for dsname in ['NELL23K', 'WD-singer', 'FB15K-237-10', 'FB15K-237-20', 'FB15K-237-50']:
-            for oldname, newname in zip(['train.triples', 'dev.triples', 'test.triples'], self.raw_file_names):
-                os.renames(os.path.join(base_path, "data", dsname, oldname), os.path.join(base_path, dsname, "raw", newname))
+        for dsname in [
+            "NELL23K",
+            "WD-singer",
+            "FB15K-237-10",
+            "FB15K-237-20",
+            "FB15K-237-50",
+        ]:
+            for oldname, newname in zip(
+                ["train.triples", "dev.triples", "test.triples"], self.raw_file_names
+            ):
+                os.renames(
+                    os.path.join(base_path, "data", dsname, oldname),
+                    os.path.join(base_path, dsname, "raw", newname),
+                )
         shutil.rmtree(os.path.join(base_path, "data"))
-    
+
     def load_file(self, triplet_file, inv_entity_vocab={}, inv_rel_vocab={}):
 
         triplets = []
@@ -562,7 +728,11 @@ class SparserKG(TransductiveDataset):
 
         with open(triplet_file, "r", encoding="utf-8") as fin:
             for l in fin:
-                u, v, r = l.split() if self.delimiter is None else l.strip().split(self.delimiter)
+                u, v, r = (
+                    l.split()
+                    if self.delimiter is None
+                    else l.strip().split(self.delimiter)
+                )
                 if u not in inv_entity_vocab:
                     inv_entity_vocab[u] = entity_cnt
                     entity_cnt += 1
@@ -578,25 +748,30 @@ class SparserKG(TransductiveDataset):
 
         return {
             "triplets": triplets,
-            "num_node": len(inv_entity_vocab), #entity_cnt,
+            "num_node": len(inv_entity_vocab),  # entity_cnt,
             "num_relation": rel_cnt,
             "inv_entity_vocab": inv_entity_vocab,
-            "inv_rel_vocab": inv_rel_vocab
+            "inv_rel_vocab": inv_rel_vocab,
         }
-    
-class WDsinger(SparserKG):   
+
+
+class WDsinger(SparserKG):
     name = "WD-singer"
 
-class NELL23k(SparserKG):   
+
+class NELL23k(SparserKG):
     name = "NELL23K"
 
-class FB15k237_10(SparserKG):   
+
+class FB15k237_10(SparserKG):
     name = "FB15K-237-10"
 
-class FB15k237_20(SparserKG):   
+
+class FB15k237_20(SparserKG):
     name = "FB15K-237-20"
 
-class FB15k237_50(SparserKG):   
+
+class FB15k237_50(SparserKG):
     name = "FB15K-237-50"
 
 
@@ -604,9 +779,16 @@ class InductiveDataset(InMemoryDataset):
 
     delimiter = None
     # some datasets (4 from Hamaguchi et al and Indigo) have validation set based off the train graph, not inference
-    valid_on_inf = True  # 
-    
-    def __init__(self, root, version, transform=None, pre_transform=build_relation_graph, **kwargs):
+    valid_on_inf = True  #
+
+    def __init__(
+        self,
+        root,
+        version,
+        transform=None,
+        pre_transform=build_relation_graph,
+        **kwargs,
+    ):
 
         self.version = str(version)
         super().__init__(root, transform, pre_transform)
@@ -616,7 +798,7 @@ class InductiveDataset(InMemoryDataset):
         for url, path in zip(self.urls, self.raw_paths):
             download_path = download_url(url % self.version, self.raw_dir)
             os.rename(download_path, path)
-    
+
     def load_file(self, triplet_file, inv_entity_vocab={}, inv_rel_vocab={}):
 
         triplets = []
@@ -624,7 +806,11 @@ class InductiveDataset(InMemoryDataset):
 
         with open(triplet_file, "r", encoding="utf-8") as fin:
             for l in fin:
-                u, r, v = l.split() if self.delimiter is None else l.strip().split(self.delimiter)
+                u, r, v = (
+                    l.split()
+                    if self.delimiter is None
+                    else l.strip().split(self.delimiter)
+                )
                 if u not in inv_entity_vocab:
                     inv_entity_vocab[u] = entity_cnt
                     entity_cnt += 1
@@ -640,62 +826,115 @@ class InductiveDataset(InMemoryDataset):
 
         return {
             "triplets": triplets,
-            "num_node": len(inv_entity_vocab), #entity_cnt,
+            "num_node": len(inv_entity_vocab),  # entity_cnt,
             "num_relation": rel_cnt,
             "inv_entity_vocab": inv_entity_vocab,
-            "inv_rel_vocab": inv_rel_vocab
+            "inv_rel_vocab": inv_rel_vocab,
         }
-    
+
     def process(self):
-        
+
         train_files = self.raw_paths[:4]
 
-        train_res = self.load_file(train_files[0], inv_entity_vocab={}, inv_rel_vocab={})
-        inference_res = self.load_file(train_files[1], inv_entity_vocab={}, inv_rel_vocab={})
-        valid_res = self.load_file(
-            train_files[2], 
-            inference_res["inv_entity_vocab"] if self.valid_on_inf else train_res["inv_entity_vocab"], 
-            inference_res["inv_rel_vocab"] if self.valid_on_inf else train_res["inv_rel_vocab"]
+        train_res = self.load_file(
+            train_files[0], inv_entity_vocab={}, inv_rel_vocab={}
         )
-        test_res = self.load_file(train_files[3], inference_res["inv_entity_vocab"], inference_res["inv_rel_vocab"])
+        inference_res = self.load_file(
+            train_files[1], inv_entity_vocab={}, inv_rel_vocab={}
+        )
+        valid_res = self.load_file(
+            train_files[2],
+            (
+                inference_res["inv_entity_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_entity_vocab"]
+            ),
+            (
+                inference_res["inv_rel_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_rel_vocab"]
+            ),
+        )
+        test_res = self.load_file(
+            train_files[3],
+            inference_res["inv_entity_vocab"],
+            inference_res["inv_rel_vocab"],
+        )
 
-        num_train_nodes, num_train_rels = train_res["num_node"], train_res["num_relation"]
-        inference_num_nodes, inference_num_rels = test_res["num_node"], test_res["num_relation"]
+        num_train_nodes, num_train_rels = (
+            train_res["num_node"],
+            train_res["num_relation"],
+        )
+        inference_num_nodes, inference_num_rels = (
+            test_res["num_node"],
+            test_res["num_relation"],
+        )
 
-        train_edges, inf_graph, inf_valid_edges, inf_test_edges = train_res["triplets"], inference_res["triplets"], valid_res["triplets"], test_res["triplets"]
-        
-        train_target_edges = torch.tensor([[t[0], t[1]] for t in train_edges], dtype=torch.long).t()
+        train_edges, inf_graph, inf_valid_edges, inf_test_edges = (
+            train_res["triplets"],
+            inference_res["triplets"],
+            valid_res["triplets"],
+            test_res["triplets"],
+        )
+
+        train_target_edges = torch.tensor(
+            [[t[0], t[1]] for t in train_edges], dtype=torch.long
+        ).t()
         train_target_etypes = torch.tensor([t[2] for t in train_edges])
 
-        train_fact_index = torch.cat([train_target_edges, train_target_edges.flip(0)], dim=1)
-        train_fact_type = torch.cat([train_target_etypes, train_target_etypes + num_train_rels])
+        train_fact_index = torch.cat(
+            [train_target_edges, train_target_edges.flip(0)], dim=1
+        )
+        train_fact_type = torch.cat(
+            [train_target_etypes, train_target_etypes + num_train_rels]
+        )
 
-        inf_edges = torch.tensor([[t[0], t[1]] for t in inf_graph], dtype=torch.long).t()
+        inf_edges = torch.tensor(
+            [[t[0], t[1]] for t in inf_graph], dtype=torch.long
+        ).t()
         inf_edges = torch.cat([inf_edges, inf_edges.flip(0)], dim=1)
         inf_etypes = torch.tensor([t[2] for t in inf_graph])
         inf_etypes = torch.cat([inf_etypes, inf_etypes + inference_num_rels])
-        
+
         inf_valid_edges = torch.tensor(inf_valid_edges, dtype=torch.long)
         inf_test_edges = torch.tensor(inf_test_edges, dtype=torch.long)
 
-        train_data = Data(edge_index=train_fact_index, edge_type=train_fact_type, num_nodes=num_train_nodes,
-                          target_edge_index=train_target_edges, target_edge_type=train_target_etypes, num_relations=num_train_rels*2)
-        valid_data = Data(edge_index=inf_edges if self.valid_on_inf else train_fact_index, 
-                          edge_type=inf_etypes if self.valid_on_inf else train_fact_type, 
-                          num_nodes=inference_num_nodes if self.valid_on_inf else num_train_nodes,
-                          target_edge_index=inf_valid_edges[:, :2].T, 
-                          target_edge_type=inf_valid_edges[:, 2], 
-                          num_relations=inference_num_rels*2 if self.valid_on_inf else num_train_rels*2)
-        test_data = Data(edge_index=inf_edges, edge_type=inf_etypes, num_nodes=inference_num_nodes,
-                         target_edge_index=inf_test_edges[:, :2].T, target_edge_type=inf_test_edges[:, 2], num_relations=inference_num_rels*2)
+        train_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=num_train_nodes,
+            target_edge_index=train_target_edges,
+            target_edge_type=train_target_etypes,
+            num_relations=num_train_rels * 2,
+        )
+        valid_data = Data(
+            edge_index=inf_edges if self.valid_on_inf else train_fact_index,
+            edge_type=inf_etypes if self.valid_on_inf else train_fact_type,
+            num_nodes=inference_num_nodes if self.valid_on_inf else num_train_nodes,
+            target_edge_index=inf_valid_edges[:, :2].T,
+            target_edge_type=inf_valid_edges[:, 2],
+            num_relations=(
+                inference_num_rels * 2 if self.valid_on_inf else num_train_rels * 2
+            ),
+        )
+        test_data = Data(
+            edge_index=inf_edges,
+            edge_type=inf_etypes,
+            num_nodes=inference_num_nodes,
+            target_edge_index=inf_test_edges[:, :2].T,
+            target_edge_type=inf_test_edges[:, 2],
+            num_relations=inference_num_rels * 2,
+        )
 
         if self.pre_transform is not None:
             train_data = self.pre_transform(train_data)
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
-    
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
+
     @property
     def num_relations(self):
         return int(self.data.edge_type.max()) + 1
@@ -707,11 +946,14 @@ class InductiveDataset(InMemoryDataset):
     @property
     def processed_dir(self):
         return os.path.join(self.root, self.name, self.version, "processed")
-    
+
     @property
     def raw_file_names(self):
         return [
-            "transductive_train.txt", "inference_graph.txt", "inf_valid.txt", "inf_test.txt"
+            "transductive_train.txt",
+            "inference_graph.txt",
+            "inf_valid.txt",
+            "inf_test.txt",
         ]
 
     @property
@@ -731,7 +973,7 @@ class IngramInductive(InductiveDataset):
     @property
     def processed_dir(self):
         return os.path.join(self.root, "ingram", self.name, self.version, "processed")
-    
+
 
 class FBIngram(IngramInductive):
 
@@ -754,6 +996,7 @@ class WKIngram(IngramInductive):
     ]
     name = "wk"
 
+
 class NLIngram(IngramInductive):
 
     urls = [
@@ -775,7 +1018,7 @@ class ILPC2022(InductiveDataset):
     ]
 
     name = "ilpc2022"
-    
+
 
 class HM(InductiveDataset):
     # benchmarks from Hamaguchi et al and Indigo BM
@@ -789,13 +1032,13 @@ class HM(InductiveDataset):
 
     name = "hm"
     versions = {
-        '1k': "Hamaguchi-BM_both-1000",
-        '3k': "Hamaguchi-BM_both-3000",
-        '5k': "Hamaguchi-BM_both-5000",
-        'indigo': "INDIGO-BM" 
+        "1k": "Hamaguchi-BM_both-1000",
+        "3k": "Hamaguchi-BM_both-3000",
+        "5k": "Hamaguchi-BM_both-5000",
+        "indigo": "INDIGO-BM",
     }
     # in 4 HM graphs, the validation set is based off the training graph, so we'll adjust the dataset creation accordingly
-    valid_on_inf = False 
+    valid_on_inf = False
 
     def __init__(self, root, version, **kwargs):
         version = self.versions[version]
@@ -803,54 +1046,107 @@ class HM(InductiveDataset):
 
     # HM datasets are a bit weird: validation set (based off the train graph) has a few hundred new nodes, so we need a custom processing
     def process(self):
-        
+
         train_files = self.raw_paths[:4]
 
-        train_res = self.load_file(train_files[0], inv_entity_vocab={}, inv_rel_vocab={})
-        inference_res = self.load_file(train_files[1], inv_entity_vocab={}, inv_rel_vocab={})
-        valid_res = self.load_file(
-            train_files[2], 
-            inference_res["inv_entity_vocab"] if self.valid_on_inf else train_res["inv_entity_vocab"], 
-            inference_res["inv_rel_vocab"] if self.valid_on_inf else train_res["inv_rel_vocab"]
+        train_res = self.load_file(
+            train_files[0], inv_entity_vocab={}, inv_rel_vocab={}
         )
-        test_res = self.load_file(train_files[3], inference_res["inv_entity_vocab"], inference_res["inv_rel_vocab"])
+        inference_res = self.load_file(
+            train_files[1], inv_entity_vocab={}, inv_rel_vocab={}
+        )
+        valid_res = self.load_file(
+            train_files[2],
+            (
+                inference_res["inv_entity_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_entity_vocab"]
+            ),
+            (
+                inference_res["inv_rel_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_rel_vocab"]
+            ),
+        )
+        test_res = self.load_file(
+            train_files[3],
+            inference_res["inv_entity_vocab"],
+            inference_res["inv_rel_vocab"],
+        )
 
-        num_train_nodes, num_train_rels = train_res["num_node"], train_res["num_relation"]
-        inference_num_nodes, inference_num_rels = test_res["num_node"], test_res["num_relation"]
+        num_train_nodes, num_train_rels = (
+            train_res["num_node"],
+            train_res["num_relation"],
+        )
+        inference_num_nodes, inference_num_rels = (
+            test_res["num_node"],
+            test_res["num_relation"],
+        )
 
-        train_edges, inf_graph, inf_valid_edges, inf_test_edges = train_res["triplets"], inference_res["triplets"], valid_res["triplets"], test_res["triplets"]
-        
-        train_target_edges = torch.tensor([[t[0], t[1]] for t in train_edges], dtype=torch.long).t()
+        train_edges, inf_graph, inf_valid_edges, inf_test_edges = (
+            train_res["triplets"],
+            inference_res["triplets"],
+            valid_res["triplets"],
+            test_res["triplets"],
+        )
+
+        train_target_edges = torch.tensor(
+            [[t[0], t[1]] for t in train_edges], dtype=torch.long
+        ).t()
         train_target_etypes = torch.tensor([t[2] for t in train_edges])
 
-        train_fact_index = torch.cat([train_target_edges, train_target_edges.flip(0)], dim=1)
-        train_fact_type = torch.cat([train_target_etypes, train_target_etypes + num_train_rels])
+        train_fact_index = torch.cat(
+            [train_target_edges, train_target_edges.flip(0)], dim=1
+        )
+        train_fact_type = torch.cat(
+            [train_target_etypes, train_target_etypes + num_train_rels]
+        )
 
-        inf_edges = torch.tensor([[t[0], t[1]] for t in inf_graph], dtype=torch.long).t()
+        inf_edges = torch.tensor(
+            [[t[0], t[1]] for t in inf_graph], dtype=torch.long
+        ).t()
         inf_edges = torch.cat([inf_edges, inf_edges.flip(0)], dim=1)
         inf_etypes = torch.tensor([t[2] for t in inf_graph])
         inf_etypes = torch.cat([inf_etypes, inf_etypes + inference_num_rels])
-        
+
         inf_valid_edges = torch.tensor(inf_valid_edges, dtype=torch.long)
         inf_test_edges = torch.tensor(inf_test_edges, dtype=torch.long)
 
-        train_data = Data(edge_index=train_fact_index, edge_type=train_fact_type, num_nodes=num_train_nodes,
-                          target_edge_index=train_target_edges, target_edge_type=train_target_etypes, num_relations=num_train_rels*2)
-        valid_data = Data(edge_index=train_fact_index, 
-                          edge_type=train_fact_type, 
-                          num_nodes=valid_res["num_node"],  # the only fix in this function
-                          target_edge_index=inf_valid_edges[:, :2].T, 
-                          target_edge_type=inf_valid_edges[:, 2], 
-                          num_relations=inference_num_rels*2 if self.valid_on_inf else num_train_rels*2)
-        test_data = Data(edge_index=inf_edges, edge_type=inf_etypes, num_nodes=inference_num_nodes,
-                         target_edge_index=inf_test_edges[:, :2].T, target_edge_type=inf_test_edges[:, 2], num_relations=inference_num_rels*2)
+        train_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=num_train_nodes,
+            target_edge_index=train_target_edges,
+            target_edge_type=train_target_etypes,
+            num_relations=num_train_rels * 2,
+        )
+        valid_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=valid_res["num_node"],  # the only fix in this function
+            target_edge_index=inf_valid_edges[:, :2].T,
+            target_edge_type=inf_valid_edges[:, 2],
+            num_relations=(
+                inference_num_rels * 2 if self.valid_on_inf else num_train_rels * 2
+            ),
+        )
+        test_data = Data(
+            edge_index=inf_edges,
+            edge_type=inf_etypes,
+            num_nodes=inference_num_nodes,
+            target_edge_index=inf_test_edges[:, :2].T,
+            target_edge_type=inf_test_edges[:, 2],
+            num_relations=inference_num_rels * 2,
+        )
 
         if self.pre_transform is not None:
             train_data = self.pre_transform(train_data)
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
 
 
 class MTDEAInductive(InductiveDataset):
@@ -861,21 +1157,28 @@ class MTDEAInductive(InductiveDataset):
 
     def __init__(self, root, version, **kwargs):
 
-        assert version in self.versions, f"unknown version {version} for {self.name}, available: {self.versions}"
+        assert (
+            version in self.versions
+        ), f"unknown version {version} for {self.name}, available: {self.versions}"
         super().__init__(root, version, **kwargs)
 
     @property
     def raw_dir(self):
         return os.path.join(self.root, self.base_name, self.name, self.version, "raw")
-    
+
     @property
     def processed_dir(self):
-        return os.path.join(self.root, self.base_name, self.name, self.version, "processed")
-    
+        return os.path.join(
+            self.root, self.base_name, self.name, self.version, "processed"
+        )
+
     @property
     def raw_file_names(self):
         return [
-            "transductive_train.txt", "inference_graph.txt", "transductive_valid.txt", "inf_test.txt"
+            "transductive_train.txt",
+            "inference_graph.txt",
+            "transductive_valid.txt",
+            "inf_test.txt",
         ]
 
     def download(self):
@@ -883,28 +1186,50 @@ class MTDEAInductive(InductiveDataset):
         download_path = download_url(self.url, base_path)
         extract_zip(download_path, base_path)
         # unzip all datasets at once
-        for dsname in ['FBNELL', 'Metafam', 'WikiTopics-MT1', 'WikiTopics-MT2', 'WikiTopics-MT3', 'WikiTopics-MT4']:
-            cl = globals()[dsname.replace("-","")]
+        for dsname in [
+            "FBNELL",
+            "Metafam",
+            "WikiTopics-MT1",
+            "WikiTopics-MT2",
+            "WikiTopics-MT3",
+            "WikiTopics-MT4",
+        ]:
+            cl = globals()[dsname.replace("-", "")]
             versions = cl.versions
             for version in versions:
-                for oldname, newname in zip(['train.txt', 'observe.txt', 'valid.txt', 'test.txt'], self.raw_file_names):
-                    foldername = cl.prefix % version + "-trans" if "transductive" in newname else cl.prefix % version + "-ind"
+                for oldname, newname in zip(
+                    ["train.txt", "observe.txt", "valid.txt", "test.txt"],
+                    self.raw_file_names,
+                ):
+                    foldername = (
+                        cl.prefix % version + "-trans"
+                        if "transductive" in newname
+                        else cl.prefix % version + "-ind"
+                    )
                     os.renames(
-                        os.path.join(base_path, "MTDEA_datasets", dsname, foldername, oldname), 
-                        os.path.join(base_path, dsname, version, "raw", newname)
+                        os.path.join(
+                            base_path, "MTDEA_datasets", dsname, foldername, oldname
+                        ),
+                        os.path.join(base_path, dsname, version, "raw", newname),
                     )
         shutil.rmtree(os.path.join(base_path, "MTDEA_datasets"))
 
-    def load_file(self, triplet_file, inv_entity_vocab={}, inv_rel_vocab={}, limit_vocab=False):
+    def load_file(
+        self, triplet_file, inv_entity_vocab={}, inv_rel_vocab={}, limit_vocab=False
+    ):
 
         triplets = []
         entity_cnt, rel_cnt = len(inv_entity_vocab), len(inv_rel_vocab)
 
         # limit_vocab is for dropping triples with unseen head/tail not seen in the main entity_vocab
-        # can be used for FBNELL and MT3:art, other datasets seem to be ok and share num_nodes/num_relations in the train/inference graph  
+        # can be used for FBNELL and MT3:art, other datasets seem to be ok and share num_nodes/num_relations in the train/inference graph
         with open(triplet_file, "r", encoding="utf-8") as fin:
             for l in fin:
-                u, r, v = l.split() if self.delimiter is None else l.strip().split(self.delimiter)
+                u, r, v = (
+                    l.split()
+                    if self.delimiter is None
+                    else l.strip().split(self.delimiter)
+                )
                 if u not in inv_entity_vocab:
                     if limit_vocab:
                         continue
@@ -923,66 +1248,119 @@ class MTDEAInductive(InductiveDataset):
                 u, r, v = inv_entity_vocab[u], inv_rel_vocab[r], inv_entity_vocab[v]
 
                 triplets.append((u, v, r))
-        
+
         return {
             "triplets": triplets,
             "num_node": entity_cnt,
             "num_relation": rel_cnt,
             "inv_entity_vocab": inv_entity_vocab,
-            "inv_rel_vocab": inv_rel_vocab
+            "inv_rel_vocab": inv_rel_vocab,
         }
 
     # special processes for MTDEA datasets for one particular fix in the validation set loading
     def process(self):
-    
+
         train_files = self.raw_paths[:4]
 
-        train_res = self.load_file(train_files[0], inv_entity_vocab={}, inv_rel_vocab={})
-        inference_res = self.load_file(train_files[1], inv_entity_vocab={}, inv_rel_vocab={})
+        train_res = self.load_file(
+            train_files[0], inv_entity_vocab={}, inv_rel_vocab={}
+        )
+        inference_res = self.load_file(
+            train_files[1], inv_entity_vocab={}, inv_rel_vocab={}
+        )
         valid_res = self.load_file(
-            train_files[2], 
-            inference_res["inv_entity_vocab"] if self.valid_on_inf else train_res["inv_entity_vocab"], 
-            inference_res["inv_rel_vocab"] if self.valid_on_inf else train_res["inv_rel_vocab"],
+            train_files[2],
+            (
+                inference_res["inv_entity_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_entity_vocab"]
+            ),
+            (
+                inference_res["inv_rel_vocab"]
+                if self.valid_on_inf
+                else train_res["inv_rel_vocab"]
+            ),
             limit_vocab=True,  # the 1st fix in this function compared to the superclass processor
         )
-        test_res = self.load_file(train_files[3], inference_res["inv_entity_vocab"], inference_res["inv_rel_vocab"])
+        test_res = self.load_file(
+            train_files[3],
+            inference_res["inv_entity_vocab"],
+            inference_res["inv_rel_vocab"],
+        )
 
-        num_train_nodes, num_train_rels = train_res["num_node"], train_res["num_relation"]
-        inference_num_nodes, inference_num_rels = test_res["num_node"], test_res["num_relation"]
+        num_train_nodes, num_train_rels = (
+            train_res["num_node"],
+            train_res["num_relation"],
+        )
+        inference_num_nodes, inference_num_rels = (
+            test_res["num_node"],
+            test_res["num_relation"],
+        )
 
-        train_edges, inf_graph, inf_valid_edges, inf_test_edges = train_res["triplets"], inference_res["triplets"], valid_res["triplets"], test_res["triplets"]
-        
-        train_target_edges = torch.tensor([[t[0], t[1]] for t in train_edges], dtype=torch.long).t()
+        train_edges, inf_graph, inf_valid_edges, inf_test_edges = (
+            train_res["triplets"],
+            inference_res["triplets"],
+            valid_res["triplets"],
+            test_res["triplets"],
+        )
+
+        train_target_edges = torch.tensor(
+            [[t[0], t[1]] for t in train_edges], dtype=torch.long
+        ).t()
         train_target_etypes = torch.tensor([t[2] for t in train_edges])
 
-        train_fact_index = torch.cat([train_target_edges, train_target_edges.flip(0)], dim=1)
-        train_fact_type = torch.cat([train_target_etypes, train_target_etypes + num_train_rels])
+        train_fact_index = torch.cat(
+            [train_target_edges, train_target_edges.flip(0)], dim=1
+        )
+        train_fact_type = torch.cat(
+            [train_target_etypes, train_target_etypes + num_train_rels]
+        )
 
-        inf_edges = torch.tensor([[t[0], t[1]] for t in inf_graph], dtype=torch.long).t()
+        inf_edges = torch.tensor(
+            [[t[0], t[1]] for t in inf_graph], dtype=torch.long
+        ).t()
         inf_edges = torch.cat([inf_edges, inf_edges.flip(0)], dim=1)
         inf_etypes = torch.tensor([t[2] for t in inf_graph])
         inf_etypes = torch.cat([inf_etypes, inf_etypes + inference_num_rels])
-        
+
         inf_valid_edges = torch.tensor(inf_valid_edges, dtype=torch.long)
         inf_test_edges = torch.tensor(inf_test_edges, dtype=torch.long)
 
-        train_data = Data(edge_index=train_fact_index, edge_type=train_fact_type, num_nodes=num_train_nodes,
-                        target_edge_index=train_target_edges, target_edge_type=train_target_etypes, num_relations=num_train_rels*2)
-        valid_data = Data(edge_index=train_fact_index, 
-                        edge_type=train_fact_type, 
-                        num_nodes=valid_res["num_node"],  # the 2nd fix in this function
-                        target_edge_index=inf_valid_edges[:, :2].T, 
-                        target_edge_type=inf_valid_edges[:, 2], 
-                        num_relations=inference_num_rels*2 if self.valid_on_inf else num_train_rels*2)
-        test_data = Data(edge_index=inf_edges, edge_type=inf_etypes, num_nodes=inference_num_nodes,
-                        target_edge_index=inf_test_edges[:, :2].T, target_edge_type=inf_test_edges[:, 2], num_relations=inference_num_rels*2)
+        train_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=num_train_nodes,
+            target_edge_index=train_target_edges,
+            target_edge_type=train_target_etypes,
+            num_relations=num_train_rels * 2,
+        )
+        valid_data = Data(
+            edge_index=train_fact_index,
+            edge_type=train_fact_type,
+            num_nodes=valid_res["num_node"],  # the 2nd fix in this function
+            target_edge_index=inf_valid_edges[:, :2].T,
+            target_edge_type=inf_valid_edges[:, 2],
+            num_relations=(
+                inference_num_rels * 2 if self.valid_on_inf else num_train_rels * 2
+            ),
+        )
+        test_data = Data(
+            edge_index=inf_edges,
+            edge_type=inf_etypes,
+            num_nodes=inference_num_nodes,
+            target_edge_index=inf_test_edges[:, :2].T,
+            target_edge_type=inf_test_edges[:, 2],
+            num_relations=inference_num_rels * 2,
+        )
 
         if self.pre_transform is not None:
             train_data = self.pre_transform(train_data)
             valid_data = self.pre_transform(valid_data)
             test_data = self.pre_transform(test_data)
 
-        torch.save((self.collate([train_data, valid_data, test_data])), self.processed_paths[0])
+        torch.save(
+            (self.collate([train_data, valid_data, test_data])), self.processed_paths[0]
+        )
 
 
 class FBNELL(MTDEAInductive):
@@ -993,7 +1371,7 @@ class FBNELL(MTDEAInductive):
 
     def __init__(self, **kwargs):
         kwargs.pop("version")
-        kwargs['version'] = self.versions[0]
+        kwargs["version"] = self.versions[0]
         super(FBNELL, self).__init__(**kwargs)
 
 
@@ -1005,7 +1383,7 @@ class Metafam(MTDEAInductive):
 
     def __init__(self, **kwargs):
         kwargs.pop("version")
-        kwargs['version'] = self.versions[0]
+        kwargs["version"] = self.versions[0]
         super(Metafam, self).__init__(**kwargs)
 
 
@@ -1013,10 +1391,12 @@ class WikiTopicsMT1(MTDEAInductive):
 
     name = "WikiTopics-MT1"
     prefix = "wikidata_%sv1"
-    versions = ['mt', 'health', 'tax']
+    versions = ["mt", "health", "tax"]
 
     def __init__(self, **kwargs):
-        assert kwargs['version'] in self.versions, f"unknown version {kwargs['version']}, available: {self.versions}"
+        assert (
+            kwargs["version"] in self.versions
+        ), f"unknown version {kwargs['version']}, available: {self.versions}"
         super(WikiTopicsMT1, self).__init__(**kwargs)
 
 
@@ -1024,7 +1404,7 @@ class WikiTopicsMT2(MTDEAInductive):
 
     name = "WikiTopics-MT2"
     prefix = "wikidata_%sv1"
-    versions = ['mt2', 'org', 'sci']
+    versions = ["mt2", "org", "sci"]
 
     def __init__(self, **kwargs):
         super(WikiTopicsMT2, self).__init__(**kwargs)
@@ -1034,7 +1414,7 @@ class WikiTopicsMT3(MTDEAInductive):
 
     name = "WikiTopics-MT3"
     prefix = "wikidata_%sv2"
-    versions = ['mt3', 'art', 'infra']
+    versions = ["mt3", "art", "infra"]
 
     def __init__(self, **kwargs):
         super(WikiTopicsMT3, self).__init__(**kwargs)
@@ -1044,7 +1424,7 @@ class WikiTopicsMT4(MTDEAInductive):
 
     name = "WikiTopics-MT4"
     prefix = "wikidata_%sv2"
-    versions = ['mt4', 'sci', 'health']
+    versions = ["mt4", "sci", "health"]
 
     def __init__(self, **kwargs):
         super(WikiTopicsMT4, self).__init__(**kwargs)
@@ -1054,20 +1434,19 @@ class WikiTopicsMT4(MTDEAInductive):
 class JointDataset(InMemoryDataset):
 
     datasets_map = {
-        'FB15k237': FB15k237,
-        'WN18RR': WN18RR,
-        'CoDExSmall': CoDExSmall,
-        'CoDExMedium': CoDExMedium,
-        'CoDExLarge': CoDExLarge,
-        'NELL995': NELL995,
-        'ConceptNet100k': ConceptNet100k,
-        'DBpedia100k': DBpedia100k,
-        'YAGO310': YAGO310,
-        'AristoV4': AristoV4,
+        "FB15k237": FB15k237,
+        "WN18RR": WN18RR,
+        "CoDExSmall": CoDExSmall,
+        "CoDExMedium": CoDExMedium,
+        "CoDExLarge": CoDExLarge,
+        "NELL995": NELL995,
+        "ConceptNet100k": ConceptNet100k,
+        "DBpedia100k": DBpedia100k,
+        "YAGO310": YAGO310,
+        "AristoV4": AristoV4,
     }
 
     def __init__(self, root, graphs, transform=None, pre_transform=None):
-
 
         self.graphs = [self.datasets_map[ds](root=root) for ds in graphs]
         self.num_graphs = len(graphs)
@@ -1076,18 +1455,18 @@ class JointDataset(InMemoryDataset):
 
     @property
     def raw_dir(self):
-        return os.path.join(self.root, "joint", f'{self.num_graphs}g', "raw")
+        return os.path.join(self.root, "joint", f"{self.num_graphs}g", "raw")
 
     @property
     def processed_dir(self):
-        return os.path.join(self.root, "joint", f'{self.num_graphs}g', "processed")
+        return os.path.join(self.root, "joint", f"{self.num_graphs}g", "processed")
 
     @property
     def processed_file_names(self):
         return "data.pt"
-    
+
     def process(self):
-        
+
         train_data = [g[0] for g in self.graphs]
         valid_data = [g[1] for g in self.graphs]
         test_data = [g[2] for g in self.graphs]
@@ -1097,18 +1476,28 @@ class JointDataset(InMemoryDataset):
 
         torch.save((train_data, valid_data, test_data), self.processed_paths[0])
 
+
 # TODO: Make the nt_path file optinal
 class NTDatasets(InMemoryDataset):
-    def __init__(self, root: str, nt_path: str, dataset_name: Optional[str] = None, transform=None, pre_transform=None):
+    def __init__(
+        self,
+        root: str,
+        nt_path: str,
+        dataset_name: Optional[str] = None,
+        transform=None,
+        pre_transform=None,
+    ):
 
         self.root = pathlib.Path(root)
         self.nt_path = pathlib.Path(nt_path)
-        self.dataset_name = dataset_name if dataset_name is not None else self.nt_path.stem
+        self.dataset_name = (
+            dataset_name if dataset_name is not None else self.nt_path.stem
+        )
 
-
-        super().__init__(root=self.root)
+        # forward transform / pre_transform and use string root as expected by InMemoryDataset
+        super().__init__(str(self.root), transform, pre_transform)
+        # load processed data (if present)
         self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
-
 
     @property
     def processed_file_names(self):
@@ -1126,83 +1515,255 @@ class NTDatasets(InMemoryDataset):
     # def processed_dir(self):
     #     return super().processed_dir
 
-
     def process(self):
-        edge_index = []
-        edge_type = []
-        with open(self.nt_path, 'r') as file:
-            preprocessed_file_data = [line.strip()[:-2].split(' ') for line in file.readlines()]
+        # ensure processed folder exists
+        os.makedirs(self.processed_dir, exist_ok=True)
 
         # Create id mapping and count occurrences
-        entity_to_id = {}
-        relation_to_id = {}
-        occurrences: Dict[List[int, int, int]] = {}
-        mapped_triplets = []
-        for triplet in preprocessed_file_data:
-            s, p, o = triplet
+        entity_to_id: Dict[str, int] = {}
+        relation_to_id: Dict[str, int] = {}
+        occurrences: Dict[str, List[int]] = {}
+        mapped_triplets: List[Tuple[int, int, int]] = []
 
-            # count occurrences: [head_count, relation_count, tail_count]
-            occurrences.setdefault(s, [0, 0, 0])[0] += 1
-            occurrences.setdefault(p, [0, 0, 0])[1] += 1
-            occurrences.setdefault(o, [0, 0, 0])[2] += 1
+        # Stream the NT file line-by-line and parse robustly
+        with open(self.nt_path, "r", encoding="utf-8") as file:
+            for line in file:
+                # split into three last whitespace-separated tokens (s, p, o.)
+                parts = line.strip().split(" ")[:3]
+                if len(parts) != 3:
+                    # skip malformed/empty lines
+                    continue
+                s, p, o = tuple(parts)
 
-            if s not in entity_to_id:
-                entity_to_id[s] = len(entity_to_id)
-            if o not in entity_to_id:
-                entity_to_id[o] = len(entity_to_id)
-            if p not in relation_to_id:
-                relation_to_id[p] = len(relation_to_id)
-            mapped_triplets.append((entity_to_id[s], relation_to_id[p], entity_to_id[o]))
+                # count occurrences: [head_count, relation_count, tail_count]
+                occurrences.setdefault(s, [0, 0, 0])[0] += 1
+                occurrences.setdefault(p, [0, 0, 0])[1] += 1
+                occurrences.setdefault(o, [0, 0, 0])[2] += 1
+
+                if s not in entity_to_id:
+                    entity_to_id[s] = len(entity_to_id)
+                if o not in entity_to_id:
+                    entity_to_id[o] = len(entity_to_id)
+                if p not in relation_to_id:
+                    relation_to_id[p] = len(relation_to_id)
+
+                mapped_triplets.append(
+                    (entity_to_id[s], relation_to_id[p], entity_to_id[o])
+                )
 
         num_nodes = len(entity_to_id)
         num_relations = len(relation_to_id)
 
-        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_entity_to_id.json"), 'w') as f:
-            json.dump(entity_to_id, f)
-        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_relation_to_id.json"), 'w') as f:
-            json.dump(relation_to_id, f)
+        # write mappings in a readable/stable way
+        with open(
+            os.path.join(self.processed_dir, f"{self.dataset_name}_entity_to_id.json"),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(entity_to_id, f, indent=2, sort_keys=True)
+        with open(
+            os.path.join(
+                self.processed_dir, f"{self.dataset_name}_relation_to_id.json"
+            ),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(relation_to_id, f, indent=2, sort_keys=True)
 
-        # TODO: Eventell unnötig, weil es ja im Data Objekt gespeichert wird
-        with open(os.path.join(self.processed_dir, f"{self.dataset_name}_occurrences.json"), 'w') as f:
-            json.dump(occurrences, f)
+        # split occurrences by kind (keep original string keys for readability)
+        occurrences_relations: Dict[str, List[int]] = {}
+        occurrences_entity: Dict[str, List[int]] = {}
+        for key, counts in occurrences.items():
+            if key in entity_to_id:
+                occurrences_entity[key] = counts
+            elif key in relation_to_id:
+                occurrences_relations[key] = counts
+            else:
+                # should not happen, but be robust
+                continue
 
+        with open(
+            os.path.join(
+                self.processed_dir, f"{self.dataset_name}_entity_occurrences.json"
+            ),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(occurrences_entity, f, indent=2, sort_keys=True)
 
+        with open(
+            os.path.join(
+                self.processed_dir, f"{self.dataset_name}_relation_occurrences.json"
+            ),
+            "w",
+            encoding="utf-8",
+        ) as f:
+            json.dump(occurrences_relations, f, indent=2, sort_keys=True)
 
+        # build tensors with explicit dtypes
+        if len(mapped_triplets) == 0:
+            raise ValueError(f"No valid triplets parsed from {self.nt_path}")
 
-        triplets = torch.tensor(mapped_triplets)
+        triplets = torch.tensor(mapped_triplets, dtype=torch.long)
         edge_index = triplets[:, [0, 2]].t().contiguous()
-        edge_type = triplets[:, [1]].t().contiguous()[0]
+        edge_type = triplets[:, 1].contiguous().long()
 
         data = Data(
             edge_index=edge_index,
             edge_type=edge_type,
             num_nodes=num_nodes,
-            num_relations=num_relations 
+            num_relations=num_relations,
         )
-        occurrences_relations_tensor = torch.zeros((num_relations, 3), dtype=torch.long)
-        occurrences_nodes_tensor = torch.zeros((num_nodes, 3), dtype=torch.long)
 
-        # Map entities and relations to respective idx and save as tensors in data
-        for key, counts in occurrences.items():
-            if key in entity_to_id:
-                idx = entity_to_id[key]
-                occurrences_nodes_tensor[idx] = torch.tensor(counts, dtype=torch.long)
-            elif key in relation_to_id:
-                idx = relation_to_id[key]
-                occurrences_relations_tensor[idx] = torch.tensor(counts, dtype=torch.long)
-            else:
-                raise ValueError(f"Key {key} not found in either entity or relation mapping.")
+        # Apply pre_transform if provided, otherwise ensure relation graph is built
+        if self.pre_transform is not None:
+            data = self.pre_transform(data)
+        else:
+            data = build_relation_graph(data)
 
-        data.occurrences_relations = occurrences_relations_tensor
-        data.occurrences_nodes = occurrences_nodes_tensor
+        assert (
+            getattr(data, "relation_graph", None) is not None
+        ), "Relation graph not built"
 
-        # Build realtion graph 
-        data = build_relation_graph(data)
-        # data.relation_graph = relation_graph # Muss nicht gemacht werden, passiert schon in build_relation_graph
-        assert data.relation_graph is not None, "Relation graph not built"
-        # HACK:
-        # self.collate needed to stay consistend with the rest of the ultra datasets
-        torch.save(self.collate([data]), os.path.join(self.processed_dir, f'{self.dataset_name}.pt')) # TODO: use pathlib instead of os.path.join
+        # Save in the same location that __init__ expects
+        torch.save(self.collate([data]), self.processed_paths[0])
         return None
-    
 
+
+class NTQueries(InMemoryDataset):
+    def __init__(
+        self,
+        root: str,
+        queries_path: str,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        device: str = "cpu",
+        dataset_name: Optional[str] = None,
+        transform=None,
+        pre_transform=None,
+    ):
+
+        if entity_occurrences is None:
+            entity_occurrences = {}
+        if relation_occurrences is None:
+            relation_occurrences = {}
+        if global_entity_mapping is None:
+            global_entity_mapping = {}
+        if global_relation_mapping is None:
+            global_relation_mapping = {}
+
+        self.entity_occurrences = entity_occurrences
+        self.relation_occurrences = relation_occurrences
+        self.global_entity_mapping = global_entity_mapping
+        self.global_relation_mapping = global_relation_mapping
+        self.device = device
+
+        self.root = pathlib.Path(root)
+        self.queries_path = pathlib.Path(queries_path)
+        self.dataset_name = (
+            dataset_name if dataset_name is not None else self.queries_path.stem
+        )
+
+        # forward transform / pre_transform and use string root as expected by InMemoryDataset
+        super().__init__(str(self.root), transform, pre_transform)
+        # load processed data (if present)
+        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+
+    @property
+    def processed_file_names(self):
+        return [f"{self.dataset_name}.pt"]
+
+    @property
+    def raw_file_names(self):
+        return [self.queries_path.name]
+
+    def process_query_single(
+        self,
+        query: Dict,
+    ):
+        # Create local mapping
+        local_entity_mapping = {}
+        local_relation_mapping = {}
+        query_edge_index = []
+        query_edge_type = []
+
+        for triple in query["triples"]:
+
+            h, r, t = triple[0], triple[1], triple[2]
+            if h not in local_entity_mapping:
+                local_entity_mapping[h] = len(local_entity_mapping)
+            if t not in local_entity_mapping:
+                local_entity_mapping[t] = len(local_entity_mapping)
+            if r not in local_relation_mapping:
+                local_relation_mapping[r] = len(local_relation_mapping)
+
+            query_edge_index.append([local_entity_mapping[h], local_entity_mapping[t]])
+            query_edge_type.append(local_relation_mapping[r])
+
+        query_edge_index = (
+            torch.tensor(query_edge_index, dtype=torch.long).t().to(self.device)
+        )
+        query_edge_type = torch.tensor(query_edge_type, dtype=torch.long).to(self.device)
+
+        # Embedding indices for entities and features
+        entity_embedding_indices = torch.full(
+            (len(local_entity_mapping),), -1, dtype=torch.long
+        )
+        for entity, idx in local_entity_mapping.items():
+            if entity in self.global_entity_mapping:
+                entity_embedding_indices[idx] = self.global_entity_mapping[entity]
+
+        relation_embedding_indices = torch.full(
+            (len(local_relation_mapping),), -1, dtype=torch.long
+        )
+        for relation, idx in local_relation_mapping.items():
+            if relation in self.global_relation_mapping:
+                relation_embedding_indices[idx] = self.global_relation_mapping[relation]
+
+        feat_dim = 64
+        query_entity_features = torch.zeros(
+            len(local_entity_mapping), feat_dim + 3, dtype=torch.float, device=self.device
+        )
+        for entity, idx in local_entity_mapping.items():
+            if entity in self.entity_occurrences:
+                occ = self.entity_occurrences[entity]
+                query_entity_features[idx, 0] = occ[0]
+                query_entity_features[idx, 1] = occ[1]
+                query_entity_features[idx, 2] = occ[2]
+
+        query_relation_features = torch.zeros(
+            len(local_relation_mapping), feat_dim + 3, dtype=torch.float, device=self.device
+        )
+        for relation, idx in local_relation_mapping.items():
+            if relation in self.relation_occurrences:
+                occ = self.relation_occurrences[relation]
+                query_relation_features[idx, 0] = occ[0]
+                query_relation_features[idx, 1] = occ[1]
+                query_relation_features[idx, 2] = occ[2]
+
+        return Data(
+            x=query_entity_features,
+            edge_attr=query_relation_features,
+
+            edge_index=query_edge_index,
+            edge_type=query_edge_type,
+
+            node_embedding_indices=entity_embedding_indices,
+            edge_embedding_indices=relation_embedding_indices,
+        )
+
+    def process(self):
+
+        with open(self.queries_path, "r") as file:
+            data = json.load(file)
+
+        queries = [
+            self.process_query_single(
+                q
+            )
+            for q in data
+        ]
+
+        torch.save(self.collate(queries), self.processed_paths[0])
