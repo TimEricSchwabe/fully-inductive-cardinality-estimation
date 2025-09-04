@@ -2,6 +2,7 @@ import torch
 import json
 from pprint import pprint
 from easydict import EasyDict
+import random
 
 import torch.utils.data
 
@@ -34,16 +35,16 @@ if __name__ == "__main__":
     print("Dataset loaded.")
 
     print("Loading occurrences...")
-    with open("data/swdf/processed/swdf_entity_occurrences.json", "r") as f:
+    with open(f"{root}processed/swdf_entity_occurrences.json", "r") as f:
         entity_occurrences = json.load(f)
-    with open("data/swdf/processed/swdf_relation_occurrences.json", "r") as f:
+    with open(f"{root}processed/swdf_relation_occurrences.json", "r") as f:
         relation_occurrences = json.load(f)
     print("Occurrences loaded.")
 
     print("Loading mappings...")
-    with open("data/swdf/processed/swdf_entity_to_id.json", "r") as f:
+    with open(f"{root}processed/swdf_entity_to_id.json", "r") as f:
         entity_mapping = json.load(f)
-    with open("data/swdf/processed/swdf_relation_to_id.json", "r") as f:
+    with open(f"{root}processed/swdf_relation_to_id.json", "r") as f:
         relation_mapping = json.load(f)
     print("Mappings loaded.")
 
@@ -62,9 +63,30 @@ if __name__ == "__main__":
     )
     print("Queries loaded.")
 
+    # Convert queries to list for splitting
+    queries_list = list(queries)
+    print(f"Total queries: {len(queries_list)}")
+
+    # Train-test split
+    train_ratio = 0.8
+    train_size = int(len(queries_list) * train_ratio)
+    test_size = len(queries_list) - train_size
+
+    # Shuffle queries for random split
+    import random
+    random.seed(42)  # For reproducibility
+    random.shuffle(queries_list)
+
+    train_queries = queries_list[:train_size]
+    test_queries = queries_list[train_size:]
+
+    print(f"Train queries: {len(train_queries)}")
+    print(f"Test queries: {len(test_queries)}")
+
 
     # You can replace FICE with your own model class
     model = FICE(graph=None)
+    model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
@@ -85,42 +107,89 @@ if __name__ == "__main__":
     # Here, batch_size=1, num_samples=1.
     batch = torch.stack([h_index, t_index, r_index], dim=1).unsqueeze(1)
 
-    #########################################################
-    ## Example Query Graph, we assume we have those saved to disk as .pt file
-    for query in queries:
-        print(query)
+    # Training loop
+    num_epochs = 3  # You can adjust this
+    print(f"\nStarting training for {num_epochs} epochs...")
 
-        graph_size = torch.tensor(
-            [1000000], device=device
-        )  # example for the full size of the graph
-        #########################################################
+    for epoch in range(num_epochs):
+        epoch_loss = 0.0
+        num_queries = 0
+        
+        for query in train_queries:
+            num_queries += 1
+            
+            graph_size = torch.tensor(
+                [1000000], device=device
+            )  # example for the full size of the graph
 
-        # Getting a cardinality prediction from the combined model
-        log_cardinality_pred = model(
-            data=data,
-            batch=batch,
-            query_features=query.x,
-            query_edge_index=query.edge_index,
-            edge_attr=query.edge_attr,
-            embedding_indices=query.node_embedding_indices,
-            edge_embedding_indices=query.edge_embedding_indices,
-            graph_size=graph_size
-        )
-        true_cardinality = torch.tensor([0.3], device=device)
+            # Getting a cardinality prediction from the combined model
+            log_cardinality_pred = model(
+                data=data,
+                batch=batch,
+                query_features=query.x,
+                query_edge_index=query.edge_index,
+                edge_attr=query.edge_attr,
+                embedding_indices=query.node_embedding_indices,
+                edge_embedding_indices=query.edge_embedding_indices,
+                graph_size=graph_size
+            )
+            true_cardinality = query.y  # This should be the actual cardinality for the query
 
-        loss = F.mse_loss(log_cardinality_pred, true_cardinality)
-        loss.backward()
+            loss = F.mse_loss(log_cardinality_pred, true_cardinality)
+            
+            # Backward pass
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+            
+            epoch_loss += loss.item()
+        
+        avg_epoch_loss = epoch_loss / num_queries
+        print(f"Epoch {epoch+1}/{num_epochs}, Average Training Loss: {avg_epoch_loss:.6f}")
 
-        print("Final Predicted Cardinality: ", log_cardinality_pred.item())
-    # Print the true cardinality used for training
+    print("Training completed!")
 
+    # Evaluation on test set
+    print("\nEvaluating on test set...")
+    test_loss = 0.0
+    test_predictions = []
+    test_true_values = []
+
+    with torch.no_grad():
+        for query in test_queries:
+            graph_size = torch.tensor([1000000], device=device)
+            
+            log_cardinality_pred = model(
+                data=data,
+                batch=batch,
+                query_features=query.x,
+                query_edge_index=query.edge_index,
+                edge_attr=query.edge_attr,
+                embedding_indices=query.node_embedding_indices,
+                edge_embedding_indices=query.edge_embedding_indices,
+                graph_size=graph_size
+            )
+            true_cardinality = torch.tensor([0.3], device=device)
+            
+            loss = F.mse_loss(log_cardinality_pred, true_cardinality)
+            test_loss += loss.item()
+            
+            test_predictions.append(log_cardinality_pred.item())
+            test_true_values.append(true_cardinality.item())
+    
+    avg_test_loss = test_loss / len(test_queries)
+    print(f"Test Loss: {avg_test_loss:.6f}")
+    print(f"Sample predictions: {test_predictions[:5]}")
+    print(f"True values: {test_true_values[:5]}")
+
+    # Check gradients (this part remains the same)
     # Check if we can backprop the cardinality error to the ULTRA node GNN
     has_grad_ultra = any(
         p.grad is not None and p.grad.abs().sum() > 0
         for p in model.entity_model.parameters()
     )
     print(
-        f"Pred: {log_cardinality_pred.item():.4f} | Loss: {loss.item():.6f} | Grad->ULTRA: {has_grad_ultra}"
+        f"Grad->ULTRA: {has_grad_ultra}"
     )
 
     # Check if at least one ULTRA parameter has no gradient

@@ -1753,6 +1753,7 @@ class NTQueries(InMemoryDataset):
 
             node_embedding_indices=entity_embedding_indices,
             edge_embedding_indices=relation_embedding_indices,
+            y=query["y"]
         )
 
     def process(self):
