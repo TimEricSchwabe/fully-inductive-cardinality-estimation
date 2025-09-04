@@ -45,8 +45,8 @@ class FICE(nn.Module):
 
         
     # def forward(self, query):
-    def forward(self, data, batch, query_features, query_edge_index, embedding_indices, edge_attr, edge_embedding_indices, graph_size):
-        
+    def forward(self, data, batch, query_edge_index,query_features, embedding_indices, edge_attr, edge_embedding_indices, graph_size):
+
         # batch shape: (bs, 1+num_negs, 3)
         # relations are the same all positive and negative triples, so we can extract only one from the first triple among 1+nug_negs
         query_rels = batch[:, 0, 2]

@@ -17,6 +17,7 @@ from fice.models import FICE
 
 import torch.nn.functional as F
 from typing import Dict
+from tqdm import tqdm
 
 
 if __name__ == "__main__":
@@ -60,12 +61,14 @@ if __name__ == "__main__":
         global_entity_mapping=entity_mapping,
         global_relation_mapping=relation_mapping,
         device=device
-    )
+    )[:20]
     print("Queries loaded.")
 
     # Convert queries to list for splitting
     queries_list = list(queries)
     print(f"Total queries: {len(queries_list)}")
+    print(queries_list[0])  # Print the first query for inspection
+    exit(0)
 
     # Train-test split
     train_ratio = 0.8
@@ -114,8 +117,9 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         num_queries = 0
-        
-        for query in train_queries:
+        print(f"\nEpoch {epoch+1}/{num_epochs}")
+
+        for query in tqdm(train_queries):
             num_queries += 1
             
             graph_size = torch.tensor(
@@ -127,13 +131,14 @@ if __name__ == "__main__":
                 data=data,
                 batch=batch,
                 query_features=query.x,
-                query_edge_index=query.edge_index,
                 edge_attr=query.edge_attr,
+                query_edge_index=query.edge_index,
                 embedding_indices=query.node_embedding_indices,
                 edge_embedding_indices=query.edge_embedding_indices,
                 graph_size=graph_size
             )
-            true_cardinality = query.y  # This should be the actual cardinality for the query
+            log_cardinality_pred = log_cardinality_pred.to(torch.float32)
+            true_cardinality = query.y.to(torch.float32)
 
             loss = F.mse_loss(log_cardinality_pred, true_cardinality)
             

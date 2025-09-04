@@ -1683,6 +1683,7 @@ class NTQueries(InMemoryDataset):
         self,
         query: Dict,
     ):
+        feat_dim = 64
         # Create local mapping
         local_entity_mapping = {}
         local_relation_mapping = {}
@@ -1702,65 +1703,75 @@ class NTQueries(InMemoryDataset):
             query_edge_index.append([local_entity_mapping[h], local_entity_mapping[t]])
             query_edge_type.append(local_relation_mapping[r])
 
+        num_nodes = len(local_entity_mapping)
+        num_edges = len(query["triples"])
+
         query_edge_index = (
             torch.tensor(query_edge_index, dtype=torch.long).t().to(self.device)
         )
+        assert query_edge_index.dim() == 2 and query_edge_index.size(0) == 2 and query_edge_index.size(1) == num_edges
+
         query_edge_type = torch.tensor(query_edge_type, dtype=torch.long).to(self.device)
 
-        # Embedding indices for entities and features
-        entity_embedding_indices = torch.full(
-            (len(local_entity_mapping),), -1, dtype=torch.long
+        assert query_edge_type.dim() == 1 and query_edge_type.size(0) == num_edges
+
+        # Process Nodes
+        query_features = torch.zeros(
+            num_nodes, feat_dim + 3, dtype=torch.float, device=self.device
+        )
+        embedding_indices = torch.full(
+            (num_nodes,), -1, dtype=torch.long
         )
         for entity, idx in local_entity_mapping.items():
             if entity in self.global_entity_mapping:
-                entity_embedding_indices[idx] = self.global_entity_mapping[entity]
+                embedding_indices[idx] = self.global_entity_mapping[entity]
 
-        relation_embedding_indices = torch.full(
-            (len(local_relation_mapping),), -1, dtype=torch.long
-        )
-        for relation, idx in local_relation_mapping.items():
-            if relation in self.global_relation_mapping:
-                relation_embedding_indices[idx] = self.global_relation_mapping[relation]
-
-        # Query and edge features with occurrences
-        feat_dim = 64
-        query_entity_features = torch.zeros(
-            len(local_entity_mapping), feat_dim + 3, dtype=torch.float, device=self.device
-        )
-        for entity, idx in local_entity_mapping.items():
             if entity in self.entity_occurrences:
                 occ = self.entity_occurrences[entity]
-                query_entity_features[idx, 0] = occ[0]
-                query_entity_features[idx, 1] = occ[1]
-                query_entity_features[idx, 2] = occ[2]
+                query_features[idx, 0] = occ[0]
+                query_features[idx, 1] = occ[1]
+                query_features[idx, 2] = occ[2]
 
-        query_relation_features = torch.zeros(
-            len(local_relation_mapping), feat_dim + 3, dtype=torch.float, device=self.device
+
+
+        # Process Edges
+        query_edge_attr = torch.zeros(
+            num_edges, feat_dim + 3, dtype=torch.float, device=self.device
         )
-        for relation, idx in local_relation_mapping.items():
-            if relation in self.relation_occurrences:
-                occ = self.relation_occurrences[relation]
-                query_relation_features[idx, 0] = occ[0]
-                query_relation_features[idx, 1] = occ[1]
-                query_relation_features[idx, 2] = occ[2]
+        edge_embedding_indices = torch.full(
+            (num_edges,), -1, dtype=torch.long
+        )
+        for idx, edge in enumerate(query_edge_type):
+            if edge in self.global_relation_mapping:
+                edge_embedding_indices[idx] = self.global_relation_mapping[edge]
+        
+            if edge in self.relation_occurrences:
+                occ = self.relation_occurrences[edge]
+                query_edge_attr[idx, 0] = occ[0]
+                query_edge_attr[idx, 1] = occ[1]
+                query_edge_attr[idx, 2] = occ[2]
+
+        assert query_edge_index.size(1) == query_edge_type.size(0)
+        assert query_edge_index.size(1) == query_edge_attr.size(0)
+        assert query_edge_attr.size(0) == query_edge_type.size(0)
+        assert edge_embedding_indices.size(0) == query_edge_attr.size(0)
 
         return Data(
-            x=query_entity_features,
-            edge_attr=query_relation_features,
+            x=query_features,
+            edge_attr=query_edge_attr,
 
             edge_index=query_edge_index,
             edge_type=query_edge_type,
+            y=query["y"],
 
-            node_embedding_indices=entity_embedding_indices,
-            edge_embedding_indices=relation_embedding_indices,
-            y=query["y"]
+            node_embedding_indices=embedding_indices,
+            edge_embedding_indices=edge_embedding_indices
         )
 
     def process(self):
 
         with open(self.queries_path, "r") as file:
             data = json.load(file)
-
         queries = [
             self.process_query_single(
                 q
