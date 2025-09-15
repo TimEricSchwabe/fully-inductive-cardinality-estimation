@@ -16,6 +16,7 @@ from fice.ultra import datasets  # TODO
 from fice.models import FICE
 
 import torch.nn.functional as F
+from torch_geometric.loader import DataLoader
 from typing import Dict
 from tqdm import tqdm
 
@@ -61,14 +62,13 @@ if __name__ == "__main__":
         global_entity_mapping=entity_mapping,
         global_relation_mapping=relation_mapping,
         device=device
-    )[:20]
+    )
     print("Queries loaded.")
 
     # Convert queries to list for splitting
     queries_list = list(queries)
     print(f"Total queries: {len(queries_list)}")
     print(queries_list[0])  # Print the first query for inspection
-    exit(0)
 
     # Train-test split
     train_ratio = 0.8
