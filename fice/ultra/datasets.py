@@ -1735,13 +1735,16 @@ class NTQueries(InMemoryDataset):
 
 
         # Process Edges
+        # HACK: Works for now but maybe find more beatuful solution
+        query_edge_type_string = [t[1] for t in query.get('triples')]
+
         query_edge_attr = torch.zeros(
             num_edges, feat_dim + 3, dtype=torch.float, device=self.device
         )
         edge_embedding_indices = torch.full(
             (num_edges,), -1, dtype=torch.long
         )
-        for idx, edge in enumerate(query_edge_type):
+        for idx, edge in enumerate(query_edge_type_string):
             if edge in self.global_relation_mapping:
                 edge_embedding_indices[idx] = self.global_relation_mapping[edge]
         
