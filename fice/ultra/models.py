@@ -6,29 +6,6 @@ from fice.ultra.base_nbfnet import BaseNBFNet
 from easydict import EasyDict
 
 
-
-# class Ultra(nn.Module):
-
-#     def __init__(self, rel_model_cfg, entity_model_cfg):
-#         # kept that because super Ultra sounds cool
-#         super(Ultra, self).__init__()
-
-#         # adding a bit more flexibility to initializing proper rel/ent classes from the configs
-#         self.relation_model = globals()[rel_model_cfg.pop('class')](**rel_model_cfg)
-#         self.entity_model = globals()[entity_model_cfg.pop('class')](**entity_model_cfg)
-
-        
-#     def forward(self, data, batch):
-        
-#         # batch shape: (bs, 1+num_negs, 3)
-#         # relations are the same all positive and negative triples, so we can extract only one from the first triple among 1+nug_negs
-#         query_rels = batch[:, 0, 2]
-#         relation_representations = self.relation_model(data.relation_graph, query=query_rels)
-#         score = self.entity_model(data, relation_representations, batch)
-        
-#         return score
-
-
 # NBFNet to work on the graph of relations with 4 fundamental interactions
 # Doesn't have the final projection MLP from hidden dim -> 1, returns all node representations 
 # of shape [bs, num_rel, hidden]
@@ -54,35 +31,75 @@ class RelNBFNet(BaseNBFNet):
                 nn.Linear(feature_dim, input_dim)
             )
 
-    
-    def bellmanford(self, data, h_index, separate_grad=False):
-        # Support multiple seed relations per batch item.
-        # If h_index is 1D: shape [B], we seed one relation per batch item (original behavior).
-        # If h_index is 2D: shape [B, K], we seed K relations per batch item while keeping batch size B.
-        if h_index.dim() == 2:
-            batch_size, num_seeds = h_index.shape
-            query = torch.ones(batch_size, self.dims[0], device=h_index.device, dtype=torch.float)
 
-            # initial (boundary) condition - initialize all node states as zeros
-            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
+    def bellmanford(self, rel_graph, batch):
+        query_relations = batch.edge_type
+        batch_size = batch.batch_size
+        query = torch.ones(batch_size, self.dims[0], device=query_relations.device, dtype=torch.float)
+        
+        #TODO: wenn ich eine query einlese, dann gebe ich ja jedem edge_type eine lokale id.
+        # wenn ich dann beim batching die queries zuammenfasse, dann haben dadurchv verschiedene
+        # edges und edge types die selbe lokale id
+        # Beispiel: 
+        # Query 1:
+        #   Paris - haupstadt von - Frankreich
+        # Also lokales mapping: 2 - 1 - 3
+        # 1: haupstadt von
+        # 2: Paris
+        # 3: Frankreich
+        #
+        ## Query 2:
+        #   Berlin - liegt in  - Deutschland
+        # Also lokales mapping: 2 - 1 - 3
+        # 1: liegt in
+        # 2: Berlin
+        # 3: Deutschland
+        # 
+        #  Als batch: 
+        # 2 - 1 - 3 (Query 1)
+        # 4 - 1 - 5 (Query 2)
+        #  
+        #  Beide eges haben die id 1 obwohl es zwei verschiedene relationen sind
+        #  
+        # # TODO: Lösungsidee: mit __inc__() arbeiten
+        # https://pytorch-geometric.readthedocs.io/en/2.5.2/advanced/batching.html
+        # Kann aber auch sein, dass das ganze kein problem ist 
+        #  
 
-            # For each batch item and each seed relation, scatter ones into the corresponding node slot
-            index = h_index.unsqueeze(-1).expand(batch_size, num_seeds, self.dims[0])  # (B, K, D)
-            ones = torch.ones(batch_size, num_seeds, self.dims[0], device=h_index.device)  # (B, K, D)
-            boundary.scatter_add_(1, index, ones)
-        else:
-            batch_size = len(h_index)
 
-            # initialize initial nodes (relations of interest in the batch) with all ones
-            query = torch.ones(h_index.shape[0], self.dims[0], device=h_index.device, dtype=torch.float)
-            index = h_index.unsqueeze(-1).expand_as(query)
 
-            # initial (boundary) condition - initialize all node states as zeros
-            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
-            # Indicator function: by the scatter operation we put ones as init features of source (index) nodes
-            boundary.scatter_add_(1, index.unsqueeze(1), query.unsqueeze(1))
-        size = (data.num_nodes, data.num_nodes)
-        edge_weight = torch.ones(data.num_edges, device=h_index.device)
+
+        # Labeling Trick
+        # initialize initial nodes (relations of interest in the batch) with all ones
+        
+        boundary = torch.zeros(batch_size, rel_graph.num_nodes, self.dims[0], device=query_relations.device)
+        
+        # Create a mask to filter out invalid edge embedding indices (-1)
+        valid_mask = batch.edge_embedding_indices != -1
+
+        # Get the graph index for each edge's source node
+        edge2graph = batch.batch[batch.edge_index[0]]
+
+        # Filter the graph indices and edge embedding indices using the mask
+        graph_indices = edge2graph[valid_mask]
+        node_indices = batch.edge_embedding_indices[valid_mask]
+
+        # Use advanced indexing to set the boundary values to 1.0 in a single operation
+        boundary[graph_indices, node_indices] = 1.0
+
+        assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        assert boundary.shape[1] == rel_graph.num_nodes, "Output shape does not match number of relations"
+        assert boundary.shape[2] == self.dims[0]
+        for i in range(batch_size):
+            data_list = batch.to_data_list()[i].edge_embedding_indices.unique()
+            mask = data_list != -1
+            edge_idx = data_list[mask]
+            assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
+
+
+        
+        size = (rel_graph.num_nodes, rel_graph.num_nodes)
+        edge_weight = torch.ones(rel_graph.num_edges, device=query_relations.device)
 
         hiddens = []
         edge_weights = []
@@ -90,7 +107,7 @@ class RelNBFNet(BaseNBFNet):
 
         for layer in self.layers:
             # Bellman-Ford iteration, we send the original boundary condition in addition to the updated node states
-            hidden = layer(layer_input, query, boundary, data.edge_index, data.edge_type, size, edge_weight)
+            hidden = layer(layer_input, query, boundary, rel_graph.edge_index, rel_graph.edge_type, size, edge_weight)
             if self.short_cut and hidden.shape == layer_input.shape:
                 # residual connection here
                 hidden = hidden + layer_input
@@ -99,23 +116,27 @@ class RelNBFNet(BaseNBFNet):
             layer_input = hidden
 
         # original query (relation type) embeddings
-        node_query = query.unsqueeze(1).expand(-1, data.num_nodes, -1) # (batch_size, num_nodes, input_dim)
+        node_query = query.unsqueeze(1).expand(-1, rel_graph.num_nodes, -1) # (batch_size, num_nodes, input_dim)
         if self.concat_hidden:
             output = torch.cat(hiddens + [node_query], dim=-1)
             output = self.mlp(output)
         else:
             output = hiddens[-1]
 
+        assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        assert output.shape[1] == rel_graph.num_nodes, "Output shape does not match number of relations"
+        assert output.shape[2] == 64
+
         return {
             "node_feature": output,
             "edge_weights": edge_weights,
         }
 
-    def forward(self, rel_graph, query):
+    def forward(self, rel_graph, batch):
 
         # message passing and updated node representations (that are in fact relations)
-        output = self.bellmanford(rel_graph, h_index=query)["node_feature"]  # (batch_size, num_nodes, hidden_dim）
-        
+        output = self.bellmanford(rel_graph, batch)["node_feature"]  # (batch_size, num_nodes, hidden_dim）
+
         return output
     
 
@@ -138,29 +159,44 @@ class EntityNBFNet(BaseNBFNet):
                     self.activation, dependent=False, project_relations=True)
             )
 
-        # feature_dim = (sum(hidden_dims) if self.concat_hidden else hidden_dims[-1]) + input_dim
-        # self.mlp = nn.Sequential()
-        # mlp = []
-        # for i in range(self.num_mlp_layers - 1):
-        #     mlp.append(nn.Linear(feature_dim, feature_dim))
-        #     mlp.append(nn.ReLU())
-        # mlp.append(nn.Linear(feature_dim, 1))
-        # self.mlp = nn.Sequential(*mlp)
-            
-    def bellmanford(self, data, h_index, r_index, separate_grad=False):
-        batch_size = len(r_index)
+    def bellmanford(self, data, batch, relation_representations):
+        h_index, t_index = batch.edge_index[0], batch.edge_index[1] 
+        r_index = batch.edge_type  
+        batch_size = batch.batch_size
+        device = batch.edge_index.device
 
         # initialize queries (relation types of the given triples)
-        query = self.query[torch.arange(batch_size, device=r_index.device), r_index]
-        index = h_index.unsqueeze(-1).expand_as(query)
+        query = self.query[torch.arange(batch_size, device=device), torch.ones(batch_size, device=device, dtype=torch.long)]
 
-        # initial (boundary) condition - initialize all node states as zeros
-        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=h_index.device)
-        # by the scatter operation we put query (relation) embeddings as init features of source (index) nodes
-        boundary.scatter_add_(1, index.unsqueeze(1), query.unsqueeze(1))
-        
+        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=query.device)
+
+        # Create a mask to filter out invalid edge embedding indices (-1)
+        valid_mask = batch.node_embedding_indices != -1
+
+        # Get the graph index for each edge's source node
+        node2graph = batch.batch
+
+        # Filter the graph indices and edge embedding indices using the mask
+        graph_indices = node2graph[valid_mask]
+        node_indices = batch.node_embedding_indices[valid_mask]
+
+        # Use advanced indexing to set the boundary values to 1.0 in a single operation
+        boundary[graph_indices, node_indices] = 1.0
+
+        assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
+        assert boundary.shape[2] == self.dims[0]
+        for i in range(batch_size):
+            data_list = batch.to_data_list()[i].node_embedding_indices.unique()
+            mask = data_list != -1
+            edge_idx = data_list[mask]
+            assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
+
+
+
+
         size = (data.num_nodes, data.num_nodes)
-        edge_weight = torch.ones(data.num_edges, device=h_index.device)
+        edge_weight = torch.ones(data.num_edges, device=device)
 
         hiddens = []
         edge_weights = []
@@ -169,8 +205,8 @@ class EntityNBFNet(BaseNBFNet):
         for layer in self.layers:
 
             # for visualization
-            if separate_grad:
-                edge_weight = edge_weight.clone().requires_grad_()
+            # if separate_grad:
+            #     edge_weight = edge_weight.clone().requires_grad_()
 
             # Bellman-Ford iteration, we send the original boundary condition in addition to the updated node states
             hidden = layer(layer_input, query, boundary, data.edge_index, data.edge_type, size, edge_weight)
@@ -197,8 +233,9 @@ class EntityNBFNet(BaseNBFNet):
             "edge_weights": edge_weights,
         }
 
-    def forward(self, data, relation_representations, batch):
-        h_index, t_index, r_index = batch.unbind(-1)
+    def forward(self, data, batch ,relation_representations):
+        h_index, t_index = batch.edge_index[0], batch.edge_index[1] 
+        r_index = batch.edge_type
 
         # initial query representations are those from the relation graph
         self.query = relation_representations
@@ -211,16 +248,19 @@ class EntityNBFNet(BaseNBFNet):
             # Edge dropout in the training mode
             # here we want to remove immediate edges (head, relation, tail) from the edge_index and edge_types
             # to make NBFNet iteration learn non-trivial paths
+            # TODO: Check
             data = self.remove_easy_edges(data, h_index, t_index, r_index)
 
         shape = h_index.shape
         # turn all triples in a batch into a tail prediction mode
-        h_index, t_index, r_index = self.negative_sample_to_tail(h_index, t_index, r_index, num_direct_rel=data.num_relations // 2)
-        assert (h_index[:, [0]] == h_index).all()
-        assert (r_index[:, [0]] == r_index).all()
+        # TODO: Ich lasse es erst mal drin aber kann sein, dass wir das nicht brauchen für Cardinality estimation
+        # Wandelt alle head-predicitons in tail-redictions um (umschreiben)
+        # h_index, t_index, r_index = self.negative_sample_to_tail(h_index, t_index, r_index, num_direct_rel=data.num_relations // 2)
+        # assert (h_index[:, [0]] == h_index).all()
+        # assert (r_index[:, [0]] == r_index).all()
 
         # message passing and updated node representations
-        output = self.bellmanford(data, h_index[:, 0], r_index[:, 0])  # (num_nodes, batch_size, feature_dim）
+        output = self.bellmanford(data, batch, relation_representations)  # (num_nodes, batch_size, feature_dim）
         feature = output["node_feature"] 
         return feature
 

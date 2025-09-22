@@ -9,6 +9,7 @@ from torch_scatter import scatter_add
 from typing import Optional, Dict, List, Tuple
 
 from fice.ultra.tasks import build_relation_graph
+from tqdm import tqdm
 
 
 class GrailInductiveDataset(InMemoryDataset):
@@ -1779,7 +1780,7 @@ class NTQueries(InMemoryDataset):
             self.process_query_single(
                 q
             )
-            for q in data
+            for q in tqdm(data, desc="Processing queries")
         ]
 
         torch.save(self.collate(queries), self.processed_paths[0])

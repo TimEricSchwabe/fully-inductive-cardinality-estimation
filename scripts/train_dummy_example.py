@@ -12,7 +12,7 @@ import sys
 # Ensure the fice package is in the Python path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from fice.ultra import datasets  # TODO
+from fice.ultra import datasets
 from fice.models import FICE
 
 import torch.nn.functional as F
@@ -32,8 +32,8 @@ if __name__ == "__main__":
     root = "data/swdf/"
     nt_path = "data/swdf/raw/swdf.nt"
 
-    data = datasets.NTDatasets(root=root, nt_path=nt_path)
-    data = data[0]
+    graph = datasets.NTDatasets(root=root, nt_path=nt_path)
+    graph = graph[0]
     print("Dataset loaded.")
 
     print("Loading occurrences...")
@@ -68,16 +68,15 @@ if __name__ == "__main__":
     # Convert queries to list for splitting
     queries_list = list(queries)
     print(f"Total queries: {len(queries_list)}")
-    print(queries_list[0])  # Print the first query for inspection
-
     # Train-test split
-    train_ratio = 0.8
+    
+    train_ratio = 0.8 
     train_size = int(len(queries_list) * train_ratio)
     test_size = len(queries_list) - train_size
 
     # Shuffle queries for random split
     import random
-    random.seed(42)  # For reproducibility
+    random.seed(420)  # For reproducibility
     random.shuffle(queries_list)
 
     train_queries = queries_list[:train_size]
@@ -85,30 +84,19 @@ if __name__ == "__main__":
 
     print(f"Train queries: {len(train_queries)}")
     print(f"Test queries: {len(test_queries)}")
+    # TODO: batch_size 1 testen
+    batch_size = 16
+    loader = DataLoader(dataset=train_queries, batch_size=batch_size, shuffle=False)
 
 
     # You can replace FICE with your own model class
-    model = FICE(graph=None)
+    model = FICE()
     model.to(device)
 
     optimizer = torch.optim.AdamW(model.parameters(), lr=1e-3)
 
     print("\nModel created:")
     print(model)
-
-    # 3. Create a single data point for forward pass
-    # We take the first triple from the training set.
-    print(data.edge_type)
-    print(data.edge_type.shape)
-    h_index = data.edge_index[0, 0:1]
-    t_index = data.edge_index[1, 0:1]
-    r_index = data.edge_type[0:1]
-    print(h_index, t_index, r_index)
-
-    # Create a "batch" with a single positive sample.
-    # The model expects a shape of (batch_size, num_samples, 3).
-    # Here, batch_size=1, num_samples=1.
-    batch = torch.stack([h_index, t_index, r_index], dim=1).unsqueeze(1)
 
     # Training loop
     num_epochs = 3  # You can adjust this
@@ -117,28 +105,24 @@ if __name__ == "__main__":
     for epoch in range(num_epochs):
         epoch_loss = 0.0
         num_queries = 0
-        print(f"\nEpoch {epoch+1}/{num_epochs}")
 
-        for query in tqdm(train_queries):
-            num_queries += 1
-            
+        progress_bar = tqdm(total=len(train_queries), desc=f"Training Epoch {epoch+1}")
+        for query_batch in loader:
+            num_queries += query_batch.num_graphs
+            progress_bar.update(query_batch.num_graphs)
+
             graph_size = torch.tensor(
-                [1000000], device=device
-            )  # example for the full size of the graph
+                [graph.num_edges], device=device
+            ) 
 
             # Getting a cardinality prediction from the combined model
             log_cardinality_pred = model(
-                data=data,
-                batch=batch,
-                query_features=query.x,
-                edge_attr=query.edge_attr,
-                query_edge_index=query.edge_index,
-                embedding_indices=query.node_embedding_indices,
-                edge_embedding_indices=query.edge_embedding_indices,
-                graph_size=graph_size
+                data=graph,
+                batch=query_batch,
+                graph_size=graph_size,
             )
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
-            true_cardinality = query.y.to(torch.float32)
+            true_cardinality = query_batch.y.to(torch.float32)
 
             loss = F.mse_loss(log_cardinality_pred, true_cardinality)
             
@@ -161,17 +145,15 @@ if __name__ == "__main__":
     test_true_values = []
 
     with torch.no_grad():
-        for query in test_queries:
-            graph_size = torch.tensor([1000000], device=device)
-            
+        loader = DataLoader(dataset=test_queries, batch_size=1, shuffle=False)
+        for query in tqdm(loader, desc="Evaluating test queries"):
+            graph_size = torch.tensor(
+                [graph.num_edges], device=device
+            ) 
+
             log_cardinality_pred = model(
-                data=data,
-                batch=batch,
-                query_features=query.x,
-                query_edge_index=query.edge_index,
-                edge_attr=query.edge_attr,
-                embedding_indices=query.node_embedding_indices,
-                edge_embedding_indices=query.edge_embedding_indices,
+                data=graph,
+                batch=query,
                 graph_size=graph_size
             )
             true_cardinality = torch.tensor([0.3], device=device)
