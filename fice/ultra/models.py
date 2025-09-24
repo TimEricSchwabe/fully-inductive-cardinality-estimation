@@ -33,9 +33,10 @@ class RelNBFNet(BaseNBFNet):
 
 
     def bellmanford(self, batch):
+        device = batch.edge_index.device
         query_relations = batch.edge_type
         batch_size = batch.batch_size
-        query = torch.ones(batch_size, self.dims[0], device=query_relations.device, dtype=torch.float)
+        query = torch.ones(batch_size, self.dims[0], device=device, dtype=torch.float)
         
         #TODO: wenn ich eine query einlese, dann gebe ich ja jedem edge_type eine lokale id.
         # wenn ich dann beim batching die queries zuammenfasse, dann haben dadurchv verschiedene
@@ -71,7 +72,7 @@ class RelNBFNet(BaseNBFNet):
 
         # Labeling Trick
         # initialize initial nodes (relations of interest in the batch) with all ones
-        boundary = torch.zeros(batch_size, self.data.num_nodes, self.dims[0], device=query_relations.device)
+        boundary = torch.zeros(batch_size, self.data.num_nodes, self.dims[0], device=device)
         
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.edge_embedding_indices != -1
@@ -98,7 +99,7 @@ class RelNBFNet(BaseNBFNet):
 
 
         size = (self.data.num_nodes, self.data.num_nodes)
-        edge_weight = torch.ones(self.data.num_edges, device=query_relations.device)
+        edge_weight = torch.ones(self.data.num_edges, device=device)
 
         hiddens = []
         edge_weights = []

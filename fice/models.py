@@ -14,6 +14,7 @@ class FICE(nn.Module):
         super(FICE, self).__init__()
         self.vector_dim = 64
         self.data = data
+        self.device = data.edge_index.device
 
 
         # TODO: Temp, diese statischen Configs sollen irgendwann durch dynamische ersetzt werden
@@ -48,11 +49,11 @@ class FICE(nn.Module):
 
         
     def forward(self, batch):
-        query_features = batch.x
-        edge_attr = batch.edge_attr
-        query_edge_index = batch.edge_index
-        embedding_indices = batch.node_embedding_indices
-        edge_embedding_indices = batch.edge_embedding_indices
+        batch = batch.to(self.device)
+        query_features = batch.x.to(self.device)
+        edge_attr = batch.edge_attr.to(self.device)
+        embedding_indices = batch.node_embedding_indices.to(self.device)
+        edge_embedding_indices = batch.edge_embedding_indices.to(self.device)
 
         # Provide shape [1, K] to seed K relations at once
         relation_representations = self.relation_model(batch)
