@@ -25,7 +25,7 @@ class QueryGNN(torch.nn.Module):
                 nn.Linear(hidden_dim, hidden_dim),
             )
 
-        self.convs = nn.ModuleList([
+        self.layers = nn.ModuleList([
             GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
             GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
             GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
@@ -46,27 +46,26 @@ class QueryGNN(torch.nn.Module):
             nn.Linear(hidden_dim, 1)
         )
 
-    def forward(self, x, edge_index, batch=None, edge_attr=None, graph_size=None):
+    def forward(self, batch, graph_size):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
 
-        if batch is None:
-            batch = x.new_zeros(x.size(0), dtype=torch.long)
-
-
-
-        for conv, bn in zip(self.convs, self.bns):
+        for layer, bn in zip(self.layers, self.bns):
             if edge_attr is not None:
-                x = conv(x, edge_index, edge_attr)
+                x = layer(x, edge_index, edge_attr)
             else:
-                x = conv(x, edge_index)
+                x = layer(x, edge_index)
             x = bn(x)
             x = F.relu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global add pooling over nodes -> graph embedding
-        g = global_add_pool(x, batch)
+        # TODO: Funktioniert, aber kein ahnung ob es das macht, was es machen soll
+        g = global_add_pool(x, batch.batch)
 
 
-        # Adding the graph size |E| to the final MLP
+        # TODO: Adding the graph size |E| to the final MLP
         if graph_size.dim() == 1 and graph_size.size(0) == 1:
             graph_size_expanded = graph_size.expand(g.size(0))
         else:

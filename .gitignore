@@ -14,5 +14,7 @@ data/*/
 # VS Code
 .vscode/
 
+logs/
+
 # macOS
 .DS_Store
