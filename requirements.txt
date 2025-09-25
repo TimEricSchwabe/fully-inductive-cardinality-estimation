@@ -5,10 +5,13 @@ wheel
 cmake
 
 # Core PyTorch and deep learning libraries
-torch>=2.1.0
-torch-scatter>=2.1.0
-torch-sparse>=0.6.0
-torch-geometric>=2.4.0
+
+--extra-index-url https://download.pytorch.org/whl/cu128
+torch
+torch-scatter
+torch-sparse
+torch-geometric
+pyg-lib
 
 # Scientific computing and data manipulation
 numpy>=1.21.0
