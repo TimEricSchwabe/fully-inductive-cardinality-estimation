@@ -4,7 +4,21 @@ __pycache__/
 venv/
 .venv/
 .env/
-data/*/
+
+# Ignore everything under data
+data/*
+
+# Allow Git to see inside all subdirectories of data
+!data/*/
+
+# Inside each subdirectory, ignore everything again
+data/*/*
+
+# …but unignore any raw folder and its contents
+!data/*/raw/
+!data/*/raw/**
+
+
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
 
