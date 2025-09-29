@@ -1,6 +1,22 @@
 # 📊 Fully Inductive Cardinality Estimator
 
-## 📂 Datasets
+## � Installation
+
+To install the package and its dependencies, run:
+
+```bash
+pip install -r requirements.txt
+```
+
+**Note:** If you encounter issues with package compilation or need to build packages from source, use the `--no-build-isolation` flag:
+
+```bash
+pip install -r requirements.txt --no-build-isolation
+```
+
+This flag is particularly helpful when dealing with packages that have complex build dependencies or when you need more control over the build process.
+
+## �📂 Datasets
 
 ### `NTDatasets()`
 `NTDtasets()` is a Dataset-class that inherits from `torch_geometric.InMemoryDataset` and reads in and processses a `.nt` datasets. It returns a `torch_geometric.Data` obejct with the following structure. Additionally in maps the RDF URIs to unique indices and stores them inside of `.json` file.

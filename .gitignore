@@ -17,7 +17,7 @@ data/*/*
 # …but unignore any raw folder and its contents
 !data/*/raw/
 !data/*/raw/**
-
+run_*/
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
