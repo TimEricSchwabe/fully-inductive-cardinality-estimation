@@ -76,7 +76,7 @@ class QueryGNN(torch.nn.Module):
 
 
         out = self.head(g_with_size)     # [batch_size, 1]
-        return out.squeeze(-1)           # [batch_size]
+        return torch.abs(out.squeeze(-1))           # [batch_size]
 
 
 
