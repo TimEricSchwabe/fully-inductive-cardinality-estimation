@@ -35,6 +35,8 @@ def setup_directories(config):
     """Setup project directories, timestamps, and logging."""
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     output_dir = Path(config.get("output_dir"))
+    if not output_dir.exists():
+        raise FileNotFoundError(f"Output directory not found: {output_dir}")
 
     run_dir = output_dir / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -151,8 +153,10 @@ def train_test_split(config, queries):
     # Process and filter queries
     queries_list = list(queries)
     random.shuffle(queries_list)
-
-    num_queries = min(config["DEBUG_num_queries"], len(queries_list))
+    if config["DEBUG_num_queries"] and config["DEBUG_num_queries"] > 0:
+        num_queries = min(config["DEBUG_num_queries"], len(queries_list))
+    else:
+        num_queries = len(queries_list)
     queries_list = queries_list[:num_queries]
     logger.info(f"Using debug mode with {num_queries} queries")
 

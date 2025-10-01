@@ -76,7 +76,7 @@ def parse_arguments():
     parser.add_argument(
         "--DEBUG_num_queries",
         type=int,
-        help="Number of queries to use for debugging. None means all queries.",
+        help="Number of queries to use for debugging. -1 means all queries.",
     )
     parser.add_argument(
         "--save_every",
