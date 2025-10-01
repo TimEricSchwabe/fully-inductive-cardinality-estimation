@@ -13,6 +13,7 @@ data/*
 
 # Inside each subdirectory, ignore everything again
 data/*/*
+output/
 
 # …but unignore any raw folder and its contents
 !data/*/raw/
