@@ -11,9 +11,8 @@ from easydict import EasyDict
 # of shape [bs, num_rel, hidden]
 class RelNBFNet(BaseNBFNet):
 
-    def __init__(self, data, input_dim, hidden_dims, num_relation=4, **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=4, **kwargs):
         super().__init__(input_dim, hidden_dims, num_relation, **kwargs)
-        self.data = data
         self.layers = nn.ModuleList()
         for i in range(len(self.dims) - 1):
             self.layers.append(
@@ -32,7 +31,7 @@ class RelNBFNet(BaseNBFNet):
             )
 
 
-    def bellmanford(self, batch):
+    def bellmanford(self, data, batch):
         device = batch.edge_index.device
         query_relations = batch.edge_type
         batch_size = batch.batch_size
@@ -72,7 +71,7 @@ class RelNBFNet(BaseNBFNet):
 
         # Labeling Trick
         # initialize initial nodes (relations of interest in the batch) with all ones
-        boundary = torch.zeros(batch_size, self.data.num_nodes, self.dims[0], device=device)
+        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=device)
         
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.edge_embedding_indices != -1
@@ -88,7 +87,7 @@ class RelNBFNet(BaseNBFNet):
         boundary[graph_indices, node_indices] = 1.0
 
         assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert boundary.shape[1] == self.data.num_nodes, "Output shape does not match number of relations"
+        assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
         assert boundary.shape[2] == self.dims[0]
         for i in range(batch_size):
             data_list = batch.to_data_list()[i].edge_embedding_indices.unique()
@@ -98,8 +97,8 @@ class RelNBFNet(BaseNBFNet):
 
 
 
-        size = (self.data.num_nodes, self.data.num_nodes)
-        edge_weight = torch.ones(self.data.num_edges, device=device)
+        size = (data.num_nodes, data.num_nodes)
+        edge_weight = torch.ones(data.num_edges, device=device)
 
         hiddens = []
         edge_weights = []
@@ -107,7 +106,7 @@ class RelNBFNet(BaseNBFNet):
 
         for layer in self.layers:
             # Bellman-Ford iteration, we send the original boundary condition in addition to the updated node states
-            hidden = layer(layer_input, query, boundary, self.data.edge_index, self.data.edge_type, size, edge_weight)
+            hidden = layer(layer_input, query, boundary, data.edge_index, data.edge_type, size, edge_weight)
             if self.short_cut and hidden.shape == layer_input.shape:
                 # residual connection here
                 hidden = hidden + layer_input
@@ -116,7 +115,7 @@ class RelNBFNet(BaseNBFNet):
             layer_input = hidden
 
         # original query (relation type) embeddings
-        node_query = query.unsqueeze(1).expand(-1, self.data.num_nodes, -1) # (batch_size, num_nodes, input_dim)
+        node_query = query.unsqueeze(1).expand(-1, data.num_nodes, -1) # (batch_size, num_nodes, input_dim)
         if self.concat_hidden:
             output = torch.cat(hiddens + [node_query], dim=-1)
             output = self.mlp(output)
@@ -124,7 +123,7 @@ class RelNBFNet(BaseNBFNet):
             output = hiddens[-1]
 
         assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert output.shape[1] == self.data.num_nodes, "Output shape does not match number of relations"
+        assert output.shape[1] == data.num_nodes, "Output shape does not match number of relations"
         assert output.shape[2] == 64
 
         return {
@@ -132,9 +131,9 @@ class RelNBFNet(BaseNBFNet):
             "edge_weights": edge_weights,
         }
 
-    def forward(self, batch):
+    def forward(self, data, batch):
         # message passing and updated node representations (that are in fact relations)
-        output = self.bellmanford(batch)["node_feature"]  # (batch_size, num_nodes, hidden_dim）
+        output = self.bellmanford(batch=batch, data=data)["node_feature"]  # (batch_size, num_nodes, hidden_dim）
         return output
     
 
@@ -142,12 +141,11 @@ class RelNBFNet(BaseNBFNet):
 
 class EntityNBFNet(BaseNBFNet):
 
-    def __init__(self, data, input_dim, hidden_dims, num_relation=1, **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=1, **kwargs):
     
         # dummy num_relation = 1 as we won't use it in the NBFNet layer
         super().__init__(input_dim, hidden_dims, num_relation, **kwargs)
 
-        self.data = data
         self.layers = nn.ModuleList()
         for i in range(len(self.dims) - 1):
             self.layers.append(
@@ -157,7 +155,7 @@ class EntityNBFNet(BaseNBFNet):
                     self.activation, dependent=False, project_relations=True)
             )
 
-    def bellmanford(self, batch, relation_representations):
+    def bellmanford(self, data, batch):
         batch_size = batch.batch_size
         device = batch.edge_index.device
 
@@ -166,7 +164,7 @@ class EntityNBFNet(BaseNBFNet):
         # https://github.com/DeepGraphLearning/ULTRA/blob/main/ultra/models.py
         query = self.query[torch.arange(batch_size, device=device), torch.ones(batch_size, device=device, dtype=torch.long)]
 
-        boundary = torch.zeros(batch_size, self.data.num_nodes, self.dims[0], device=query.device)
+        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=query.device)
 
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.node_embedding_indices != -1
@@ -182,7 +180,7 @@ class EntityNBFNet(BaseNBFNet):
         boundary[graph_indices, node_indices] = 1.0
 
         assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert boundary.shape[1] == self.data.num_nodes, "Output shape does not match number of relations"
+        assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
         assert boundary.shape[2] == self.dims[0]
         for i in range(batch_size):
             data_list = batch.to_data_list()[i].node_embedding_indices.unique()
@@ -190,8 +188,8 @@ class EntityNBFNet(BaseNBFNet):
             edge_idx = data_list[mask]
             assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
 
-        size = (self.data.num_nodes, self.data.num_nodes)
-        edge_weight = torch.ones(self.data.num_edges, device=device)
+        size = (data.num_nodes, data.num_nodes)
+        edge_weight = torch.ones(data.num_edges, device=device)
 
         hiddens = []
         edge_weights = []
@@ -204,7 +202,7 @@ class EntityNBFNet(BaseNBFNet):
             #     edge_weight = edge_weight.clone().requires_grad_()
 
             # Bellman-Ford iteration, we send the original boundary condition in addition to the updated node states
-            hidden = layer(layer_input, query, boundary, self.data.edge_index, self.data.edge_type, size, edge_weight)
+            hidden = layer(layer_input, query, boundary, data.edge_index, data.edge_type, size, edge_weight)
             if self.short_cut and hidden.shape == layer_input.shape:
                 # residual connection here
                 hidden = hidden + layer_input
@@ -219,7 +217,7 @@ class EntityNBFNet(BaseNBFNet):
             "edge_weights": edge_weights,
         }
 
-    def forward(self, batch ,relation_representations):
+    def forward(self, data, batch, relation_representations):
 
         # initial query representations are those from the relation graph
         self.query = relation_representations
@@ -229,7 +227,7 @@ class EntityNBFNet(BaseNBFNet):
             layer.relation = relation_representations
 
         # message passing and updated node representations
-        output = self.bellmanford(batch, relation_representations)  # (num_nodes, batch_size, feature_dim）
+        output = self.bellmanford(batch=batch, data=data)  # (num_nodes, batch_size, feature_dim）
         feature = output["node_feature"] 
         return feature
 

@@ -10,56 +10,48 @@ import torch.nn as nn
 
 class FICE(nn.Module):
 
-    def __init__(self, data):
+    def __init__(self):
         super(FICE, self).__init__()
         self.vector_dim = 64
-        self.data = data
-        self.device = data.edge_index.device
+        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 6  # 6 layers with 64 hidden units each
 
 
-        # TODO: Temp, diese statischen Configs sollen irgendwann durch dynamische ersetzt werden
-        rel_model_cfg = EasyDict({
-            'class': 'RelNBFNet',
-            'input_dim': self.vector_dim,
-            'hidden_dims': [self.vector_dim] * 6,
-            'message_func': 'distmult',
-            'aggregate_func': 'sum',
-            'short_cut': True,
-            'layer_norm': True,
-            'data': self.data.relation_graph
-        })
-
-        entity_model_cfg = EasyDict({
-            'class': 'EntityNBFNet',
-            'input_dim': self.vector_dim,
-            'hidden_dims': [self.vector_dim] * 6,
-            'message_func': 'distmult',
-            'aggregate_func': 'sum',
-            'short_cut': True,
-            'layer_norm': True,
-            'data': self.data
-        })
-
-
-        # TODO: total unleserlich, schöner machen. 
-        # adding a bit more flexibility to initializing proper rel/ent classes from the configs
-        self.relation_model = globals()[rel_model_cfg.pop('class')](**rel_model_cfg)
-        self.entity_model = globals()[entity_model_cfg.pop('class')](**entity_model_cfg)
-        self.query_gnn = QueryGNN(hidden_dim=self.vector_dim+3)
+        # Initialize models directly without config dictionaries
+        self.relation_model = RelNBFNet(
+            input_dim=self.vector_dim,
+            hidden_dims=self.hidden_dims_relnet,
+            message_func='distmult',
+            aggregate_func='sum',
+            short_cut=True,
+            layer_norm=True
+        )
+        
+        self.entity_model = EntityNBFNet(
+            input_dim=self.vector_dim,
+            hidden_dims=self.hidden_dims_entitynet,
+            message_func='distmult',
+            aggregate_func='sum',
+            short_cut=True,
+            layer_norm=True
+        )
+        
+        self.query_gnn = QueryGNN(hidden_dim=self.vector_dim + 3)
 
         
-    def forward(self, batch):
-        batch = batch.to(self.device)
-        query_features = batch.x.to(self.device)
-        edge_attr = batch.edge_attr.to(self.device)
-        embedding_indices = batch.node_embedding_indices.to(self.device)
-        edge_embedding_indices = batch.edge_embedding_indices.to(self.device)
+    def forward(self, data, batch):
+        device = data.edge_index.device
+
+        batch = batch.to(device)
+        query_features = batch.x.to(device)
+        edge_attr = batch.edge_attr.to(device)
+        embedding_indices = batch.node_embedding_indices.to(device)
+        edge_embedding_indices = batch.edge_embedding_indices.to(device)
 
         # Provide shape [1, K] to seed K relations at once
-        relation_representations = self.relation_model(batch)
+        relation_representations = self.relation_model(batch=batch, data=data.relation_graph)
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
-        node_representations = self.entity_model(batch, relation_representations)
+        node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
         assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
 
 
@@ -93,7 +85,7 @@ class FICE(nn.Module):
         edge_features = torch.cat([edge_attr[:, :3], edge_last64], dim=1)
         batch.edge_attr = edge_features
 
-        graph_size = torch.tensor([self.data.num_edges], device=self.data.edge_index.device)
+        graph_size = torch.tensor([data.num_edges], device=data.edge_index.device)
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch) 
         # log_cardinality_pred = self.query_gnn(query_features, query_edge_index, edge_attr=edge_features, graph_size=graph_size) 
 
