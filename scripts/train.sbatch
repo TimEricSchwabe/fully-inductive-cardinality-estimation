@@ -5,4 +5,4 @@
 
 module load cuda/12.6.3
 
-srun python3 train.py
+srun python3 train.py --config ../configs/train_cluster.json
