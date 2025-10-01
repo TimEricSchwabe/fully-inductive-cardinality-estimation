@@ -18,6 +18,7 @@ data/*/*
 !data/*/raw/
 !data/*/raw/**
 run_*/
+run_*.zip
 
 # Jupyter Notebook checkpoints
 .ipynb_checkpoints
