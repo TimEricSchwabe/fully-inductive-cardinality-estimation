@@ -12,6 +12,7 @@ import math
 import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
+import subprocess
 
 # Ensure the fice package is in the Python path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "../")))
@@ -624,6 +625,12 @@ def main():
     logger.info(f"PyTorch version: {torch.__version__}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     logger.info(f"CUDA version: {torch.version.cuda}")
+    try:
+        e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
+        logger.info(f"nvcc version: {e.stdout.strip()}")
+    except FileNotFoundError as e:
+        logger.error(f"Error occurred while checking CUDA version: {e}")
+
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"Log directory: {log_dir}")
     logger.info(f"Checkpoint directory: {checkpoint_dir}")
