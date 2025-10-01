@@ -1,13 +1,13 @@
  {
-    "data_root": "/data/swdf",
-    "queries_root": "/data/swdf_queries",
+    "data_root": "~/fully-inductive-cardinality-estimation/data/swdf",
+    "queries_root": "~/fully-inductive-cardinality-estimation/data/swdf",
     "epochs": 100,
     "batch_size": 8,
     "learning_rate": 1e-5,
     "weight_decay": 0.0,
     "train_ratio": 0.8,
     
-    "output_dir": "output/",
+    "output_dir": "~/fully-inductive-cardinality-estimation/output",
     "save_every": 5,
     "eval_every": 1,
 
