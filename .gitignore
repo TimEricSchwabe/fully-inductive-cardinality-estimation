@@ -14,6 +14,7 @@ data/*
 # Inside each subdirectory, ignore everything again
 data/*/*
 output/
+*.egg-info/
 
 # …but unignore any raw folder and its contents
 !data/*/raw/
