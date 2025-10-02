@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J fice_training
 #SBATCH --gres=gpu:nvidia:1        # request 1 GPU
-#SBATCH -t 12:00:00                # walltime (hh:mm:ss)
+#SBATCH -t 24:00:00                # walltime (hh:mm:ss)
 
 # -------------------------------
 # Variables
@@ -21,5 +21,5 @@ module load cuda/12.6.3
 # Run inside Apptainer with venv
 # -------------------------------
 srun apptainer exec --nv --cleanenv "$CONTAINER" \
-    bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE"
+    bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --wandb"
 

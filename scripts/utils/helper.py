@@ -101,6 +101,13 @@ def parse_arguments():
         choices=["auto", "cpu", "cuda", "mps"],
         help="Device to use for training (auto, cpu, cuda, mps).",
     )
+    
+    # Weights & Biases flag
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases logging.",
+    )
 
     return parser.parse_args()
 

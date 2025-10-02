@@ -13,6 +13,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 import subprocess
+import wandb
 
 # Ensure the fice package is in the Python path
 sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "../")))
@@ -29,6 +30,58 @@ import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
 
 logger = logging.getLogger(__name__)
+
+# Weights & Biases configuration
+WANDB_CONFIG = {
+    'enabled': True,
+    'project': 'fice',
+    'entity': "fice",  # Set to your wandb username/team or leave None for default
+    'run_name': None,  # Will be auto-generated if None
+    'tags': [],
+    'notes': ''
+}
+
+
+def initialize_wandb(config, run_dir):
+    """Initialize Weights & Biases logging if enabled."""
+    # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
+    wandb_enabled = config.get('wandb', WANDB_CONFIG['enabled'])
+    if not wandb_enabled:
+        logger.info("Weights & Biases logging is disabled")
+        return None
+
+    # Prepare training config for wandb
+    training_config = {
+        "epochs": config["epochs"],
+        "batch_size": config["batch_size"],
+        "learning_rate": config["learning_rate"],
+        "weight_decay": config["weight_decay"],
+        "train_ratio": config["train_ratio"],
+        "seed": config["seed"],
+        "device": config["device"],
+        "data_root": config["data_root"],
+        "queries_root": config["queries_root"],
+        "eval_every": config["eval_every"],
+        "save_every": config["save_every"],
+    }
+    
+    # Add debug config if present
+    if config.get("DEBUG_num_queries", -1) > 0:
+        training_config["DEBUG_num_queries"] = config["DEBUG_num_queries"]
+
+    # Initialize wandb using WANDB_CONFIG defaults
+    run = wandb.init(
+        project=WANDB_CONFIG['project'],
+        entity=WANDB_CONFIG['entity'],
+        name=WANDB_CONFIG['run_name'],
+        config=training_config,
+        tags=WANDB_CONFIG['tags'],
+        notes=WANDB_CONFIG['notes'],
+        dir=str(run_dir)
+    )
+    
+    logger.info(f"Weights & Biases initialized: {run.url}")
+    return run
 
 
 # TODO: logging
@@ -207,7 +260,7 @@ def tensor_to_numpy(tensor):
     return tensor.detach().cpu().numpy().tolist()
 
 
-def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config):
+def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config, use_wandb=False):
     """Train the model for one epoch."""
     model.train()
     epoch_train_loss = 0.0
@@ -259,6 +312,14 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config)
                 "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
             }
         )
+        
+        # Log batch-level metrics to wandb if enabled
+        if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
+            wandb.log({
+                "batch_train_loss": loss.item(),
+                "epoch": epoch_num + 1,
+                "batch": batch_idx + epoch_num * len(train_loader)
+            })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
 
@@ -316,7 +377,7 @@ def evaluate_model(model, data, test_loader, device):
 
 
 def train_model(
-    config, model, optimizer, data, train_loader, test_loader, checkpoint_dir, device,
+    config, model, optimizer, data, train_loader, test_loader, checkpoint_dir, device, use_wandb=False
 ):
     """Main training loop with progress tracking and evaluation."""
     best_test_loss = float("inf")
@@ -350,7 +411,7 @@ def train_model(
             epoch_train_true_values,
             epoch_train_predictions_log,
             epoch_train_true_values_log,
-        ) = train_epoch(model, data, train_loader, optimizer, device, epoch, config)
+        ) = train_epoch(model, data, train_loader, optimizer, device, epoch, config, use_wandb)
 
         # Calculate training metrics
         mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
@@ -367,6 +428,17 @@ def train_model(
         train_q_error.append(q_error)
         train_predictions_log.append(epoch_train_predictions_log)
         train_true_values_log.append(epoch_train_true_values_log)
+
+        # Log training metrics to wandb
+        if use_wandb:
+            wandb.log({
+                "train_loss": epoch_avg_train_loss,
+                "train_mse": mse,
+                "train_mae": mae,
+                "train_rmse": rmse,
+                "train_q_error": q_error,
+                "epoch": epoch + 1
+            })
 
         # Evaluation phase
         if (epoch + 1) % config["eval_every"] == 0:
@@ -394,6 +466,17 @@ def train_model(
             test_predictions_log.append(epoch_test_predictions_log)
             test_true_values_log.append(epoch_test_true_values_log)
 
+            # Log test metrics to wandb
+            if use_wandb:
+                wandb.log({
+                    "test_loss": avg_test_loss,
+                    "test_mse": mse,
+                    "test_mae": mae,
+                    "test_rmse": rmse,
+                    "test_q_error": q_error,
+                    "epoch": epoch + 1
+                })
+
             # Log metrics
             logger.info(
                 f"Epoch {epoch+1}/{config['epochs']} - "
@@ -419,6 +502,22 @@ def train_model(
                 logger.info(
                     f"New best model saved with test loss: {best_test_loss:.6f}"
                 )
+                
+                # Log best model as wandb artifact
+                if use_wandb:
+                    artifact = wandb.Artifact(
+                        name="best_model",
+                        type="model",
+                        description=f"Best model checkpoint at epoch {epoch+1} with test loss {best_test_loss:.6f}"
+                    )
+                    artifact.add_file(str(best_model_path))
+                    wandb.log_artifact(artifact)
+                    
+                    # Also log the best test loss metric
+                    wandb.log({
+                        "best_test_loss": best_test_loss,
+                        "best_model_epoch": epoch + 1
+                    })
         else:
             logger.info(
                 f"Epoch {epoch+1}/{config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
@@ -648,6 +747,10 @@ def main():
     device = get_device(config["device"])
     logger.info(f"Using device: {device}")
 
+    # Initialize Weights & Biases
+    wandb_run = initialize_wandb(config, run_dir)
+    use_wandb = wandb_run is not None
+
     # Load data
     data = load_dataset(config, device=device)
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
@@ -673,6 +776,16 @@ def main():
     )
     logger.info(f"  Train ratio: {config['train_ratio']}")
 
+    # Log dataset info to wandb
+    if use_wandb:
+        wandb.log({
+            "dataset_total_queries": len(queries),
+            "dataset_train_queries": len(train_queries),
+            "dataset_test_queries": len(test_queries),
+            "dataset_num_nodes": data.num_nodes,
+            "dataset_num_edges": data.num_edges,
+        })
+
     train_loader = DataLoader(
         dataset=train_queries, batch_size=config["batch_size"], shuffle=True
     )
@@ -687,6 +800,16 @@ def main():
     # Initialize model and optimizer
     model, optimizer = initialize_model_and_optimizer(config, device)
 
+    # Log model information to wandb
+    if use_wandb:
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        wandb.log({
+            "model_total_parameters": total_params,
+            "model_trainable_parameters": trainable_params,
+            "model_name": model.__class__.__name__
+        })
+
     # Train the model
     training_results = train_model(
         config,
@@ -696,7 +819,8 @@ def main():
         train_loader,
         test_loader,
         checkpoint_dir,
-        device
+        device,
+        use_wandb
     )
 
     # Post-training analysis
@@ -710,6 +834,36 @@ def main():
     print_final_summary(
         training_results, run_dir, checkpoint_dir, log_dir
     )
+
+    # Finalize wandb run
+    if use_wandb:
+        # Log final metrics summary
+        final_metrics = {
+            "final_train_loss": training_results['train_losses'][-1],
+            "final_test_loss": training_results['test_losses'][-1],
+            "final_train_mae": training_results['train_mae'][-1],
+            "final_test_mae": training_results['test_mae'][-1],
+            "final_train_q_error": training_results['train_q_error'][-1],
+            "final_test_q_error": training_results['test_q_error'][-1],
+            "total_epochs": len(training_results['train_losses'])
+        }
+        wandb.log(final_metrics)
+        
+        # Save training plots as artifacts
+        if (log_dir / "training_metrics.png").exists():
+            artifact = wandb.Artifact("training_plots", type="plots")
+            artifact.add_file(str(log_dir / "training_metrics.png"))
+            artifact.add_file(str(log_dir / "predictions_vs_true_values_all_epochs.png"))
+            wandb.log_artifact(artifact)
+        
+        # Save training data
+        if (log_dir / "training_curves.csv").exists():
+            artifact = wandb.Artifact("training_data", type="dataset")
+            artifact.add_file(str(log_dir / "training_curves.csv"))
+            wandb.log_artifact(artifact)
+        
+        wandb.finish()
+        logger.info("Weights & Biases run finished")
 
 
 if __name__ == "__main__":
