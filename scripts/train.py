@@ -316,9 +316,7 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
         # Log batch-level metrics to wandb if enabled
         if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
             wandb.log({
-                "batch_train_loss": loss.item(),
-                "epoch": epoch_num + 1,
-                "batch": batch_idx + epoch_num * len(train_loader)
+                f"train_loss_epoch_{epoch_num + 1}": loss.item(),
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
