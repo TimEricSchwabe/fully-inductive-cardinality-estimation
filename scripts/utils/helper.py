@@ -4,9 +4,71 @@ import random
 import torch
 import numpy as np
 from datetime import datetime
-
+import wandb
+import os
 import argparse
 import json
+
+logger = logging.getLogger(__name__)
+
+
+# Weights & Biases configuration
+WANDB_CONFIG = {
+    'enabled': True,
+    'project': 'fice',
+    'entity': "fice",  # Set to your wandb username/team or leave None for default
+    'run_name': None,  # Will be auto-generated if None
+    'tags': [],
+    'notes': '',
+    'mode': 'online',  # 'online', 'offline', or 'disabled'
+}
+
+
+def initialize_wandb(config, run_dir):
+    """Initialize Weights & Biases logging if enabled."""
+    # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
+    wandb_enabled = config.get('wandb', WANDB_CONFIG['enabled'])
+    if not wandb_enabled:
+        logger.info("Weights & Biases logging is disabled")
+        return None
+
+    # Prepare training config for wandb
+    training_config = {
+        "epochs": config["epochs"],
+        "batch_size": config["batch_size"],
+        "learning_rate": config["learning_rate"],
+        "weight_decay": config["weight_decay"],
+        "train_ratio": config["train_ratio"],
+        "seed": config["seed"],
+        "device": config["device"],
+        "data_root": config["data_root"],
+        "queries_root": config["queries_root"],
+        "eval_every": config["eval_every"],
+        "save_every": config["save_every"],
+    }
+    
+    # Add debug config if present
+    if config.get("DEBUG_num_queries", -1) > 0:
+        training_config["DEBUG_num_queries"] = config["DEBUG_num_queries"]
+    
+    os.environ["WANDB_DIR"] = str(run_dir)
+    logger.info(f"Weights & Biases dir: {run_dir}")
+    # Initialize wandb using WANDB_CONFIG defaults
+    run = wandb.init(   
+        project=WANDB_CONFIG['project'],
+        entity=WANDB_CONFIG['entity'],
+        name=WANDB_CONFIG['run_name'],
+        config=training_config,
+        tags=WANDB_CONFIG['tags'],
+        notes=WANDB_CONFIG['notes'],
+        mode=WANDB_CONFIG['mode'],
+        dir=str(run_dir)
+    )
+    
+    logger.info(f"Weights & Biases initialized: {run.url}")
+    return run
+
+
 
 def parse_arguments():
     """Parse command-line arguments for training configuration."""
@@ -133,15 +195,20 @@ def merge_config_with_args(config, args):
             merged_config[arg_name] = arg_value
    
     return merged_config
+
 # Utility functions
-def setup_logging(log_dir: Path, log_level: str = "INFO") -> logging.Logger:
+def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
     """Setup logging configuration."""
     log_dir.mkdir(parents=True, exist_ok=True)
 
     # Create logger
-    logger = logging.getLogger('fice_training')
-    logger.setLevel(getattr(logging, log_level.upper()))
-    logger.propagate = False
+    root = logging.getLogger()
+    root.setLevel(getattr(logging, log_level.upper()))
+    root.propagate = True
+
+    # IMPORTANT: avoid duplicate handlers if called again
+    if root.hasHandlers():
+        root.handlers.clear()
 
     # Create formatter
     formatter = logging.Formatter(
@@ -160,10 +227,8 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> logging.Logger:
     console_handler.setFormatter(formatter)
 
     # Add handlers to logger
-    logger.addHandler(file_handler)
-    logger.addHandler(console_handler)
-
-    return logger
+    root.addHandler(file_handler)
+    root.addHandler(console_handler)
 
 
 def set_random_seeds(seed: int = 42) -> None:

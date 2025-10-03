@@ -8,22 +8,15 @@ import logging
 import argparse
 from pathlib import Path
 from datetime import datetime
-import math
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 import subprocess
 import wandb
 
-# Ensure the fice package is in the Python path
-sys.path.append(os.path.abspath(os.path.join(os.getcwd(), "../")))
-sys.path.append("/Users/lukas/Workspace/Uni/BachelorsThesis/FICE")
-
 # Import project modules
-from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device
+from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device,initialize_wandb
 from utils.config import load_config
 import utils.metrics as metrics
-import utils.plotting as plotting
 from fice import datasets
 from fice.models import FICE
 import torch.nn.functional as F
@@ -31,69 +24,17 @@ from torch_geometric.loader import DataLoader
 
 logger = logging.getLogger(__name__)
 
-# Weights & Biases configuration
-WANDB_CONFIG = {
-    'enabled': True,
-    'project': 'fice',
-    'entity': "fice",  # Set to your wandb username/team or leave None for default
-    'run_name': None,  # Will be auto-generated if None
-    'tags': [],
-    'notes': ''
-}
 
-
-def initialize_wandb(config, run_dir):
-    """Initialize Weights & Biases logging if enabled."""
-    # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
-    wandb_enabled = config.get('wandb', WANDB_CONFIG['enabled'])
-    if not wandb_enabled:
-        logger.info("Weights & Biases logging is disabled")
-        return None
-
-    # Prepare training config for wandb
-    training_config = {
-        "epochs": config["epochs"],
-        "batch_size": config["batch_size"],
-        "learning_rate": config["learning_rate"],
-        "weight_decay": config["weight_decay"],
-        "train_ratio": config["train_ratio"],
-        "seed": config["seed"],
-        "device": config["device"],
-        "data_root": config["data_root"],
-        "queries_root": config["queries_root"],
-        "eval_every": config["eval_every"],
-        "save_every": config["save_every"],
-    }
-    
-    # Add debug config if present
-    if config.get("DEBUG_num_queries", -1) > 0:
-        training_config["DEBUG_num_queries"] = config["DEBUG_num_queries"]
-
-    # Initialize wandb using WANDB_CONFIG defaults
-    run = wandb.init(
-        project=WANDB_CONFIG['project'],
-        entity=WANDB_CONFIG['entity'],
-        name=WANDB_CONFIG['run_name'],
-        config=training_config,
-        tags=WANDB_CONFIG['tags'],
-        notes=WANDB_CONFIG['notes'],
-        dir=str(run_dir)
-    )
-    
-    logger.info(f"Weights & Biases initialized: {run.url}")
-    return run
-
+TRAIN_METRICS_FILE_NAME = "train_training_metrics.csv"
+TEST_METRICS_FILE_NAME = "test_training_metrics.csv"
+TRAIN_VALUES_FILE_NAME = "train_values.csv"
+TEST_VALUES_FILE_NAME = "test_values.csv"
 
 # TODO: logging
 def setup_directories(config):
     """Setup project directories, timestamps, and logging."""
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    output_dir = Path(config.get("output_dir"))
-    if not output_dir.exists():
-        raise FileNotFoundError(f"Output directory not found: {output_dir}")
 
-    run_dir = output_dir / f"run_{timestamp}"
-    run_dir.mkdir(parents=True, exist_ok=True)
+    run_dir = setup_run_dir(config)
 
     log_dir = run_dir / "logs/"
     log_dir.mkdir(parents=True, exist_ok=True)
@@ -159,7 +100,6 @@ def load_occurrences(config):
         relation_mapping = json.load(f)
 
     logger.info("Metadata loaded successfully!")
-    from utils.helper import parse_arguments, merge_config_with_args
     logger.info(f"Entities with occurrences: {len(entity_occurrences)}")
     logger.info(f"Relations with occurrences: {len(relation_occurrences)}")
     logger.info(f"Entity mapping size: {len(entity_mapping)}")
@@ -330,7 +270,7 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
     )
 
 
-def evaluate_model(model, data, test_loader, device):
+def evaluate_model(model, data, test_loader, device, epoch, use_wandb=False):
     """Evaluate the model on test data."""
     model.eval()
     epoch_test_loss = 0.0
@@ -341,7 +281,7 @@ def evaluate_model(model, data, test_loader, device):
     epoch_test_true_values_log = []
 
     with torch.no_grad():
-        for query_batch in tqdm(test_loader, desc="Evaluating", leave=False):
+        for batch_idx, query_batch in tqdm(enumerate(test_loader), desc="Evaluating", leave=False):
             # Forward pass
             query_batch = query_batch.to(device)
 
@@ -362,6 +302,11 @@ def evaluate_model(model, data, test_loader, device):
 
             epoch_test_predictions.extend(tensor_to_numpy(prediction))
             epoch_test_true_values.extend(tensor_to_numpy(true_value))
+            # Log batch-level metrics to wandb if enabled
+            if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
+                wandb.log({
+                    f"test_loss_epoch_{epoch + 1}": loss.item(),
+                })
 
     avg_test_loss = epoch_test_loss / len(test_loader)
 
@@ -375,30 +320,23 @@ def evaluate_model(model, data, test_loader, device):
 
 
 def train_model(
-    config, model, optimizer, data, train_loader, test_loader, checkpoint_dir, device, use_wandb=False
+    config, model, optimizer, data, train_loader, test_loader, checkpoint_dir, log_dir, device, use_wandb=False
 ):
     """Main training loop with progress tracking and evaluation."""
     best_test_loss = float("inf")
 
-    # Training metrics tracking
-    train_losses = []
-    train_mse = []
-    train_mae = []
-    train_rmse = []
-    train_q_error = []
-    train_predictions_log = []
-    train_true_values_log = []
+    # Initialize separate DataFrames for training and test metrics tracking
+    train_metrics_df = pd.DataFrame(columns=['epoch', 'loss', 'mse', 'mae', 'rmse', 'q_error'])
+    test_metrics_df = pd.DataFrame(columns=['epoch', 'loss', 'mse', 'mae', 'rmse', 'q_error'])
+    
+    # Initialize DataFrames for predictions tracking
+    train_predictions_df = pd.DataFrame(columns=['epoch', 'batch_idx', 'prediction_log', 'true_value_log', 'prediction', 'true_value'])
+    test_predictions_df = pd.DataFrame(columns=['epoch', 'batch_idx', 'prediction_log', 'true_value_log', 'prediction', 'true_value'])
 
-    test_losses = []
-    test_mse = []
-    test_mae = []
-    test_rmse = []
-    test_q_error = []
-    test_predictions_log = []
-    test_true_values_log = []
-
-    logger.info("Training tracking variables initialized!")
+    logger.info("Separate DataFrames for train/test metrics and predictions tracking initialized!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
+
+    
 
     # Training loop
     for epoch in range(config["epochs"]):
@@ -419,13 +357,34 @@ def train_model(
             epoch_train_predictions, epoch_train_true_values
         )
 
-        train_losses.append(epoch_avg_train_loss)
-        train_mse.append(mse)
-        train_mae.append(mae)
-        train_rmse.append(rmse)
-        train_q_error.append(q_error)
-        train_predictions_log.append(epoch_train_predictions_log)
-        train_true_values_log.append(epoch_train_true_values_log)
+        # Append training metrics to DataFrame
+        train_row = pd.DataFrame({
+            'epoch': [epoch + 1],
+            'loss': [epoch_avg_train_loss],
+            'mse': [mse],
+            'mae': [mae],
+            'rmse': [rmse],
+            'q_error': [q_error]
+        })
+        train_metrics_df = pd.concat([train_metrics_df, train_row], ignore_index=True)
+        
+        # Save training predictions to DataFrame
+        for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_train_predictions_log, epoch_train_true_values_log, epoch_train_predictions, epoch_train_true_values)):
+            pred_row = pd.DataFrame({
+                'epoch': [epoch + 1],
+                'batch_idx': [i],
+                'prediction_log': [pred_log],
+                'true_value_log': [true_log],
+                'prediction': [pred],
+                'true_value': [true]
+            })
+            train_predictions_df = pd.concat([train_predictions_df, pred_row], ignore_index=True)
+        
+        # Save training DataFrames to CSV using global variables
+        train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
+        train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
+        train_metrics_df.to_csv(train_metrics_csv_path, index=False)
+        train_predictions_df.to_csv(train_predictions_csv_path, index=False)
 
         # Log training metrics to wandb
         if use_wandb:
@@ -446,7 +405,7 @@ def train_model(
                 epoch_test_true_values,
                 epoch_test_predictions_log,
                 epoch_test_true_values_log,
-            ) = evaluate_model(model, data, test_loader, device)
+            ) = evaluate_model(model, data, test_loader, device, epoch, use_wandb)
 
             # Calculate test metrics
             mse = metrics.calculate_mse(epoch_test_predictions, epoch_test_true_values)
@@ -456,13 +415,34 @@ def train_model(
                 epoch_test_predictions, epoch_test_true_values
             )
 
-            test_losses.append(avg_test_loss)
-            test_mse.append(mse)
-            test_mae.append(mae)
-            test_rmse.append(rmse)
-            test_q_error.append(q_error)
-            test_predictions_log.append(epoch_test_predictions_log)
-            test_true_values_log.append(epoch_test_true_values_log)
+            # Append test metrics to DataFrame
+            test_row = pd.DataFrame({
+                'epoch': [epoch + 1],
+                'loss': [avg_test_loss],
+                'mse': [mse],
+                'mae': [mae],
+                'rmse': [rmse],
+                'q_error': [q_error]
+            })
+            test_metrics_df = pd.concat([test_metrics_df, test_row], ignore_index=True)
+            
+            # Save test predictions to DataFrame
+            for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_test_predictions_log, epoch_test_true_values_log, epoch_test_predictions, epoch_test_true_values)):
+                pred_row = pd.DataFrame({
+                    'epoch': [epoch + 1],
+                    'batch_idx': [i],
+                    'prediction_log': [pred_log],
+                    'true_value_log': [true_log],
+                    'prediction': [pred],
+                    'true_value': [true]
+                })
+                test_predictions_df = pd.concat([test_predictions_df, pred_row], ignore_index=True)
+            
+            # Save test DataFrames to CSV using global variables
+            test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
+            test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
+            test_metrics_df.to_csv(test_metrics_csv_path, index=False)
+            test_predictions_df.to_csv(test_predictions_csv_path, index=False)
 
             # Log test metrics to wandb
             if use_wandb:
@@ -523,6 +503,9 @@ def train_model(
 
         # Save checkpoint periodically
         if (epoch + 1) % config["save_every"] == 0:
+            # Get latest test loss from test DataFrame
+            latest_test_loss = test_metrics_df['loss'].iloc[-1] if len(test_metrics_df) > 0 else None
+            
             checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch+1}.pt"
             torch.save(
                 {
@@ -530,7 +513,7 @@ def train_model(
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                     "train_loss": epoch_avg_train_loss,
-                    "test_loss": test_losses[-1] if test_losses else None,
+                    "test_loss": latest_test_loss,
                     "config": config,
                 },
                 checkpoint_path,
@@ -541,127 +524,25 @@ def train_model(
 
     return {
         "best_test_loss": best_test_loss,
-        "train_losses": train_losses,
-        "train_mse": train_mse,
-        "train_mae": train_mae,
-        "train_rmse": train_rmse,
-        "train_q_error": train_q_error,
-        "train_predictions_log": train_predictions_log,
-        "train_true_values_log": train_true_values_log,
-        "test_losses": test_losses,
-        "test_mse": test_mse,
-        "test_mae": test_mae,
-        "test_rmse": test_rmse,
-        "test_q_error": test_q_error,
-        "test_predictions_log": test_predictions_log,
-        "test_true_values_log": test_true_values_log,
+        "train_losses": train_metrics_df['loss'].tolist(),
+        "train_mse": train_metrics_df['mse'].tolist(),
+        "train_mae": train_metrics_df['mae'].tolist(),
+        "train_rmse": train_metrics_df['rmse'].tolist(),
+        "train_q_error": train_metrics_df['q_error'].tolist(),
+        "test_losses": test_metrics_df['loss'].tolist(),
+        "test_mse": test_metrics_df['mse'].tolist(),
+        "test_mae": test_metrics_df['mae'].tolist(),
+        "test_rmse": test_metrics_df['rmse'].tolist(),
+        "test_q_error": test_metrics_df['q_error'].tolist(),
+        "train_metrics_df": train_metrics_df,  # Include the train metrics DataFrame
+        "test_metrics_df": test_metrics_df,   # Include the test metrics DataFrame
+        "train_predictions_df": train_predictions_df,  # Include the train predictions DataFrame
+        "test_predictions_df": test_predictions_df,   # Include the test predictions DataFrame
     }
 
 
-def post_training_gradient_analysis(model):
-    """Analyze gradient flow and model performance."""
-    logger.info("\nGradient Flow Analysis:")
-    has_grad_entity = any(
-        p.grad is not None and p.grad.abs().sum() > 0
-        for p in model.entity_model.parameters()
-    )
-    logger.info(f"Entity model has gradients: {has_grad_entity}")
-
-    has_grad_relation = any(
-        p.grad is not None and p.grad.abs().sum() > 0
-        for p in model.relation_model.parameters()
-    )
-    logger.info(f"Relation model has gradients: {has_grad_relation}")
 
 
-
-def save_training_metrics(training_results, log_dir):
-    """Save training data and metrics to CSV files."""
-    # Save prediction logs
-    pd.DataFrame(training_results["train_predictions_log"]).to_csv(
-        log_dir / "train_prediction_log.csv", index=False
-    )
-    pd.DataFrame(training_results["train_true_values_log"]).to_csv(
-        log_dir / "train_true_values_log.csv", index=False
-    )
-    pd.DataFrame(training_results["test_predictions_log"]).to_csv(
-        log_dir / "test_prediction_log.csv", index=False
-    )
-    pd.DataFrame(training_results["test_true_values_log"]).to_csv(
-        log_dir / "test_true_values_log.csv", index=False
-    )
-
-    # Prepare data for saving
-    epochs_range = list(range(1, len(training_results["train_losses"]) + 1))
-    
-
-    # Create DataFrame with training metrics
-    df = pd.DataFrame(
-        {
-            "epoch": epochs_range,
-            "train_loss": training_results["train_losses"],
-            "train_mse": training_results["train_mse"],
-            "train_mae": training_results["train_mae"],
-            "train_rmse": training_results["train_rmse"],
-            "train_q_error": training_results["train_q_error"],
-        }
-    )
-
-    # Add test metrics (aligned with evaluation epochs)
-    test_df = pd.DataFrame(
-        {
-            "epoch": epochs_range,
-            "test_loss": training_results["test_losses"],
-            "test_mse": training_results["test_mse"],
-            "test_mae": training_results["test_mae"],
-            "test_rmse": training_results["test_rmse"],
-            "test_q_error": training_results["test_q_error"],
-        }
-    )
-
-    # Merge dataframes
-    full_df = df.merge(test_df, on="epoch", how="left")
-
-    # Save to CSV
-    csv_path = log_dir / "training_curves.csv"
-    full_df.to_csv(csv_path, index=False)
-    logger.info(f"Training metrics saved to: {csv_path}")
-
-    # Display first few rows
-    logger.info("\nTraining metrics summary:")
-    logger.info(full_df.head())
-
-    return full_df
-
-
-def create_visualizations(training_results, full_df, log_dir):
-    """Create training metrics and predictions visualizations."""
-    # Training metrics visualization
-    metrics_plot_path = log_dir / "training_metrics.png"
-    fig = plotting.plot_training_metrics(
-        df=full_df,
-        figsize=(18, 10),
-        use_log_scale=False,
-        save_path=metrics_plot_path,
-        show_plot=True,
-    )
-    logger.info(f"Training metrics plot saved to: {metrics_plot_path}")
-    logger.info("Training curves and metrics plotted!")
-
-    # Predictions vs True Values visualization
-    predictions_plot_path = log_dir / "predictions_vs_true_values_all_epochs.png"
-    fig = plotting.plot_predictions_vs_true_values(
-        train_predictions_log=training_results["train_predictions_log"],
-        train_true_values_log=training_results["train_true_values_log"],
-        test_predictions_log=training_results["test_predictions_log"],
-        test_true_values_log=training_results["test_true_values_log"],
-        figsize=(16, 8),
-        max_points_per_epoch=50,
-        save_path=predictions_plot_path,
-        show_plot=True,
-    )
-    logger.info(f"Predictions vs True Values plot saved to: {predictions_plot_path}")
-    logger.info("Predictions vs True Values across all epochs plotted!")
 
 
 def print_final_summary(
@@ -684,16 +565,22 @@ def print_final_summary(
     logger.info(f"\nSaved Artifacts:")
     logger.info(f"  Run directory: {run_dir}")
     logger.info(f"  Best model: {checkpoint_dir / 'best_model.pt'}")
-    logger.info(f"  Training metrics CSV: {log_dir / 'training_curves.csv'}")
-    logger.info(f"  Training metrics plot: {log_dir / 'training_metrics.png'}")
-    logger.info(
-        f"  Predictions plot: {log_dir / 'predictions_vs_true_values_all_epochs.png'}"
-    )
+    logger.info(f"  Final model: {checkpoint_dir / 'final_model.pt'}")
+    logger.info(f"  Training metrics CSV: {log_dir / TRAIN_METRICS_FILE_NAME}")
+    logger.info(f"  Test metrics CSV: {log_dir / TEST_METRICS_FILE_NAME}")
+    logger.info(f"  Training predictions CSV: {log_dir / TRAIN_VALUES_FILE_NAME}")
+    logger.info(f"  Test predictions CSV: {log_dir / TEST_VALUES_FILE_NAME}")
     logger.info(f"  Log files: {log_dir}")
 
     logger.info("\n" + "=" * 60)
     logger.info("Training script execution completed!")
     logger.info("=" * 60)
+
+def setup_run_dir(config):
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_dir = Path(config.get("output_dir")) / f"run_{timestamp}"
+    run_dir.mkdir(parents=True, exist_ok=True)
+    return run_dir
 
 
 def main():
@@ -702,14 +589,12 @@ def main():
     args = parse_arguments()
     config = load_config(args.config)
 
-     # Merge command-line arguments with config
+    # Merge command-line arguments with config (overwrite config values with cli values if passed)
     config = merge_config_with_args(config, args)
-    
-
-    # Setup logging
     run_dir, log_dir, checkpoint_dir = setup_directories(config)
 
-    logger = setup_logging(log_dir)
+    # Setup logging
+    setup_logging(log_dir)
     logger.info("Starting training script...")
     logger.info("All imports successful!")
     
@@ -722,6 +607,7 @@ def main():
     logger.info(f"PyTorch version: {torch.__version__}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     logger.info(f"CUDA version: {torch.version.cuda}")
+
     try:
         e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
         logger.info(f"nvcc version: {e.stdout.strip()}")
@@ -747,7 +633,7 @@ def main():
 
     # Initialize Weights & Biases
     wandb_run = initialize_wandb(config, run_dir)
-    use_wandb = wandb_run is not None
+    use_wandb = wandb_run is not None and args.wandb
 
     # Load data
     data = load_dataset(config, device=device)
@@ -807,6 +693,9 @@ def main():
             "model_trainable_parameters": trainable_params,
             "model_name": model.__class__.__name__
         })
+        
+        # Watch the model for gradient and parameter tracking
+        wandb.watch(model, log="all", log_freq=100)
 
     # Train the model
     training_results = train_model(
@@ -817,16 +706,10 @@ def main():
         train_loader,
         test_loader,
         checkpoint_dir,
+        log_dir,
         device,
         use_wandb
     )
-
-    # Post-training analysis
-    post_training_gradient_analysis(model)
-
-    # Save metrics and create visualizations
-    full_df = save_training_metrics(training_results, log_dir)
-    create_visualizations(training_results, full_df, log_dir)
 
     # Print final summary
     print_final_summary(
@@ -847,18 +730,35 @@ def main():
         }
         wandb.log(final_metrics)
         
-        # Save training plots as artifacts
-        if (log_dir / "training_metrics.png").exists():
-            artifact = wandb.Artifact("training_plots", type="plots")
-            artifact.add_file(str(log_dir / "training_metrics.png"))
-            artifact.add_file(str(log_dir / "predictions_vs_true_values_all_epochs.png"))
-            wandb.log_artifact(artifact)
-        
         # Save training data
-        if (log_dir / "training_curves.csv").exists():
-            artifact = wandb.Artifact("training_data", type="dataset")
-            artifact.add_file(str(log_dir / "training_curves.csv"))
-            wandb.log_artifact(artifact)
+        artifact = wandb.Artifact("training_data", type="dataset")
+        if (log_dir / TRAIN_METRICS_FILE_NAME).exists():
+            artifact.add_file(str(log_dir / TRAIN_METRICS_FILE_NAME))
+        if (log_dir / TEST_METRICS_FILE_NAME).exists():
+            artifact.add_file(str(log_dir / TEST_METRICS_FILE_NAME))
+        if (log_dir / TRAIN_VALUES_FILE_NAME).exists():
+            artifact.add_file(str(log_dir / TRAIN_VALUES_FILE_NAME))
+        if (log_dir / TEST_VALUES_FILE_NAME).exists():
+            artifact.add_file(str(log_dir / TEST_VALUES_FILE_NAME))
+        wandb.log_artifact(artifact)
+        
+        # Save final model state as artifact
+        final_model_path = checkpoint_dir / "final_model.pt"
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "training_results": training_results,
+            "config": config,
+            "final_epoch": len(training_results['train_losses'])
+        }, final_model_path)
+        
+        final_model_artifact = wandb.Artifact(
+            name="final_model",
+            type="model",
+            description=f"Final model state after {len(training_results['train_losses'])} epochs of training"
+        )
+        final_model_artifact.add_file(str(final_model_path))
+        wandb.log_artifact(final_model_artifact)
         
         wandb.finish()
         logger.info("Weights & Biases run finished")
