@@ -233,6 +233,7 @@ def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: in
     )
 
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,  steps_per_epoch=steps_per_epoch, epochs=config["epochs"])
+    scheduler = None  # Disable scheduler for now
 
     logger.info(f"Optimizer: {optimizer.__class__.__name__}")
     logger.info(f"Learning rate: {config['learning_rate']}")
@@ -291,7 +292,8 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         # Backward pass
         loss.backward()
         optimizer.step()
-        scheduler.step()  # Step the scheduler after each batch
+        if scheduler:
+            scheduler.step()  # Step the scheduler after each batch
 
         epoch_train_loss += loss.item()
         num_train_batches += 1
