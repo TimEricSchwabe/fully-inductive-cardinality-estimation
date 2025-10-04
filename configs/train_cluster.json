@@ -12,7 +12,6 @@
     "eval_every": 1,
 
     "use_scheduler": true,
-    "scheduler_type": "onecycle",
     "scheduler_max_lr": 0.01,
 
     "seed": 42,

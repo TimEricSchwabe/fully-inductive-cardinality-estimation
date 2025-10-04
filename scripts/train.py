@@ -229,8 +229,19 @@ def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: in
         weight_decay=config["weight_decay"],
     )
 
-    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,  steps_per_epoch=steps_per_epoch, epochs=config["epochs"])
-    scheduler = None  # Disable scheduler(optimizer, config, steps_per_epoch)
+    # Initialize scheduler based on configuration
+    scheduler = None
+    if config.get("use_scheduler", False):
+        max_lr = config.get("scheduler_max_lr", 0.01)
+        scheduler = torch.optim.lr_scheduler.OneCycleLR(
+            optimizer, 
+            max_lr=max_lr,  
+            steps_per_epoch=steps_per_epoch, 
+            epochs=config["epochs"]
+        )
+        logger.info(f"Scheduler: OneCycleLR with max_lr={max_lr}")
+    else:
+        logger.info("Scheduler: Disabled")
 
     logger.info(f"Optimizer: {optimizer.__class__.__name__}")
     logger.info(f"Learning rate: {config['learning_rate']}")

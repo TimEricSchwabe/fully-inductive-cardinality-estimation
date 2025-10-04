@@ -149,18 +149,7 @@ def parse_arguments():
         help="Device to use for training (auto, cpu, cuda, mps).",
     )
     
-    # # Scheduler parameters
-    # parser.add_argument(
-    #     "--use_scheduler",
-    #     action="store_true",
-    #     help="Enable learning rate scheduler.",
-    # )
-    parser.add_argument(
-        "--scheduler_type",
-        type=str,
-        choices=["onecycle", "cosine", "step"],
-        help="Type of learning rate scheduler to use.",
-    )
+    # Scheduler parameters (only max_lr can be overridden via CLI)
     parser.add_argument(
         "--scheduler_max_lr",
         type=float,
