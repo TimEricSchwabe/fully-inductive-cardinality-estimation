@@ -1,9 +1,9 @@
  {
     "data_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/swdf",
     "queries_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/swdf_queries",
-    "epochs": 100,
-    "batch_size": 16,
-    "learning_rate": 1e-5,
+    "epochs": 50,
+    "batch_size": 8,
+    "learning_rate": 1e-3,
     "weight_decay": 0.0,
     "train_ratio": 0.8,
 
@@ -13,5 +13,5 @@
 
     "seed": 42,
     "device": "auto",
-    "DEBUG_num_queries": -1
+    "DEBUG_num_queries": 5000
 }

@@ -12,6 +12,8 @@ import pandas as pd
 from tqdm import tqdm
 import subprocess
 import wandb
+from dataclasses import dataclass
+from typing import Optional
 
 # Import project modules
 from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device,initialize_wandb
@@ -30,6 +32,36 @@ TEST_METRICS_FILE_NAME = "test_training_metrics.csv"
 TRAIN_VALUES_FILE_NAME = "train_values.csv"
 TEST_VALUES_FILE_NAME = "test_values.csv"
 
+
+@dataclass
+class TrainingContext:
+    """Container for training configuration and environment."""
+    config: dict
+    device: torch.device
+    run_dir: Path
+    log_dir: Path
+    checkpoint_dir: Path
+    use_wandb: bool = False
+    current_epoch: int = 0
+
+
+@dataclass
+class ModelComponents:
+    """Container for model, optimizer, and scheduler."""
+    model: torch.nn.Module
+    optimizer: torch.optim.Optimizer
+    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
+
+
+@dataclass
+class DataComponents:
+    """Container for data and data loaders."""
+    data: torch.Tensor
+    train_loader: DataLoader
+    test_loader: DataLoader
+    train_queries: list
+    test_queries: list
+
 # TODO: logging
 def setup_directories(config):
     """Setup project directories, timestamps, and logging."""
@@ -45,8 +77,11 @@ def setup_directories(config):
     return run_dir, log_dir, checkpoint_dir
 
 
-def load_dataset(config, device):
+def load_dataset(context: TrainingContext):
     """Load the graph dataset and verify its properties."""
+    config = context.config
+    device = context.device
+    
     data_root = Path(config["data_root"])
     queries_root = Path(config["queries_root"])
 
@@ -81,8 +116,10 @@ def load_dataset(config, device):
     return graph
 
 
-def load_occurrences(config):
+def load_occurrences(context: TrainingContext):
     """Load entity and relation mappings and occurrence data."""
+    config = context.config
+    
     logger.info("Loading occurrences...")
     data_root = Path(config["data_root"]) # TODO: check if this is necessary
     entity_occurrences_path = data_root / "processed/swdf_entity_occurrences.json"
@@ -109,14 +146,16 @@ def load_occurrences(config):
     logger.info("All imports successful!")
 
 def load_queries(
-    config,
+    context: TrainingContext,
     entity_occurrences,
     relation_occurrences,
     entity_mapping,
     relation_mapping,
-    device,
 ):
     """Load queries and create train/test split."""
+    config = context.config
+    device = context.device
+    
     logger.info("Loading queries...")
     queries_root = Path(config["queries_root"])
     if not queries_root.exists():
@@ -143,7 +182,9 @@ def load_queries(
     logger.info(f"Queries loaded. Total queries: {len(queries)}")
     return queries
 
-def train_test_split(config, queries):
+def train_test_split(context: TrainingContext, queries):
+    config = context.config
+    
     # Process and filter queries
     queries_list = list(queries)
     random.shuffle(queries_list)
@@ -164,8 +205,11 @@ def train_test_split(config, queries):
     return train_queries, test_queries
 
 
-def initialize_model_and_optimizer(config, device):
+def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: int) -> ModelComponents:
     """Initialize the FICE model and optimizer."""
+    config = context.config
+    device = context.device
+    
     logger.info("Initializing model...")
     model = FICE()
     model.to(device)
@@ -188,11 +232,13 @@ def initialize_model_and_optimizer(config, device):
         weight_decay=config["weight_decay"],
     )
 
+    scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,  steps_per_epoch=steps_per_epoch, epochs=config["epochs"])
+
     logger.info(f"Optimizer: {optimizer.__class__.__name__}")
     logger.info(f"Learning rate: {config['learning_rate']}")
     logger.info(f"Weight decay: {config['weight_decay']}")
 
-    return model, optimizer
+    return ModelComponents(model=model, optimizer=optimizer, scheduler=scheduler)
 
 
 def tensor_to_numpy(tensor):
@@ -200,8 +246,20 @@ def tensor_to_numpy(tensor):
     return tensor.detach().cpu().numpy().tolist()
 
 
-def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config, use_wandb=False):
+def train_epoch(context: TrainingContext, model_components: ModelComponents, data_components: DataComponents):
     """Train the model for one epoch."""
+    # Extract components for easier access
+    config = context.config
+    device = context.device
+    use_wandb = context.use_wandb
+    epoch_num = context.current_epoch
+    
+    model = model_components.model
+    optimizer = model_components.optimizer
+    scheduler = model_components.scheduler
+    
+    data = data_components.data
+    train_loader = data_components.train_loader
     model.train()
     epoch_train_loss = 0.0
     num_train_batches = 0
@@ -210,7 +268,6 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
     epoch_train_true_values = []
     epoch_train_predictions_log = []
     epoch_train_true_values_log = []
-
     progress_bar = tqdm(
         train_loader, desc=f"Epoch {epoch_num+1}/{config['epochs']}", leave=False
     )
@@ -234,6 +291,7 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
         # Backward pass
         loss.backward()
         optimizer.step()
+        scheduler.step()  # Step the scheduler after each batch
 
         epoch_train_loss += loss.item()
         num_train_batches += 1
@@ -255,8 +313,10 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
         
         # Log batch-level metrics to wandb if enabled
         if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
+            current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
             wandb.log({
-                f"train_loss_epoch_{epoch_num + 1}": loss.item(),
+                f"train_loss_epoch_{context.current_epoch + 1}": loss.item(),
+                f"learning_rate_epoch_{context.current_epoch + 1}": current_lr,
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
@@ -270,8 +330,16 @@ def train_epoch(model, data, train_loader, optimizer, device, epoch_num, config,
     )
 
 
-def evaluate_model(model, data, test_loader, device, epoch, use_wandb=False):
+def evaluate_model(context: TrainingContext, model_components: ModelComponents, data_components: DataComponents):
     """Evaluate the model on test data."""
+    # Extract components for easier access
+    device = context.device
+    use_wandb = context.use_wandb
+    epoch = context.current_epoch
+    
+    model = model_components.model
+    data = data_components.data
+    test_loader = data_components.test_loader
     model.eval()
     epoch_test_loss = 0.0
     epoch_test_predictions = []
@@ -305,7 +373,7 @@ def evaluate_model(model, data, test_loader, device, epoch, use_wandb=False):
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
-                    f"test_loss_epoch_{epoch + 1}": loss.item(),
+                    f"test_loss_epoch_{context.current_epoch + 1}": loss.item(),
                 })
 
     avg_test_loss = epoch_test_loss / len(test_loader)
@@ -320,9 +388,26 @@ def evaluate_model(model, data, test_loader, device, epoch, use_wandb=False):
 
 
 def train_model(
-    config, model, optimizer, data, train_loader, test_loader, checkpoint_dir, log_dir, device, use_wandb=False
+    context: TrainingContext,
+    model_components: ModelComponents,
+    data_components: DataComponents
 ):
     """Main training loop with progress tracking and evaluation."""
+    # Extract components for easier access
+    config = context.config
+    device = context.device
+    log_dir = context.log_dir
+    checkpoint_dir = context.checkpoint_dir
+    use_wandb = context.use_wandb
+    
+    model = model_components.model
+    optimizer = model_components.optimizer
+    scheduler = model_components.scheduler
+    
+    data = data_components.data
+    train_loader = data_components.train_loader
+    test_loader = data_components.test_loader
+    
     best_test_loss = float("inf")
 
     # Initialize separate DataFrames for training and test metrics tracking
@@ -340,6 +425,8 @@ def train_model(
 
     # Training loop
     for epoch in range(config["epochs"]):
+        context.current_epoch = epoch
+        
         # Training phase
         (
             epoch_avg_train_loss,
@@ -347,7 +434,7 @@ def train_model(
             epoch_train_true_values,
             epoch_train_predictions_log,
             epoch_train_true_values_log,
-        ) = train_epoch(model, data, train_loader, optimizer, device, epoch, config, use_wandb)
+        ) = train_epoch(context, model_components, data_components)
 
         # Calculate training metrics
         mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
@@ -359,7 +446,7 @@ def train_model(
 
         # Append training metrics to DataFrame
         train_row = pd.DataFrame({
-            'epoch': [epoch + 1],
+            'epoch': [context.current_epoch + 1],
             'loss': [epoch_avg_train_loss],
             'mse': [mse],
             'mae': [mae],
@@ -371,7 +458,7 @@ def train_model(
         # Save training predictions to DataFrame
         for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_train_predictions_log, epoch_train_true_values_log, epoch_train_predictions, epoch_train_true_values)):
             pred_row = pd.DataFrame({
-                'epoch': [epoch + 1],
+                'epoch': [context.current_epoch + 1],
                 'batch_idx': [i],
                 'prediction_log': [pred_log],
                 'true_value_log': [true_log],
@@ -388,13 +475,14 @@ def train_model(
 
         # Log training metrics to wandb
         if use_wandb:
+            current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
             wandb.log({
                 "train_loss": epoch_avg_train_loss,
                 "train_mse": mse,
                 "train_mae": mae,
                 "train_rmse": rmse,
                 "train_q_error": q_error,
-                "epoch": epoch + 1
+                "epoch": context.current_epoch + 1
             })
 
         # Evaluation phase
@@ -405,7 +493,7 @@ def train_model(
                 epoch_test_true_values,
                 epoch_test_predictions_log,
                 epoch_test_true_values_log,
-            ) = evaluate_model(model, data, test_loader, device, epoch, use_wandb)
+            ) = evaluate_model(context, model_components, data_components)
 
             # Calculate test metrics
             mse = metrics.calculate_mse(epoch_test_predictions, epoch_test_true_values)
@@ -417,7 +505,7 @@ def train_model(
 
             # Append test metrics to DataFrame
             test_row = pd.DataFrame({
-                'epoch': [epoch + 1],
+                'epoch': [context.current_epoch + 1],
                 'loss': [avg_test_loss],
                 'mse': [mse],
                 'mae': [mae],
@@ -429,7 +517,7 @@ def train_model(
             # Save test predictions to DataFrame
             for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_test_predictions_log, epoch_test_true_values_log, epoch_test_predictions, epoch_test_true_values)):
                 pred_row = pd.DataFrame({
-                    'epoch': [epoch + 1],
+                    'epoch': [context.current_epoch + 1],
                     'batch_idx': [i],
                     'prediction_log': [pred_log],
                     'true_value_log': [true_log],
@@ -452,12 +540,12 @@ def train_model(
                     "test_mae": mae,
                     "test_rmse": rmse,
                     "test_q_error": q_error,
-                    "epoch": epoch + 1
+                    "epoch": context.current_epoch + 1
                 })
 
             # Log metrics
             logger.info(
-                f"Epoch {epoch+1}/{config['epochs']} - "
+                f"Epoch {context.current_epoch+1}/{config['epochs']} - "
                 f"Train Loss: {epoch_avg_train_loss:.6f}, "
                 f"Test Loss: {avg_test_loss:.6f}"
             )
@@ -468,9 +556,10 @@ def train_model(
                 best_model_path = checkpoint_dir / "best_model.pt"
                 torch.save(
                     {
-                        "epoch": epoch,
+                        "epoch": context.current_epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
+                        "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                         "train_loss": epoch_avg_train_loss,
                         "test_loss": avg_test_loss,
                         "config": config,
@@ -486,7 +575,7 @@ def train_model(
                     artifact = wandb.Artifact(
                         name="best_model",
                         type="model",
-                        description=f"Best model checkpoint at epoch {epoch+1} with test loss {best_test_loss:.6f}"
+                        description=f"Best model checkpoint at epoch {context.current_epoch+1} with test loss {best_test_loss:.6f}"
                     )
                     artifact.add_file(str(best_model_path))
                     wandb.log_artifact(artifact)
@@ -494,11 +583,11 @@ def train_model(
                     # Also log the best test loss metric
                     wandb.log({
                         "best_test_loss": best_test_loss,
-                        "best_model_epoch": epoch + 1
+                        "best_model_epoch": context.current_epoch + 1
                     })
         else:
             logger.info(
-                f"Epoch {epoch+1}/{config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
+                f"Epoch {context.current_epoch+1}/{config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
             )
 
         # Save checkpoint periodically
@@ -506,12 +595,13 @@ def train_model(
             # Get latest test loss from test DataFrame
             latest_test_loss = test_metrics_df['loss'].iloc[-1] if len(test_metrics_df) > 0 else None
             
-            checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{epoch+1}.pt"
+            checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{context.current_epoch+1}.pt"
             torch.save(
                 {
-                    "epoch": epoch,
+                    "epoch": context.current_epoch,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
+                    "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                     "train_loss": epoch_avg_train_loss,
                     "test_loss": latest_test_loss,
                     "config": config,
@@ -635,21 +725,30 @@ def main():
     wandb_run = initialize_wandb(config, run_dir)
     use_wandb = wandb_run is not None and args.wandb
 
+    # Create training context
+    context = TrainingContext(
+        config=config,
+        device=device,
+        run_dir=run_dir,
+        log_dir=log_dir,
+        checkpoint_dir=checkpoint_dir,
+        use_wandb=use_wandb
+    )
+
     # Load data
-    data = load_dataset(config, device=device)
+    data = load_dataset(context)
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
-        load_occurrences(config)
+        load_occurrences(context)
     )
     queries = load_queries(
-        config,
+        context,
         entity_occurrences,
         relation_occurrences,
         entity_mapping,
         relation_mapping,
-        device,
     )
 
-    train_queries, test_queries = train_test_split(config, queries)
+    train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
     logger.info(f"  Total queries: {len(queries)}")
     logger.info(
@@ -679,37 +778,33 @@ def main():
         shuffle=False,
     )
 
-
+    # Create data components
+    data_components = DataComponents(
+        data=data,
+        train_loader=train_loader,
+        test_loader=test_loader,
+        train_queries=train_queries,
+        test_queries=test_queries
+    )
 
     # Initialize model and optimizer
-    model, optimizer = initialize_model_and_optimizer(config, device)
+    model_components = initialize_model_and_optimizer(context, steps_per_epoch=len(train_loader))
 
     # Log model information to wandb
     if use_wandb:
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        total_params = sum(p.numel() for p in model_components.model.parameters())
+        trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
         wandb.log({
             "model_total_parameters": total_params,
             "model_trainable_parameters": trainable_params,
-            "model_name": model.__class__.__name__
+            "model_name": model_components.model.__class__.__name__
         })
         
         # Watch the model for gradient and parameter tracking
-        wandb.watch(model, log="all", log_freq=100)
+        wandb.watch(model_components.model, log="all", log_freq=100)
 
     # Train the model
-    training_results = train_model(
-        config,
-        model,
-        optimizer,
-        data,
-        train_loader,
-        test_loader,
-        checkpoint_dir,
-        log_dir,
-        device,
-        use_wandb
-    )
+    training_results = train_model(context, model_components, data_components)
 
     # Print final summary
     print_final_summary(
@@ -745,8 +840,9 @@ def main():
         # Save final model state as artifact
         final_model_path = checkpoint_dir / "final_model.pt"
         torch.save({
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
+            "model_state_dict": model_components.model.state_dict(),
+            "optimizer_state_dict": model_components.optimizer.state_dict(),
+            "scheduler_state_dict": model_components.scheduler.state_dict() if model_components.scheduler else None,
             "training_results": training_results,
             "config": config,
             "final_epoch": len(training_results['train_losses'])
