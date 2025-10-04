@@ -28,29 +28,14 @@ def initialize_wandb(config, run_dir):
     """Initialize Weights & Biases logging if enabled."""
     # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
     wandb_enabled = config.get('wandb', WANDB_CONFIG['enabled'])
+
     if not wandb_enabled:
         logger.info("Weights & Biases logging is disabled")
         return None
 
     # Prepare training config for wandb
-    training_config = {
-        "epochs": config["epochs"],
-        "batch_size": config["batch_size"],
-        "learning_rate": config["learning_rate"],
-        "weight_decay": config["weight_decay"],
-        "train_ratio": config["train_ratio"],
-        "seed": config["seed"],
-        "device": config["device"],
-        "data_root": config["data_root"],
-        "queries_root": config["queries_root"],
-        "eval_every": config["eval_every"],
-        "save_every": config["save_every"],
-    }
-    
-    # Add debug config if present
-    if config.get("DEBUG_num_queries", -1) > 0:
-        training_config["DEBUG_num_queries"] = config["DEBUG_num_queries"]
-    
+    training_config = config.copy()
+
     os.environ["WANDB_DIR"] = str(run_dir)
     logger.info(f"Weights & Biases dir: {run_dir}")
     # Initialize wandb using WANDB_CONFIG defaults
@@ -162,6 +147,24 @@ def parse_arguments():
         type=str,
         choices=["auto", "cpu", "cuda", "mps"],
         help="Device to use for training (auto, cpu, cuda, mps).",
+    )
+    
+    # # Scheduler parameters
+    # parser.add_argument(
+    #     "--use_scheduler",
+    #     action="store_true",
+    #     help="Enable learning rate scheduler.",
+    # )
+    parser.add_argument(
+        "--scheduler_type",
+        type=str,
+        choices=["onecycle", "cosine", "step"],
+        help="Type of learning rate scheduler to use.",
+    )
+    parser.add_argument(
+        "--scheduler_max_lr",
+        type=float,
+        help="Maximum learning rate for OneCycleLR scheduler.",
     )
     
     # Weights & Biases flag

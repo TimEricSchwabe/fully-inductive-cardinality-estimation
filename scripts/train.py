@@ -2,10 +2,7 @@ import torch
 import json
 import random
 import numpy as np
-import os
-import sys
 import logging
-import argparse
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -233,7 +230,7 @@ def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: in
     )
 
     scheduler = torch.optim.lr_scheduler.OneCycleLR(optimizer, max_lr=0.01,  steps_per_epoch=steps_per_epoch, epochs=config["epochs"])
-    scheduler = None  # Disable scheduler for now
+    scheduler = None  # Disable scheduler(optimizer, config, steps_per_epoch)
 
     logger.info(f"Optimizer: {optimizer.__class__.__name__}")
     logger.info(f"Learning rate: {config['learning_rate']}")
