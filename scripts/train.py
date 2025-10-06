@@ -377,8 +377,7 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
         # Compute loss
-        # loss = F.l1_loss(log_cardinality_pred, log_true_cardinality)
-        loss = metrics.torch_q_error_loss(log_cardinality_pred, log_true_cardinality)
+        loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
         # Backward pass
         loss.backward()
@@ -462,8 +461,7 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             epoch_test_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
             # Compute loss
-            # loss = F.l1_loss(log_cardinality_pred, log_true_cardinality)
-            loss = metrics.torch_q_error_loss(log_cardinality_pred, log_true_cardinality)
+            loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
             epoch_test_loss += loss.item()
 
             # Store predictions for analysis
