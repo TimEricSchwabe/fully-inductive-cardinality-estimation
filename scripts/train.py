@@ -830,8 +830,6 @@ def main():
     set_random_seeds(processed_seed)
     logger.info(f"Random seed set to: {processed_seed}")
 
-    exit(1)
-
     # Setup device
     device = get_device(config["device"])
     logger.info(f"Using device: {device}")
