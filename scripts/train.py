@@ -403,10 +403,8 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         
         # Log batch-level metrics to wandb if enabled
         if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
-            current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
             wandb.log({
                 f"train_loss_epoch_{context.current_epoch + 1}": loss.item(),
-                f"learning_rate_epoch_{context.current_epoch + 1}": current_lr,
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
@@ -594,6 +592,7 @@ def train_model(
                 "train_mae": mae,
                 "train_rmse": rmse,
                 "train_q_error": q_error,
+                "learning_rate": current_lr,
                 "epoch": context.current_epoch + 1
             })
 
