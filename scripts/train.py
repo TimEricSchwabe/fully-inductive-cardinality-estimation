@@ -16,7 +16,7 @@ import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
 # Import project modules
-from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device,initialize_wandb
+from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device, initialize_wandb, process_seed
 from utils.config import load_config
 import utils.metrics as metrics
 from fice import datasets
@@ -826,8 +826,11 @@ def main():
         logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
-    # set_random_seeds(config["seed"])
-    # logger.info(f"Random seed: {config['seed']}")
+    processed_seed = process_seed(config["seed"])
+    set_random_seeds(processed_seed)
+    logger.info(f"Random seed set to: {processed_seed}")
+
+    exit(1)
 
     # Setup device
     device = get_device(config["device"])

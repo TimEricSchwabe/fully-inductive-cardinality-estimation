@@ -139,8 +139,8 @@ def parse_arguments():
     # System
     parser.add_argument(
         "--seed",
-        type=int,
-        help="Random seed for reproducibility.",
+        type=str,
+        help="Random seed for reproducibility. Use integer for fixed seed, 'random' for random seed.",
     )
     parser.add_argument(
         "--device",
@@ -223,8 +223,59 @@ def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
     root.addHandler(console_handler)
 
 
+def process_seed(seed_value):
+    """
+    Process seed value from config or command line arguments.
+    
+    Args:
+        seed_value: Can be int, str, or None
+        
+    Returns:
+        int: The processed seed value
+        
+    Logic:
+        - If seed_value is "random" or "Random": generate a random seed
+        - If seed_value is a string representing an integer: convert to int
+        - If seed_value is None or "None": generate a random seed
+        - If seed_value is already an int: use as is
+    """
+    if seed_value is None or seed_value == "None":
+        # Generate random seed
+        processed_seed = random.randint(0, 2**32 - 1)
+        logger.info(f"No seed specified, using random seed: {processed_seed}")
+        return processed_seed
+    
+    if isinstance(seed_value, str):
+        if seed_value.lower() == "random":
+            # Generate random seed
+            processed_seed = random.randint(0, 2**32 - 1)
+            logger.info(f"Random seed requested, using: {processed_seed}")
+            return processed_seed
+        else:
+            try:
+                # Try to convert string to integer
+                processed_seed = int(seed_value)
+                logger.info(f"Using seed from string: {processed_seed}")
+                return processed_seed
+            except ValueError:
+                logger.warning(f"Invalid seed value '{seed_value}', using random seed instead")
+                processed_seed = random.randint(0, 2**32 - 1)
+                logger.info(f"Using random seed: {processed_seed}")
+                return processed_seed
+    
+    if isinstance(seed_value, int):
+        logger.info(f"Using specified seed: {seed_value}")
+        return seed_value
+    
+    # Fallback to random seed
+    processed_seed = random.randint(0, 2**32 - 1)
+    logger.warning(f"Unexpected seed type '{type(seed_value)}', using random seed: {processed_seed}")
+    return processed_seed
+
+
 def set_random_seeds(seed: int = 42) -> None:
     """Set random seeds for reproducibility."""
+    seed = seed if seed is not None else random.randint(0, 2**32 - 1)
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
