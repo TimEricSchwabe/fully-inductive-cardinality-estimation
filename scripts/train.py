@@ -382,6 +382,9 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         # Backward pass
         loss.backward()
         optimizer.step()
+        # Step scheduler once per epoch (for OneCycleLR)
+        if scheduler:
+            scheduler.step()
 
         epoch_train_loss += loss.item()
         num_train_batches += 1
@@ -408,10 +411,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
-
-    # Step scheduler once per epoch (for OneCycleLR)
-    if scheduler:
-        scheduler.step()
 
     # Log scatter plot for training predictions vs true values
     log_predictions_scatter_plot(
