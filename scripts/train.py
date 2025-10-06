@@ -326,7 +326,6 @@ def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, us
         wandb.log({
             f"{split_name}_predictions_scatter_epoch_{epoch}": wandb.Image(fig),
         })
-        print("ssdlkfjsldfjldskfj;lkdsjfl;kasdjf;kaljf;lksdjf;lksjkdfjas;lkfjs;alkdfjds;klajfa;ldksjf;lkasdjf;lajks")
         
         # Close the figure to free memory
         plt.close(fig)
