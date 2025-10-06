@@ -143,7 +143,6 @@ def load_occurrences(context: TrainingContext):
     logger.info(f"Relation mapping size: {len(relation_mapping)}")
 
     return entity_occurrences, relation_occurrences, entity_mapping, relation_mapping
-    logger.info("All imports successful!")
 
 def load_queries(
     context: TrainingContext,
@@ -372,25 +371,23 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         log_cardinality_pred = model(data=data, batch=query_batch)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
 
-        log_true_cardinality = torch.log(query_batch.y.to(torch.float32).to(device))
+        log_true_cardinality = torch.log1p(query_batch.y.to(torch.float32).to(device))
 
         epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
         epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
         # Compute loss
-        loss = F.mse_loss(log_cardinality_pred, log_true_cardinality).to(device)
+        loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
         # Backward pass
         loss.backward()
         optimizer.step()
-        if scheduler:
-            scheduler.step()  # Step the scheduler after each batch
 
         epoch_train_loss += loss.item()
         num_train_batches += 1
 
         # Store predictions for analysis
-        prediction = torch.exp(log_cardinality_pred)
+        prediction = torch.expm1(log_cardinality_pred)
         true_value = query_batch.y.to(torch.float32)
 
         epoch_train_predictions.extend(tensor_to_numpy(prediction))
@@ -413,6 +410,10 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
+
+    # Step scheduler once per epoch (for OneCycleLR)
+    if scheduler:
+        scheduler.step()
 
     # Log scatter plot for training predictions vs true values
     log_predictions_scatter_plot(
@@ -456,8 +457,8 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             query_batch = query_batch.to(device)
 
             log_cardinality_pred = model(data=data, batch=query_batch)
-            log_cardinality_pred = log_cardinality_pred.to(torch.float32)
-            log_true_cardinality = torch.log(query_batch.y.to(torch.float32))
+            log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
+            log_true_cardinality = torch.log1p(query_batch.y.to(torch.float32).to(device))
 
             epoch_test_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
             epoch_test_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
@@ -467,7 +468,7 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             epoch_test_loss += loss.item()
 
             # Store predictions for analysis
-            prediction = torch.exp(log_cardinality_pred)
+            prediction = torch.expm1(log_cardinality_pred)
             true_value = query_batch.y.to(torch.float32)
 
             epoch_test_predictions.extend(tensor_to_numpy(prediction))
@@ -521,15 +522,13 @@ def train_model(
     
     best_test_loss = float("inf")
 
-    # Initialize separate DataFrames for training and test metrics tracking
-    train_metrics_df = pd.DataFrame(columns=['epoch', 'loss', 'mse', 'mae', 'rmse', 'q_error'])
-    test_metrics_df = pd.DataFrame(columns=['epoch', 'loss', 'mse', 'mae', 'rmse', 'q_error'])
-    
-    # Initialize DataFrames for predictions tracking
-    train_predictions_df = pd.DataFrame(columns=['epoch', 'batch_idx', 'prediction_log', 'true_value_log', 'prediction', 'true_value'])
-    test_predictions_df = pd.DataFrame(columns=['epoch', 'batch_idx', 'prediction_log', 'true_value_log', 'prediction', 'true_value'])
+    # Initialize lists for efficient data accumulation (avoid repeated DataFrame concatenation)
+    train_metrics_data = []
+    test_metrics_data = []
+    train_predictions_data = []
+    test_predictions_data = []
 
-    logger.info("Separate DataFrames for train/test metrics and predictions tracking initialized!")
+    logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
 
     
@@ -555,34 +554,36 @@ def train_model(
             epoch_train_predictions, epoch_train_true_values
         )
 
-        # Append training metrics to DataFrame
-        train_row = pd.DataFrame({
-            'epoch': [context.current_epoch + 1],
-            'loss': [epoch_avg_train_loss],
-            'mse': [mse],
-            'mae': [mae],
-            'rmse': [rmse],
-            'q_error': [q_error]
+        # Append training metrics to list (much more efficient than DataFrame concatenation)
+        train_metrics_data.append({
+            'epoch': context.current_epoch + 1,
+            'loss': epoch_avg_train_loss,
+            'mse': mse,
+            'mae': mae,
+            'rmse': rmse,
+            'q_error': q_error
         })
-        train_metrics_df = pd.concat([train_metrics_df, train_row], ignore_index=True)
         
-        # Save training predictions to DataFrame
+        # Save training predictions to list
         for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_train_predictions_log, epoch_train_true_values_log, epoch_train_predictions, epoch_train_true_values)):
-            pred_row = pd.DataFrame({
-                'epoch': [context.current_epoch + 1],
-                'batch_idx': [i],
-                'prediction_log': [pred_log],
-                'true_value_log': [true_log],
-                'prediction': [pred],
-                'true_value': [true]
+            train_predictions_data.append({
+                'epoch': context.current_epoch + 1,
+                'batch_idx': i,
+                'prediction_log': pred_log,
+                'true_value_log': true_log,
+                'prediction': pred,
+                'true_value': true
             })
-            train_predictions_df = pd.concat([train_predictions_df, pred_row], ignore_index=True)
         
-        # Save training DataFrames to CSV using global variables
-        train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
-        train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
-        train_metrics_df.to_csv(train_metrics_csv_path, index=False)
-        train_predictions_df.to_csv(train_predictions_csv_path, index=False)
+        # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
+        if (context.current_epoch + 1) % 10 == 0 or (context.current_epoch + 1) == config['epochs']:
+            train_metrics_df = pd.DataFrame(train_metrics_data)
+            train_predictions_df = pd.DataFrame(train_predictions_data)
+            
+            train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
+            train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
+            train_metrics_df.to_csv(train_metrics_csv_path, index=False)
+            train_predictions_df.to_csv(train_predictions_csv_path, index=False)
 
         # Log training metrics to wandb
         if use_wandb:
@@ -614,34 +615,36 @@ def train_model(
                 epoch_test_predictions, epoch_test_true_values
             )
 
-            # Append test metrics to DataFrame
-            test_row = pd.DataFrame({
-                'epoch': [context.current_epoch + 1],
-                'loss': [avg_test_loss],
-                'mse': [mse],
-                'mae': [mae],
-                'rmse': [rmse],
-                'q_error': [q_error]
+            # Append test metrics to list (much more efficient than DataFrame concatenation)
+            test_metrics_data.append({
+                'epoch': context.current_epoch + 1,
+                'loss': avg_test_loss,
+                'mse': mse,
+                'mae': mae,
+                'rmse': rmse,
+                'q_error': q_error
             })
-            test_metrics_df = pd.concat([test_metrics_df, test_row], ignore_index=True)
             
-            # Save test predictions to DataFrame
+            # Save test predictions to list
             for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_test_predictions_log, epoch_test_true_values_log, epoch_test_predictions, epoch_test_true_values)):
-                pred_row = pd.DataFrame({
-                    'epoch': [context.current_epoch + 1],
-                    'batch_idx': [i],
-                    'prediction_log': [pred_log],
-                    'true_value_log': [true_log],
-                    'prediction': [pred],
-                    'true_value': [true]
+                test_predictions_data.append({
+                    'epoch': context.current_epoch + 1,
+                    'batch_idx': i,
+                    'prediction_log': pred_log,
+                    'true_value_log': true_log,
+                    'prediction': pred,
+                    'true_value': true
                 })
-                test_predictions_df = pd.concat([test_predictions_df, pred_row], ignore_index=True)
             
-            # Save test DataFrames to CSV using global variables
-            test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
-            test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
-            test_metrics_df.to_csv(test_metrics_csv_path, index=False)
-            test_predictions_df.to_csv(test_predictions_csv_path, index=False)
+            # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
+            if (context.current_epoch + 1) % 10 == 0 or (context.current_epoch + 1) == config['epochs']:
+                test_metrics_df = pd.DataFrame(test_metrics_data)
+                test_predictions_df = pd.DataFrame(test_predictions_data)
+                
+                test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
+                test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
+                test_metrics_df.to_csv(test_metrics_csv_path, index=False)
+                test_predictions_df.to_csv(test_predictions_csv_path, index=False)
 
             # Log test metrics to wandb
             if use_wandb:
@@ -703,8 +706,8 @@ def train_model(
 
         # Save checkpoint periodically
         if (epoch + 1) % config["save_every"] == 0:
-            # Get latest test loss from test DataFrame
-            latest_test_loss = test_metrics_df['loss'].iloc[-1] if len(test_metrics_df) > 0 else None
+            # Get latest test loss from test data list
+            latest_test_loss = test_metrics_data[-1]['loss'] if len(test_metrics_data) > 0 else None
             
             checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{context.current_epoch+1}.pt"
             torch.save(
@@ -723,22 +726,39 @@ def train_model(
 
     logger.info("Training completed!")
 
+    # Create final DataFrames from accumulated data
+    final_train_metrics_df = pd.DataFrame(train_metrics_data)
+    final_test_metrics_df = pd.DataFrame(test_metrics_data)
+    final_train_predictions_df = pd.DataFrame(train_predictions_data)
+    final_test_predictions_df = pd.DataFrame(test_predictions_data)
+    
+    # Save final DataFrames to CSV
+    train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
+    train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
+    test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
+    test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
+    
+    final_train_metrics_df.to_csv(train_metrics_csv_path, index=False)
+    final_train_predictions_df.to_csv(train_predictions_csv_path, index=False)
+    final_test_metrics_df.to_csv(test_metrics_csv_path, index=False)
+    final_test_predictions_df.to_csv(test_predictions_csv_path, index=False)
+
     return {
         "best_test_loss": best_test_loss,
-        "train_losses": train_metrics_df['loss'].tolist(),
-        "train_mse": train_metrics_df['mse'].tolist(),
-        "train_mae": train_metrics_df['mae'].tolist(),
-        "train_rmse": train_metrics_df['rmse'].tolist(),
-        "train_q_error": train_metrics_df['q_error'].tolist(),
-        "test_losses": test_metrics_df['loss'].tolist(),
-        "test_mse": test_metrics_df['mse'].tolist(),
-        "test_mae": test_metrics_df['mae'].tolist(),
-        "test_rmse": test_metrics_df['rmse'].tolist(),
-        "test_q_error": test_metrics_df['q_error'].tolist(),
-        "train_metrics_df": train_metrics_df,  # Include the train metrics DataFrame
-        "test_metrics_df": test_metrics_df,   # Include the test metrics DataFrame
-        "train_predictions_df": train_predictions_df,  # Include the train predictions DataFrame
-        "test_predictions_df": test_predictions_df,   # Include the test predictions DataFrame
+        "train_losses": final_train_metrics_df['loss'].tolist() if len(final_train_metrics_df) > 0 else [],
+        "train_mse": final_train_metrics_df['mse'].tolist() if len(final_train_metrics_df) > 0 else [],
+        "train_mae": final_train_metrics_df['mae'].tolist() if len(final_train_metrics_df) > 0 else [],
+        "train_rmse": final_train_metrics_df['rmse'].tolist() if len(final_train_metrics_df) > 0 else [],
+        "train_q_error": final_train_metrics_df['q_error'].tolist() if len(final_train_metrics_df) > 0 else [],
+        "test_losses": final_test_metrics_df['loss'].tolist() if len(final_test_metrics_df) > 0 else [],
+        "test_mse": final_test_metrics_df['mse'].tolist() if len(final_test_metrics_df) > 0 else [],
+        "test_mae": final_test_metrics_df['mae'].tolist() if len(final_test_metrics_df) > 0 else [],
+        "test_rmse": final_test_metrics_df['rmse'].tolist() if len(final_test_metrics_df) > 0 else [],
+        "test_q_error": final_test_metrics_df['q_error'].tolist() if len(final_test_metrics_df) > 0 else [],
+        "train_metrics_df": final_train_metrics_df,
+        "test_metrics_df": final_test_metrics_df,
+        "train_predictions_df": final_train_predictions_df,
+        "test_predictions_df": final_test_predictions_df,
     }
 
 
