@@ -16,6 +16,7 @@ data/*
 data/*/*
 output/
 *.egg-info/
+files/
 
 # …but unignore any raw folder and its contents
 !data/*/raw/

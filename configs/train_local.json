@@ -1,7 +1,7 @@
  {
     "data_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf",
     "queries_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_queries",
-    "epochs": 2,
+    "epochs": 5,
     "batch_size": 4,
     "learning_rate": 1e-4,
     "weight_decay": 0.0,

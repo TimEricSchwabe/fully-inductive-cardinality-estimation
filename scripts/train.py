@@ -11,6 +11,9 @@ import subprocess
 import wandb
 from dataclasses import dataclass
 from typing import Optional
+import matplotlib.pyplot as plt
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
 # Import project modules
 from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device,initialize_wandb
@@ -255,6 +258,87 @@ def tensor_to_numpy(tensor):
     return tensor.detach().cpu().numpy().tolist()
 
 
+def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, use_wandb):
+    """
+    Create and log a scatter plot of predictions vs true values to wandb.
+    
+    Args:
+        predictions: List of predicted values
+        true_values: List of true values
+        epoch: Current epoch number
+        split_name: 'train' or 'test'
+        use_wandb: Whether wandb logging is enabled
+    """
+    if not use_wandb or len(predictions) == 0:
+        return
+    
+    try:
+        # Convert to numpy arrays and clean data
+        predictions = np.array(predictions)
+        true_values = np.array(true_values)
+        
+        # Remove infinite values and NaNs
+        valid_mask = np.isfinite(predictions) & np.isfinite(true_values)
+        predictions_clean = predictions[valid_mask]
+        true_values_clean = true_values[valid_mask]
+        
+        if len(predictions_clean) == 0:
+            logger.warning(f"No valid predictions for {split_name} scatter plot at epoch {epoch}")
+            return
+        
+        # Sample data if too many points for better visualization and performance
+        max_points = 1000
+        if len(predictions_clean) > max_points:
+            indices = np.random.choice(len(predictions_clean), max_points, replace=False)
+            predictions_clean = predictions_clean[indices]
+            true_values_clean = true_values_clean[indices]
+        
+        # Create the scatter plot
+        fig, ax = plt.subplots(figsize=(8, 8))
+        ax.scatter(true_values_clean, predictions_clean, alpha=0.6, s=20, c='blue')
+        
+        # Add perfect prediction line (y=x)
+        min_val = min(np.min(true_values_clean), np.min(predictions_clean))
+        max_val = max(np.max(true_values_clean), np.max(predictions_clean))
+        
+        # Ensure we have a valid range
+        if min_val == max_val:
+            min_val = min_val * 0.9 if min_val > 0 else min_val - 1
+            max_val = max_val * 1.1 if max_val > 0 else max_val + 1
+        
+        ax.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='Perfect Prediction')
+        
+        ax.set_xlabel('True Cardinality')
+        ax.set_ylabel('Predicted Cardinality')
+        ax.set_title(f'{split_name.capitalize()} Data: Predictions vs True Values (Epoch {epoch})')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
+        
+        # Use log scale if the range is large and positive
+        if min_val > 0 and max_val / min_val > 100:
+            ax.set_xscale('log')
+            ax.set_yscale('log')
+            ax.set_title(f'{split_name.capitalize()} Data: Predictions vs True Values (Epoch {epoch} - Log Scale)')
+        
+        plt.tight_layout()
+        
+        # Log to wandb
+        wandb.log({
+            f"{split_name}_predictions_scatter_epoch_{epoch}": wandb.Image(fig),
+        })
+        print("ssdlkfjsldfjldskfj;lkdsjfl;kasdjf;kaljf;lksdjf;lksjkdfjas;lkfjs;alkdfjds;klajfa;ldksjf;lkasdjf;lajks")
+        
+        # Close the figure to free memory
+        plt.close(fig)
+        
+        logger.debug(f"Successfully logged {split_name} scatter plot for epoch {epoch}")
+        
+    except Exception as e:
+        logger.error(f"Error creating scatter plot for {split_name} at epoch {epoch}: {e}")
+        # Close any open figures
+        plt.close('all')
+
+
 def train_epoch(context: TrainingContext, model_components: ModelComponents, data_components: DataComponents):
     """Train the model for one epoch."""
     # Extract components for easier access
@@ -331,6 +415,15 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
 
+    # Log scatter plot for training predictions vs true values
+    log_predictions_scatter_plot(
+        predictions=epoch_train_predictions_log,
+        true_values=epoch_train_true_values_log,
+        epoch=epoch_num + 1,
+        split_name="train",
+        use_wandb=use_wandb
+    )
+
     return (
         epoch_avg_train_loss,
         epoch_train_predictions,
@@ -387,6 +480,15 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
                 })
 
     avg_test_loss = epoch_test_loss / len(test_loader)
+
+    # Log scatter plot for test predictions vs true values
+    log_predictions_scatter_plot(
+        predictions=epoch_test_predictions_log,
+        true_values=epoch_test_true_values_log,
+        epoch=context.current_epoch + 1,
+        split_name="test",
+        use_wandb=use_wandb
+    )
 
     return (
         avg_test_loss,
@@ -724,8 +826,8 @@ def main():
         logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
-    set_random_seeds(config["seed"])
-    logger.info(f"Random seed: {config['seed']}")
+    # set_random_seeds(config["seed"])
+    # logger.info(f"Random seed: {config['seed']}")
 
     # Setup device
     device = get_device(config["device"])
