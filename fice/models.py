@@ -12,7 +12,7 @@ class FICE(nn.Module):
 
     def __init__(self):
         super(FICE, self).__init__()
-        self.vector_dim = 64
+        self.vector_dim = 128
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 6  # 6 layers with 64 hidden units each
 
 
@@ -62,12 +62,12 @@ class FICE(nn.Module):
         # HACK: not the most efficient
         node_embeddings = node_representations[graph_indices, embedding_indices]
 
-        # Selectively replace last 64 dims for non-variable nodes and keeping  first 3 dims for all
-        last64 = torch.where(bound_nodes.unsqueeze(-1),          
+        # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
+        last = torch.where(bound_nodes.unsqueeze(-1),          
                              node_embeddings,
                              query_features[:, 3:])         
 
-        query_features = torch.cat([query_features[:, :3], last64], dim=1)
+        query_features = torch.cat([query_features[:, :3], last], dim=1)
         batch.x = query_features
 
 
@@ -78,20 +78,16 @@ class FICE(nn.Module):
         edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
-        edge_last64 = torch.where(bound_edges.unsqueeze(-1),
+        edge_last = torch.where(bound_edges.unsqueeze(-1),
                                   edge_embeddings,
                                   edge_attr[:, 3:])
 
-        edge_features = torch.cat([edge_attr[:, :3], edge_last64], dim=1)
+        edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
         batch.edge_attr = edge_features
 
         graph_size = torch.tensor([data.num_edges], device=data.edge_index.device)
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch) 
-        # log_cardinality_pred = self.query_gnn(query_features, query_edge_index, edge_attr=edge_features, graph_size=graph_size) 
 
-
-
-        # return score
         return log_cardinality_pred
 
 

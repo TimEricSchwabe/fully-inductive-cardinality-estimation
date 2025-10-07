@@ -124,7 +124,7 @@ class RelNBFNet(BaseNBFNet):
 
         assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
         assert output.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        assert output.shape[2] == 64
+        assert output.shape[2] == self.dims[0], "Output shape does not match hidden dim"
 
         return {
             "node_feature": output,

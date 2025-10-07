@@ -176,8 +176,9 @@ class NTQueries(InMemoryDataset):
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,
+        dim: int = 128,
     ):
-
+        self.dim = dim
         if entity_occurrences is None:
             entity_occurrences = {}
         if relation_occurrences is None:
@@ -216,7 +217,7 @@ class NTQueries(InMemoryDataset):
         self,
         query: Dict,
     ):
-        feat_dim = 64
+        feat_dim = self.dim
         # Create local mapping
         local_entity_mapping = {}
         local_relation_mapping = {}
