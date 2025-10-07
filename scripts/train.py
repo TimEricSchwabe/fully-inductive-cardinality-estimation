@@ -371,13 +371,15 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         log_cardinality_pred = model(data=data, batch=query_batch)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
 
-        log_true_cardinality = torch.log1p(query_batch.y.to(torch.float32).to(device))
+        true_cardinality = query_batch.y.to(torch.float32).to(device)
+        log_true_cardinality = torch.log1p(true_cardinality).to(device)
 
         epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
         epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
         # Compute loss
-        loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+        # loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+        loss = F.poisson_nll_loss(log_cardinality_pred, true_cardinality, log_input=True, full=True)
 
         # Backward pass
         loss.backward()
@@ -391,10 +393,10 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
 
         # Store predictions for analysis
         prediction = torch.expm1(log_cardinality_pred)
-        true_value = query_batch.y.to(torch.float32)
+        
 
         epoch_train_predictions.extend(tensor_to_numpy(prediction))
-        epoch_train_true_values.extend(tensor_to_numpy(true_value))
+        epoch_train_true_values.extend(tensor_to_numpy(true_cardinality))
 
         # Update progress bar
         progress_bar.set_postfix(
@@ -456,20 +458,20 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             log_cardinality_pred = model(data=data, batch=query_batch)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
             log_true_cardinality = torch.log1p(query_batch.y.to(torch.float32).to(device))
-
+            true_cardinality = query_batch.y.to(torch.float32).to(device)
             epoch_test_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
             epoch_test_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
             # Compute loss
-            loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+            # loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+            loss = F.poisson_nll_loss(log_cardinality_pred, true_cardinality, log_input=True, full=True)
             epoch_test_loss += loss.item()
 
             # Store predictions for analysis
             prediction = torch.expm1(log_cardinality_pred)
-            true_value = query_batch.y.to(torch.float32)
 
             epoch_test_predictions.extend(tensor_to_numpy(prediction))
-            epoch_test_true_values.extend(tensor_to_numpy(true_value))
+            epoch_test_true_values.extend(tensor_to_numpy(true_cardinality))
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
