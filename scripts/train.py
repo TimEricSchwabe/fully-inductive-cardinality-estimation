@@ -23,6 +23,7 @@ from fice import datasets
 from fice.models import FICE
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
+from sklearn.preprocessing import MinMaxScaler
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ class DataComponents:
     test_loader: DataLoader
     train_queries: list
     test_queries: list
+    scaler: MinMaxScaler
 
 # TODO: logging
 def setup_directories(config):
@@ -878,6 +880,13 @@ def main():
         entity_mapping,
         relation_mapping,
     )
+    # Apply min max scaler
+    scaler = MinMaxScaler()
+
+    original_y = queries.y.reshape(-1, 1) 
+    log_y = torch.log(original_y)
+    min_max_scaled_y = scaler.fit_transform(log_y)
+    queries.y = torch.tensor(min_max_scaled_y, dtype=torch.float32).squeeze().to(context.device)
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
@@ -915,7 +924,8 @@ def main():
         train_loader=train_loader,
         test_loader=test_loader,
         train_queries=train_queries,
-        test_queries=test_queries
+        test_queries=test_queries,
+        scaler=scaler
     )
 
     # Initialize model and optimizer
