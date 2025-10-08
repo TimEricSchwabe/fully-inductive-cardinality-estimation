@@ -898,7 +898,7 @@ def main():
         relation_mapping,
     )
     # Filter queries
-    queries = queries[queries.y <= 20]
+    # queries = queries[queries.y <= 20]
 
     # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
     original_y = queries.y
