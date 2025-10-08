@@ -39,8 +39,10 @@ class FICE(nn.Module):
 
         
     def forward(self, data, batch):
-        device = data.edge_index.device
-
+        # Get model device from model parameters
+        device = next(self.parameters()).device
+        
+        # Move only the batch to GPU (data/graph is already on GPU)
         batch = batch.to(device)
         query_features = batch.x.to(device)
         edge_attr = batch.edge_attr.to(device)

@@ -16,6 +16,8 @@ import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
+
+
 # Import project modules
 from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device, initialize_wandb, process_seed
 from utils.config import load_config
@@ -102,9 +104,11 @@ def load_dataset(context: TrainingContext):
     graph = datasets.NTDatasets(
         root=data_root, nt_path=nt_path
     )  # TODO: passing the paramaters will change eventual, but for now this is the solution
+    
+    # Move graph to GPU once and keep it there for the entire training
     graph = graph[0].to(device)
-
-    logger.info(f"Graph loaded successfully!")
+    
+    logger.info(f"Graph loaded successfully and moved to GPU!")
     logger.info(f"Number of nodes: {graph.num_nodes}")
     logger.info(f"Number of edges: {graph.num_edges}")
     logger.info(
@@ -155,7 +159,7 @@ def load_queries(
 ):
     """Load queries and create train/test split."""
     config = context.config
-    device = context.device
+    # Keep queries on CPU initially - they'll be moved to GPU batch by batch
     
     logger.info("Loading queries...")
     queries_root = Path(config["queries_root"])
@@ -177,10 +181,10 @@ def load_queries(
         relation_occurrences=relation_occurrences,
         global_entity_mapping=entity_mapping,
         global_relation_mapping=relation_mapping,
-        device=device,
+        device=torch.device("cpu"),  # Keep queries on CPU
     ) #TODO: will change hopefully
 
-    logger.info(f"Queries loaded. Total queries: {len(queries)}")
+    logger.info(f"Queries loaded (on CPU). Total queries: {len(queries)}")
     return queries
 
 def train_test_split(context: TrainingContext, queries):
@@ -257,6 +261,16 @@ def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: in
 def tensor_to_numpy(tensor):
     """Helper function to convert tensors to numpy."""
     return tensor.detach().cpu().numpy().tolist()
+
+
+def log_gpu_memory_usage(step_name: str):
+    """Log current GPU memory usage if CUDA is available."""
+    if torch.cuda.is_available():
+        allocated = torch.cuda.memory_allocated() / 1024**3  # GB
+        reserved = torch.cuda.memory_reserved() / 1024**3    # GB
+        logger.debug(f"GPU Memory at {step_name}: Allocated={allocated:.2f}GB, Reserved={reserved:.2f}GB")
+    else:
+        logger.debug(f"CPU-only mode at {step_name}")
 
 
 def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, use_wandb):
@@ -368,37 +382,36 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
     for batch_idx, query_batch in enumerate(progress_bar):
         optimizer.zero_grad()
 
-        # Forward pass
-        query_batch = query_batch.to(device)
+        # Forward pass - data and batch will be moved to GPU inside model forward
         log_cardinality_pred = model(data=data, batch=query_batch)
-        log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
+        log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(device)
-        log_true_cardinality = torch.log(true_cardinality).to(device)
-
-        epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
-        epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
+        log_true_cardinality = torch.log(true_cardinality)
 
         # Compute loss
         loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
-
         # Backward pass
         loss.backward()
         optimizer.step()
-        # Step scheduler once per epoch (for OneCycleLR)
+
+        # Step scheduler
         if scheduler:
             scheduler.step()
+
+        # Move predictions to CPU for logging to save GPU memory
+        epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
+        epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
         epoch_train_loss += loss.item()
         num_train_batches += 1
 
-        # Store predictions for analysis
-        prediction = torch.exp(log_cardinality_pred)
-        
-
-        epoch_train_predictions.extend(tensor_to_numpy(prediction))
-        epoch_train_true_values.extend(tensor_to_numpy(true_cardinality))
+        # Store predictions for analysis - compute on GPU but store on CPU
+        with torch.no_grad():
+            prediction = torch.exp(log_cardinality_pred)
+            epoch_train_predictions.extend(tensor_to_numpy(prediction))
+            epoch_train_true_values.extend(tensor_to_numpy(true_cardinality))
 
         # Update progress bar
         progress_bar.set_postfix(
@@ -454,23 +467,24 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
 
     with torch.no_grad():
         for batch_idx, query_batch in tqdm(enumerate(test_loader), desc="Evaluating", leave=False):
-            # Forward pass
-            query_batch = query_batch.to(device)
-
+            # Forward pass - data and batch will be moved to GPU inside model forward
             log_cardinality_pred = model(data=data, batch=query_batch)
-            log_cardinality_pred = log_cardinality_pred.to(torch.float32).to(device)
-            log_true_cardinality = torch.log(query_batch.y.to(torch.float32).to(device))
+            log_cardinality_pred = log_cardinality_pred.to(torch.float32)
+            
             true_cardinality = query_batch.y.to(torch.float32).to(device)
+            log_true_cardinality = torch.log(true_cardinality)
+            
+            # Compute loss
+            loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+            
+            # Move to CPU immediately for logging to save GPU memory
             epoch_test_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
             epoch_test_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
-            # Compute loss
-            loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
             epoch_test_loss += loss.item()
 
-            # Store predictions for analysis
+            # Store predictions for analysis - move to CPU immediately
             prediction = torch.exp(log_cardinality_pred)
-
             epoch_test_predictions.extend(tensor_to_numpy(prediction))
             epoch_test_true_values.extend(tensor_to_numpy(true_cardinality))
             # Log batch-level metrics to wandb if enabled
@@ -829,6 +843,9 @@ def main():
     logger.info(f"PyTorch version: {torch.__version__}")
     logger.info(f"CUDA available: {torch.cuda.is_available()}")
     logger.info(f"CUDA version: {torch.version.cuda}")
+    
+    # Log initial GPU memory if available
+    log_gpu_memory_usage("initialization")
 
     try:
         e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
@@ -883,14 +900,14 @@ def main():
     # Filter queries
     queries = queries[queries.y <= 20]
 
-
+    # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
     original_y = queries.y
     log_y = torch.log(original_y)
     log_y_mu = torch.mean(log_y).item()
     log_y_var = torch.var(log_y).item()
 
     standardized_log_y = (log_y - log_y_mu) / math.sqrt(log_y_var + 1e-8)
-    queries.y = standardized_log_y.detach().clone().to(torch.float32).to(context.device)
+    queries.y = standardized_log_y.detach().clone().to(torch.float32)  # Keep on CPU
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
