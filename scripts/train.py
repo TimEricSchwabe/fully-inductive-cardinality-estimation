@@ -65,6 +65,8 @@ class DataComponents:
     test_loader: DataLoader
     train_queries: list
     test_queries: list
+    mean: float
+    std: float
 
 # TODO: logging
 def setup_directories(config):
@@ -542,6 +544,10 @@ def train_model(
     train_predictions_data = []
     test_predictions_data = []
 
+
+    def unscale(tensor):
+        return torch.log(tensor * data_components.std + data_components.mean)
+
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
 
@@ -564,8 +570,10 @@ def train_model(
         mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
         mae = metrics.calculate_mae(epoch_train_predictions, epoch_train_true_values)
         rmse = np.sqrt(mse)
+
+
         q_error = metrics.calculate_q_error(
-            epoch_train_predictions, epoch_train_true_values
+            unscale(epoch_train_predictions), unscale(epoch_train_true_values)
         )
 
         # Append training metrics to list (much more efficient than DataFrame concatenation)
@@ -627,7 +635,7 @@ def train_model(
             mae = metrics.calculate_mae(epoch_test_predictions, epoch_test_true_values)
             rmse = np.sqrt(mse)
             q_error = metrics.calculate_q_error(
-                epoch_test_predictions, epoch_test_true_values
+                unscale(epoch_test_predictions), unscale(epoch_test_true_values)
             )
 
             # Append test metrics to list (much more efficient than DataFrame concatenation)
@@ -898,15 +906,14 @@ def main():
         relation_mapping,
     )
     # Filter queries
-    # queries = queries[queries.y <= 20]
 
     # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
     original_y = queries.y
     log_y = torch.log(original_y)
     log_y_mu = torch.mean(log_y).item()
-    log_y_var = torch.var(log_y).item()
+    log_y_std = torch.std(log_y).item()
 
-    standardized_log_y = (log_y - log_y_mu) / math.sqrt(log_y_var + 1e-8)
+    standardized_log_y = (log_y - log_y_mu) / log_y_std
     queries.y = standardized_log_y.detach().clone().to(torch.float32)  # Keep on CPU
 
     train_queries, test_queries = train_test_split(context, queries)
@@ -946,6 +953,8 @@ def main():
         test_loader=test_loader,
         train_queries=train_queries,
         test_queries=test_queries,
+        mean=log_y_mu,
+        std=log_y_std,
     )
 
     # Initialize model and optimizer
