@@ -545,8 +545,24 @@ def train_model(
     test_predictions_data = []
 
 
-    def unscale(tensor):
-        return torch.log(tensor * data_components.std + data_components.mean)
+    def unscale(values):
+        # The values coming in are torch.exp(standardized_log_predictions) 
+        # which means they're exp(standardized_log_space) = standardized_linear_space
+        # We need to: 1) Take log to get back to standardized_log_space
+        #            2) Unstandardize to get log_space  
+        #            3) Exp to get original cardinality space
+        
+        # Convert to numpy array if needed
+        if not isinstance(values, np.ndarray):
+            values_array = np.array(values, dtype=np.float32)
+        else:
+            values_array = values.astype(np.float32)
+        
+        # Clamp to prevent numerical issues in log operation
+        values_array = np.clip(values_array, 1e-10, 1e30)
+        unstandardized_log_values = values_array * data_components.std + data_components.mean
+        original_cardinalities = np.exp(unstandardized_log_values)
+        return original_cardinalities.tolist()
 
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
