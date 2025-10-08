@@ -3,6 +3,7 @@ import json
 import random
 import numpy as np
 import logging
+import math
 from pathlib import Path
 from datetime import datetime
 import pandas as pd
@@ -62,7 +63,6 @@ class DataComponents:
     test_loader: DataLoader
     train_queries: list
     test_queries: list
-    scaler: MinMaxScaler
 
 # TODO: logging
 def setup_directories(config):
@@ -880,13 +880,17 @@ def main():
         entity_mapping,
         relation_mapping,
     )
-    # Apply min max scaler
-    scaler = MinMaxScaler()
+    # Filter queries
+    queries = queries[queries.y <= 20]
 
-    original_y = queries.y.reshape(-1, 1) 
+
+    original_y = queries.y
     log_y = torch.log(original_y)
-    min_max_scaled_y = scaler.fit_transform(log_y)
-    queries.y = torch.tensor(min_max_scaled_y, dtype=torch.float32).squeeze().to(context.device)
+    log_y_mu = torch.mean(log_y).item()
+    log_y_var = torch.var(log_y).item()
+
+    standardized_log_y = (log_y - log_y_mu) / math.sqrt(log_y_var + 1e-8)
+    queries.y = standardized_log_y.detach().clone().to(torch.float32).to(context.device)
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
@@ -925,7 +929,6 @@ def main():
         test_loader=test_loader,
         train_queries=train_queries,
         test_queries=test_queries,
-        scaler=scaler
     )
 
     # Initialize model and optimizer
