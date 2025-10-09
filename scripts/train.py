@@ -25,7 +25,6 @@ from fice import datasets
 from fice.models import FICE
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from sklearn.preprocessing import MinMaxScaler
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +62,6 @@ class DataComponents:
     test_loader: DataLoader
     train_queries: list
     test_queries: list
-    mean: float
-    std: float
 
 # TODO: logging
 def setup_directories(config):
@@ -503,35 +500,10 @@ def train_model(
     train_predictions_data = []
     test_predictions_data = []
 
-
-    def unscale(values):
-       
-        # Convert to numpy array
-        if isinstance(values, list):
-            array = np.array(values, dtype=np.float32)
-        elif torch.is_tensor(values):
-            array = values.detach().cpu().numpy().astype(np.float32)
-        else:
-            array = np.array(values, dtype=np.float32)
-        
-        # Create mask for finite values
-        finite_mask = np.isfinite(array)
-        result = array.copy()
-        
-        # Only transform finite values
-        if np.any(finite_mask):
-            finite_values = array[finite_mask]
-            # Clamp to prevent numerical issues in log operation
-            unstandardized_log_values = finite_values * data_components.std + data_components.mean
-            original_cardinalities = np.exp(unstandardized_log_values)
-            result[finite_mask] = original_cardinalities
-        
-        return result.tolist()
-
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
 
-    
+
 
     # Training loop
     for epoch in range(config["epochs"]):
@@ -545,14 +517,14 @@ def train_model(
         ) = train_epoch(context, model_components, data_components)
 
         # Calculate training metrics
-        # Use log space values for MSE, MAE, RMSE
-        mse = metrics.calculate_mse(epoch_train_predictions_log, epoch_train_true_values_log)
-        mae = metrics.calculate_mae(epoch_train_predictions_log, epoch_train_true_values_log)
+        # Use original cardinality space for all metrics
+
+        epoch_train_predictions = np.exp(epoch_train_predictions_log)
+        epoch_train_true_values = np.exp(epoch_train_true_values_log)
+        mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
+        mae = metrics.calculate_mae(epoch_train_predictions, epoch_train_true_values)
         rmse = np.sqrt(mse)
 
-        # Use unscaled values (original cardinality space) for Q-error
-        epoch_train_predictions = unscale(epoch_train_predictions_log)
-        epoch_train_true_values = unscale(epoch_train_true_values_log)
         q_error = metrics.calculate_q_error(
             epoch_train_predictions, epoch_train_true_values
         )
@@ -608,15 +580,15 @@ def train_model(
                 epoch_test_predictions_log,
                 epoch_test_true_values_log,
             ) = evaluate_model(context, model_components, data_components)
-
+            # Use original cardinality space for all metrics
+            epoch_test_predictions = np.exp(epoch_test_predictions_log)
+            epoch_test_true_values = np.exp(epoch_test_true_values_log)
             # Calculate test metrics
-            # Use log space values for MSE, MAE, RMSE
-            mse = metrics.calculate_mse(epoch_test_predictions_log, epoch_test_true_values_log)
-            mae = metrics.calculate_mae(epoch_test_predictions_log, epoch_test_true_values_log)
+            # Use original cardinality space for MSE, MAE, RMSE
+            mse = metrics.calculate_mse(epoch_test_predictions, epoch_test_true_values)
+            mae = metrics.calculate_mae(epoch_test_predictions, epoch_test_true_values)
             rmse = np.sqrt(mse)
-            # Use unscaled values (original cardinality space) for Q-error
-            epoch_test_predictions = unscale(epoch_test_predictions_log)
-            epoch_test_true_values = unscale(epoch_test_true_values_log)
+            
             q_error = metrics.calculate_q_error(
                 epoch_test_predictions, epoch_test_true_values
             )
@@ -889,16 +861,10 @@ def main():
         entity_mapping,
         relation_mapping,
     )
-    # Filter queries
-
     # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
     original_y = queries.y
     log_y = torch.log(original_y)
-    log_y_mu = torch.mean(log_y).item()
-    log_y_std = torch.std(log_y).item()
-
-    standardized_log_y = (log_y - log_y_mu) / log_y_std
-    queries.y = standardized_log_y.detach().clone().to(torch.float32)  # Keep on CPU
+    queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
@@ -936,9 +902,7 @@ def main():
         train_loader=train_loader,
         test_loader=test_loader,
         train_queries=train_queries,
-        test_queries=test_queries,
-        mean=log_y_mu,
-        std=log_y_std,
+        test_queries=test_queries
     )
 
     # Initialize model and optimizer
