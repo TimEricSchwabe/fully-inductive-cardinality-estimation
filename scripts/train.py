@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
+from typing import Optional, Union
 
 
 
@@ -25,7 +26,7 @@ from fice import datasets
 from fice.models import FICE
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
-from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MinMaxScaler, StandardScaler
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +64,7 @@ class DataComponents:
     test_loader: DataLoader
     train_queries: list
     test_queries: list
-    mean: float
-    std: float
+    scaler: Optional[Union[MinMaxScaler, StandardScaler]] = None
 
 # TODO: logging
 def setup_directories(config):
@@ -503,35 +503,18 @@ def train_model(
     train_predictions_data = []
     test_predictions_data = []
 
-
-    def unscale(values):
-       
-        # Convert to numpy array
-        if isinstance(values, list):
-            array = np.array(values, dtype=np.float32)
-        elif torch.is_tensor(values):
-            array = values.detach().cpu().numpy().astype(np.float32)
-        else:
-            array = np.array(values, dtype=np.float32)
-        
-        # Create mask for finite values
-        finite_mask = np.isfinite(array)
-        result = array.copy()
-        
-        # Only transform finite values
-        if np.any(finite_mask):
-            finite_values = array[finite_mask]
-            # Clamp to prevent numerical issues in log operation
-            unstandardized_log_values = finite_values * data_components.std + data_components.mean
-            original_cardinalities = np.exp(unstandardized_log_values)
-            result[finite_mask] = original_cardinalities
-        
-        return result.tolist()
-
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
 
-    
+    def inverse_transform(log_values):
+        """Helper function to convert log values back to original cardinality space."""
+        if data_components.scaler is not None:
+            scaler = data_components.scaler
+            log_values = np.array(log_values).reshape(-1, 1)
+            unscaled = scaler.inverse_transform(log_values).flatten()
+            return np.exp(unscaled)  # Reverse the log transform
+        else:
+            return np.exp(log_values)
 
     # Training loop
     for epoch in range(config["epochs"]):
@@ -550,9 +533,8 @@ def train_model(
         mae = metrics.calculate_mae(epoch_train_predictions_log, epoch_train_true_values_log)
         rmse = np.sqrt(mse)
 
-        # Use unscaled values (original cardinality space) for Q-error
-        epoch_train_predictions = unscale(epoch_train_predictions_log)
-        epoch_train_true_values = unscale(epoch_train_true_values_log)
+        epoch_train_predictions = inverse_transform(epoch_train_predictions_log)
+        epoch_train_true_values = inverse_transform(epoch_train_true_values_log)
         q_error = metrics.calculate_q_error(
             epoch_train_predictions, epoch_train_true_values
         )
@@ -615,8 +597,8 @@ def train_model(
             mae = metrics.calculate_mae(epoch_test_predictions_log, epoch_test_true_values_log)
             rmse = np.sqrt(mse)
             # Use unscaled values (original cardinality space) for Q-error
-            epoch_test_predictions = unscale(epoch_test_predictions_log)
-            epoch_test_true_values = unscale(epoch_test_true_values_log)
+            epoch_test_predictions = inverse_transform(epoch_test_predictions_log)
+            epoch_test_true_values = inverse_transform(epoch_test_true_values_log)
             q_error = metrics.calculate_q_error(
                 epoch_test_predictions, epoch_test_true_values
             )
@@ -890,15 +872,15 @@ def main():
         relation_mapping,
     )
     # Filter queries
-
+    scaler = StandardScaler()
     # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
-    original_y = queries.y
-    log_y = torch.log(original_y)
-    log_y_mu = torch.mean(log_y).item()
-    log_y_std = torch.std(log_y).item()
-
-    standardized_log_y = (log_y - log_y_mu) / log_y_std
-    queries.y = standardized_log_y.detach().clone().to(torch.float32)  # Keep on CPU
+    original_y = queries.y.detach().cpu().numpy().astype(np.float32)  # Convert to numpy array
+    log_y = np.log(original_y)
+    log_y_scaled = scaler.fit_transform(log_y.reshape(-1, 1)).flatten()
+    
+   
+    # Convert back to tensor and assign to queries.y
+    queries.y = torch.from_numpy(log_y_scaled).float().to(queries.y.device)
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
@@ -937,8 +919,7 @@ def main():
         test_loader=test_loader,
         train_queries=train_queries,
         test_queries=test_queries,
-        mean=log_y_mu,
-        std=log_y_std,
+        scaler=scaler
     )
 
     # Initialize model and optimizer
