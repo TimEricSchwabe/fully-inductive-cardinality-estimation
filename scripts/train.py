@@ -11,7 +11,6 @@ from tqdm import tqdm
 import subprocess
 import wandb
 from dataclasses import dataclass
-from typing import Optional
 import matplotlib.pyplot as plt
 import matplotlib
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
@@ -51,10 +50,9 @@ class TrainingContext:
 
 @dataclass
 class ModelComponents:
-    """Container for model, optimizer, and scheduler."""
+    """Container for model and optimizer."""
     model: torch.nn.Module
     optimizer: torch.optim.Optimizer
-    scheduler: Optional[torch.optim.lr_scheduler._LRScheduler] = None
 
 
 @dataclass
@@ -89,7 +87,6 @@ def load_dataset(context: TrainingContext):
     device = context.device
     
     data_root = Path(config["data_root"])
-    queries_root = Path(config["queries_root"])
 
     if not data_root.exists():
         raise FileNotFoundError(f"Data root directory not found: {data_root}")
@@ -239,25 +236,11 @@ def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: in
         weight_decay=config["weight_decay"],
     )
 
-    # Initialize scheduler based on configuration
-    scheduler = None
-    if config.get("use_scheduler", False):
-        max_lr = config.get("scheduler_max_lr", 0.01)
-        scheduler = torch.optim.lr_scheduler.OneCycleLR(
-            optimizer, 
-            max_lr=max_lr,  
-            steps_per_epoch=steps_per_epoch, 
-            epochs=config["epochs"]
-        )
-        logger.info(f"Scheduler: OneCycleLR with max_lr={max_lr}")
-    else:
-        logger.info("Scheduler: Disabled")
-
     logger.info(f"Optimizer: {optimizer.__class__.__name__}")
     logger.info(f"Learning rate: {config['learning_rate']}")
     logger.info(f"Weight decay: {config['weight_decay']}")
 
-    return ModelComponents(model=model, optimizer=optimizer, scheduler=scheduler)
+    return ModelComponents(model=model, optimizer=optimizer)
 
 
 def tensor_to_numpy(tensor):
@@ -365,7 +348,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
     
     model = model_components.model
     optimizer = model_components.optimizer
-    scheduler = model_components.scheduler
     
     data = data_components.data
     train_loader = data_components.train_loader
@@ -395,10 +377,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         # Backward pass
         loss.backward()
         optimizer.step()
-
-        # Step scheduler
-        if scheduler:
-            scheduler.step()
 
         # Move predictions to CPU for logging to save GPU memory
         epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
@@ -512,7 +490,6 @@ def train_model(
     
     model = model_components.model
     optimizer = model_components.optimizer
-    scheduler = model_components.scheduler
     
     data = data_components.data
     train_loader = data_components.train_loader
@@ -613,7 +590,7 @@ def train_model(
 
         # Log training metrics to wandb
         if use_wandb:
-            current_lr = scheduler.get_last_lr()[0] if scheduler else optimizer.param_groups[0]['lr']
+            current_lr = optimizer.param_groups[0]['lr']
             wandb.log({
                 "train_loss": epoch_avg_train_loss,
                 "train_mse": mse,
@@ -705,7 +682,6 @@ def train_model(
                         "epoch": context.current_epoch,
                         "model_state_dict": model.state_dict(),
                         "optimizer_state_dict": optimizer.state_dict(),
-                        "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                         "train_loss": epoch_avg_train_loss,
                         "test_loss": avg_test_loss,
                         "config": config,
@@ -747,7 +723,6 @@ def train_model(
                     "epoch": context.current_epoch,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
-                    "scheduler_state_dict": scheduler.state_dict() if scheduler else None,
                     "train_loss": epoch_avg_train_loss,
                     "test_loss": latest_test_loss,
                     "config": config,
@@ -1021,7 +996,6 @@ def main():
         torch.save({
             "model_state_dict": model_components.model.state_dict(),
             "optimizer_state_dict": model_components.optimizer.state_dict(),
-            "scheduler_state_dict": model_components.scheduler.state_dict() if model_components.scheduler else None,
             "training_results": training_results,
             "config": config,
             "final_epoch": len(training_results['train_losses'])
