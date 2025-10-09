@@ -373,8 +373,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
     epoch_train_loss = 0.0
     num_train_batches = 0
 
-    epoch_train_predictions = []
-    epoch_train_true_values = []
     epoch_train_predictions_log = []
     epoch_train_true_values_log = []
     progress_bar = tqdm(
@@ -409,12 +407,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         epoch_train_loss += loss.item()
         num_train_batches += 1
 
-        # Store predictions for analysis - compute on GPU but store on CPU
-        with torch.no_grad():
-            prediction = torch.exp(log_cardinality_pred)
-            epoch_train_predictions.extend(tensor_to_numpy(prediction))
-            epoch_train_true_values.extend(tensor_to_numpy(true_cardinality))
-
         # Update progress bar
         progress_bar.set_postfix(
             {
@@ -442,8 +434,6 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
 
     return (
         epoch_avg_train_loss,
-        epoch_train_predictions,
-        epoch_train_true_values,
         epoch_train_predictions_log,
         epoch_train_true_values_log,
     )
@@ -461,9 +451,6 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
     test_loader = data_components.test_loader
     model.eval()
     epoch_test_loss = 0.0
-    epoch_test_predictions = []
-    epoch_test_true_values = []
-
     epoch_test_predictions_log = []
     epoch_test_true_values_log = []
 
@@ -486,9 +473,6 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             epoch_test_loss += loss.item()
 
             # Store predictions for analysis - move to CPU immediately
-            prediction = torch.exp(log_cardinality_pred)
-            epoch_test_predictions.extend(tensor_to_numpy(prediction))
-            epoch_test_true_values.extend(tensor_to_numpy(true_cardinality))
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
@@ -508,8 +492,6 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
 
     return (
         avg_test_loss,
-        epoch_test_predictions,
-        epoch_test_true_values,
         epoch_test_predictions_log,
         epoch_test_true_values_log,
     )
@@ -546,23 +528,28 @@ def train_model(
 
 
     def unscale(values):
-        # The values coming in are torch.exp(standardized_log_predictions) 
-        # which means they're exp(standardized_log_space) = standardized_linear_space
-        # We need to: 1) Take log to get back to standardized_log_space
-        #            2) Unstandardize to get log_space  
-        #            3) Exp to get original cardinality space
-        
-        # Convert to numpy array if needed
-        if not isinstance(values, np.ndarray):
-            values_array = np.array(values, dtype=np.float32)
+       
+        # Convert to numpy array
+        if isinstance(values, list):
+            array = np.array(values, dtype=np.float32)
+        elif torch.is_tensor(values):
+            array = values.detach().cpu().numpy().astype(np.float32)
         else:
-            values_array = values.astype(np.float32)
+            array = np.array(values, dtype=np.float32)
         
-        # Clamp to prevent numerical issues in log operation
-        values_array = np.clip(values_array, 1e-10, 1e30)
-        unstandardized_log_values = values_array * data_components.std + data_components.mean
-        original_cardinalities = np.exp(unstandardized_log_values)
-        return original_cardinalities.tolist()
+        # Create mask for finite values
+        finite_mask = np.isfinite(array)
+        result = array.copy()
+        
+        # Only transform finite values
+        if np.any(finite_mask):
+            finite_values = array[finite_mask]
+            # Clamp to prevent numerical issues in log operation
+            unstandardized_log_values = finite_values * data_components.std + data_components.mean
+            original_cardinalities = np.exp(unstandardized_log_values)
+            result[finite_mask] = original_cardinalities
+        
+        return result.tolist()
 
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {config['epochs']} epochs...")
@@ -576,20 +563,21 @@ def train_model(
         # Training phase
         (
             epoch_avg_train_loss,
-            epoch_train_predictions,
-            epoch_train_true_values,
             epoch_train_predictions_log,
             epoch_train_true_values_log,
         ) = train_epoch(context, model_components, data_components)
 
         # Calculate training metrics
-        mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
-        mae = metrics.calculate_mae(epoch_train_predictions, epoch_train_true_values)
+        # Use log space values for MSE, MAE, RMSE
+        mse = metrics.calculate_mse(epoch_train_predictions_log, epoch_train_true_values_log)
+        mae = metrics.calculate_mae(epoch_train_predictions_log, epoch_train_true_values_log)
         rmse = np.sqrt(mse)
 
-
+        # Use unscaled values (original cardinality space) for Q-error
+        epoch_train_predictions = unscale(epoch_train_predictions_log)
+        epoch_train_true_values = unscale(epoch_train_true_values_log)
         q_error = metrics.calculate_q_error(
-            unscale(epoch_train_predictions), unscale(epoch_train_true_values)
+            epoch_train_predictions, epoch_train_true_values
         )
 
         # Append training metrics to list (much more efficient than DataFrame concatenation)
@@ -640,19 +628,24 @@ def train_model(
         if (epoch + 1) % config["eval_every"] == 0:
             (
                 avg_test_loss,
-                epoch_test_predictions,
-                epoch_test_true_values,
                 epoch_test_predictions_log,
                 epoch_test_true_values_log,
             ) = evaluate_model(context, model_components, data_components)
 
             # Calculate test metrics
-            mse = metrics.calculate_mse(epoch_test_predictions, epoch_test_true_values)
-            mae = metrics.calculate_mae(epoch_test_predictions, epoch_test_true_values)
+            # Use log space values for MSE, MAE, RMSE
+            mse = metrics.calculate_mse(epoch_test_predictions_log, epoch_test_true_values_log)
+            mae = metrics.calculate_mae(epoch_test_predictions_log, epoch_test_true_values_log)
             rmse = np.sqrt(mse)
+            # Use unscaled values (original cardinality space) for Q-error
+            epoch_test_predictions = unscale(epoch_test_predictions_log)
+            epoch_test_true_values = unscale(epoch_test_true_values_log)
             q_error = metrics.calculate_q_error(
-                unscale(epoch_test_predictions), unscale(epoch_test_true_values)
+                epoch_test_predictions, epoch_test_true_values
             )
+            print("==============================================================")
+            print(f"Test Q-Error: {q_error:.6f}")
+            print("==============================================================")
 
             # Append test metrics to list (much more efficient than DataFrame concatenation)
             test_metrics_data.append({
