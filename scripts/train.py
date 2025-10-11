@@ -862,9 +862,9 @@ def main():
         relation_mapping,
     )
     # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
-    original_y = queries.y
-    log_y = torch.log(original_y)
-    queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
+    # original_y = queries.y
+    # log_y = torch.log(original_y)
+    # queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
