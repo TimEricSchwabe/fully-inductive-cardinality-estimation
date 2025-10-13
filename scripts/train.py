@@ -727,8 +727,6 @@ def main():
                 "model_name": model_components.model.__class__.__name__
             })
             
-            # Watch the model for gradient and parameter tracking
-            wandb.watch(model_components.model, log="all", log_freq=100)
         state = TrainingState(
             best_test_loss=float('inf'),
             train_metrics = None,
