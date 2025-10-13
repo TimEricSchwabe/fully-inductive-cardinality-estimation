@@ -1,5 +1,7 @@
 from typing import Union
 from pathlib import Path
+
+import wandb
 from utils.models import *
 import torch
 import logging
@@ -16,6 +18,7 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
     # Ensure the directory exists
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
     copy_state = copy.deepcopy(state)
+    wandb.unwatch(copy_state.model_components.model)
 
     # Handle file name conflicts by adding a counter if file already exists
     original_path = checkpoint_path
