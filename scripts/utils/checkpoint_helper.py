@@ -33,6 +33,7 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
 
     torch.save(copy_state, checkpoint_path)
     epoch = state.training_context.current_epoch
+    wandb.watch(state.model_components.model, log="all", log_freq=100)
     logger.info(f"Saved checkpoint for epoch {epoch} at {checkpoint_path}")
 
 
