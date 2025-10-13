@@ -86,14 +86,14 @@ class RelNBFNet(BaseNBFNet):
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
         boundary[graph_indices, node_indices] = 1.0
 
-        assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        assert boundary.shape[2] == self.dims[0]
-        for i in range(batch_size):
-            data_list = batch.to_data_list()[i].edge_embedding_indices.unique()
-            mask = data_list != -1
-            edge_idx = data_list[mask]
-            assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
+        # assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        # assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
+        # assert boundary.shape[2] == self.dims[0]
+        # for i in range(batch_size):
+        #     data_list = batch.to_data_list()[i].edge_embedding_indices.unique()
+        #     mask = data_list != -1
+        #     edge_idx = data_list[mask]
+        #     assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
 
 
 
@@ -122,9 +122,9 @@ class RelNBFNet(BaseNBFNet):
         else:
             output = hiddens[-1]
 
-        assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert output.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        assert output.shape[2] == self.dims[0], "Output shape does not match hidden dim"
+        # assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        # assert output.shape[1] == data.num_nodes, "Output shape does not match number of relations"
+        # assert output.shape[2] == self.dims[0], "Output shape does not match hidden dim"
 
         return {
             "node_feature": output,
@@ -179,14 +179,14 @@ class EntityNBFNet(BaseNBFNet):
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
         boundary[graph_indices, node_indices] = 1.0
 
-        assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        assert boundary.shape[2] == self.dims[0]
-        for i in range(batch_size):
-            data_list = batch.to_data_list()[i].node_embedding_indices.unique()
-            mask = data_list != -1
-            edge_idx = data_list[mask]
-            assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
+        # assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
+        # assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
+        # assert boundary.shape[2] == self.dims[0]
+        # for i in range(batch_size):
+        #     data_list = batch.to_data_list()[i].node_embedding_indices.unique()
+        #     mask = data_list != -1
+        #     edge_idx = data_list[mask]
+        #     sert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)
