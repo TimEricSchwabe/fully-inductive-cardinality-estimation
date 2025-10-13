@@ -383,14 +383,12 @@ def train_model(
 
         # Log training metrics to wandb
         if state.training_context.use_wandb:
-            current_lr = state.model_components.model.param_groups[0]['lr']
             wandb.log({
                 "train_loss": epoch_avg_train_loss,
                 "train_mse": mse,
                 "train_mae": mae,
                 "train_rmse": rmse,
                 "train_q_error": q_error,
-                "learning_rate": current_lr,
                 "epoch": state.training_context.current_epoch
             })
 
