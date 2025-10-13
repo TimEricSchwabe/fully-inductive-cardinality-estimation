@@ -209,6 +209,7 @@ def train_epoch(state: TrainingState):
 
         # Backward pass
         loss.backward()
+        torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
         state.model_components.optimizer.step()
 
         # Move predictions to CPU for logging to save GPU memory
@@ -382,7 +383,7 @@ def train_model(
 
         # Log training metrics to wandb
         if state.training_context.use_wandb:
-            current_lr = state.model_components.param_groups[0]['lr']
+            current_lr = state.model_components.model.param_groups[0]['lr']
             wandb.log({
                 "train_loss": epoch_avg_train_loss,
                 "train_mse": mse,
