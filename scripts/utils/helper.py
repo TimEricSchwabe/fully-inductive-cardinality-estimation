@@ -69,93 +69,11 @@ def parse_arguments():
         help="Path to configuration JSON file containing all training parameters",
     )
     
-    # Training parameters
     parser.add_argument(
-        "--epochs",
-        "-e",
-        type=int,
-        help="Number of epochs to train the model.",
-    )
-    parser.add_argument(
-        "--batch_size",
-        "-b",
-        type=int,
-        help="Batch size for training.",
-    )
-    parser.add_argument(
-        "--learning_rate",
-        "--lr",
-        type=float,
-        help="Learning rate for the optimizer.",
-    )
-    parser.add_argument(
-        "--weight_decay",
-        "--wd",
-        type=float,
-        help="Weight decay for the optimizer.",
-    )
-    parser.add_argument(
-        "--train_ratio",
-        "--ratio",
-        "-r",
-        type=float,
-        help="Ratio of training data to use.",
-    )
-    
-    # Data and paths
-    parser.add_argument(
-        "--data_root",
+        "--checkpoint",
         type=str,
-        help="Path to the data root directory.",
+        help="Path to the checkpoint to resume training from.",
     )
-    parser.add_argument(
-        "--queries_root",
-        type=str,
-        help="Path to the queries root directory.",
-    )
-    parser.add_argument(
-        "--output_dir",
-        type=str,
-        help="Output directory for results and checkpoints.",
-    )
-    
-    # Debug and evaluation
-    parser.add_argument(
-        "--DEBUG_num_queries",
-        type=int,
-        help="Number of queries to use for debugging. -1 means all queries.",
-    )
-    parser.add_argument(
-        "--save_every",
-        type=int,
-        help="Save model checkpoint every N epochs.",
-    )
-    parser.add_argument(
-        "--eval_every",
-        type=int,
-        help="Evaluate model every N epochs.",
-    )
-    
-    # System
-    parser.add_argument(
-        "--seed",
-        type=str,
-        help="Random seed for reproducibility. Use integer for fixed seed, 'random' for random seed.",
-    )
-    parser.add_argument(
-        "--device",
-        type=str,
-        choices=["auto", "cpu", "cuda", "mps"],
-        help="Device to use for training (auto, cpu, cuda, mps).",
-    )
-    
-    # Scheduler parameters (only max_lr can be overridden via CLI)
-    parser.add_argument(
-        "--scheduler_max_lr",
-        type=float,
-        help="Maximum learning rate for OneCycleLR scheduler.",
-    )
-    
     # Weights & Biases flag
     parser.add_argument(
         "--wandb",
@@ -164,29 +82,6 @@ def parse_arguments():
     )
 
     return parser.parse_args()
-
-def merge_config_with_args(config, args):
-    """Merge command-line arguments with config, giving priority to command-line args."""
-    # Create a copy of the config to avoid modifying the original
-    merged_config = config.copy()
-    
-    # Get all argument names and their values
-    args_dict = vars(args)
-    
-    # Override config values with non-None command-line arguments
-    overrides = []
-    additions = []
-    
-    for arg_name, arg_value in args_dict.items():
-        # TODO: Change if more complex types are added, not just config
-        if arg_name != 'config' and arg_value is not None:
-            if arg_name in merged_config:
-                overrides.append(f"  {arg_name}: {merged_config[arg_name]} -> {arg_value}")
-            else:
-                additions.append(f"  {arg_name}: {arg_value}")
-            merged_config[arg_name] = arg_value
-   
-    return merged_config
 
 # Utility functions
 def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:

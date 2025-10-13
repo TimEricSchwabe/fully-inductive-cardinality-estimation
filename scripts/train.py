@@ -10,21 +10,21 @@ import pandas as pd
 from tqdm import tqdm
 import subprocess
 import wandb
-from dataclasses import dataclass
 import matplotlib.pyplot as plt
 import matplotlib
+from utils.models import *
+from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
 matplotlib.use('Agg')  # Use non-interactive backend for server environments
 
-
-
 # Import project modules
-from utils.helper import parse_arguments, merge_config_with_args, setup_logging, set_random_seeds, get_device, initialize_wandb, process_seed
+from utils.helper import parse_arguments, setup_logging, set_random_seeds, get_device, initialize_wandb, process_seed
 from utils.config import load_config
 import utils.metrics as metrics
 from fice import datasets
 from fice.models import FICE
 import torch.nn.functional as F
 from torch_geometric.loader import DataLoader
+from utils.checkpoint_helper import save_checkpoint, load_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -34,34 +34,6 @@ TEST_METRICS_FILE_NAME = "test_training_metrics.csv"
 TRAIN_VALUES_FILE_NAME = "train_values.csv"
 TEST_VALUES_FILE_NAME = "test_values.csv"
 
-
-@dataclass
-class TrainingContext:
-    """Container for training configuration and environment."""
-    config: dict
-    device: torch.device
-    run_dir: Path
-    log_dir: Path
-    checkpoint_dir: Path
-    use_wandb: bool = False
-    current_epoch: int = 0
-
-
-@dataclass
-class ModelComponents:
-    """Container for model and optimizer."""
-    model: torch.nn.Module
-    optimizer: torch.optim.Optimizer
-
-
-@dataclass
-class DataComponents:
-    """Container for data and data loaders."""
-    data: torch.Tensor
-    train_loader: DataLoader
-    test_loader: DataLoader
-    train_queries: list
-    test_queries: list
 
 # TODO: logging
 def setup_directories(config):
@@ -76,134 +48,6 @@ def setup_directories(config):
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     return run_dir, log_dir, checkpoint_dir
-
-
-def load_dataset(context: TrainingContext):
-    """Load the graph dataset and verify its properties."""
-    config = context.config
-    device = context.device
-    
-    data_root = Path(config["data_root"])
-
-    if not data_root.exists():
-        raise FileNotFoundError(f"Data root directory not found: {data_root}")
-    logger.info(f"Data root: {data_root}")
-
-
-    # Load dataset
-    logger.info("Loading dataset...")
-    nt_path = data_root / "raw/swdf.nt"
-
-    if not nt_path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {nt_path}")
-
-    graph = datasets.NTDatasets(
-        root=data_root, nt_path=nt_path
-    )  # TODO: passing the paramaters will change eventual, but for now this is the solution
-    
-    # Move graph to GPU once and keep it there for the entire training
-    graph = graph[0].to(device)
-    
-    logger.info(f"Graph loaded successfully and moved to GPU!")
-    logger.info(f"Number of nodes: {graph.num_nodes}")
-    logger.info(f"Number of edges: {graph.num_edges}")
-    logger.info(
-        f"Node features shape: {graph.x.shape if hasattr(graph, 'x') and graph.x is not None else 'None'}"
-    )
-    logger.info(f"Edge indices shape: {graph.edge_index.shape}")
-    logger.info(
-        f"Edge types shape: {graph.edge_type.shape if hasattr(graph, 'edge_type') and graph.edge_type is not None else 'None'}"
-    )
-
-    return graph
-
-
-def load_occurrences(context: TrainingContext):
-    """Load entity and relation mappings and occurrence data."""
-    config = context.config
-    
-    logger.info("Loading occurrences...")
-    data_root = Path(config["data_root"]) # TODO: check if this is necessary
-    entity_occurrences_path = data_root / "processed/swdf_entity_occurrences.json"
-    relation_occurrences_path = data_root / "processed/swdf_relation_occurrences.json"
-    entity_mapping_path = data_root / "processed/swdf_entity_to_id.json"
-    relation_mapping_path = data_root / "processed/swdf_relation_to_id.json"
-
-    with open(entity_occurrences_path, "r") as f:
-        entity_occurrences = json.load(f)
-    with open(relation_occurrences_path, "r") as f:
-        relation_occurrences = json.load(f)
-    with open(entity_mapping_path, "r") as f:
-        entity_mapping = json.load(f)
-    with open(relation_mapping_path, "r") as f:
-        relation_mapping = json.load(f)
-
-    logger.info("Metadata loaded successfully!")
-    logger.info(f"Entities with occurrences: {len(entity_occurrences)}")
-    logger.info(f"Relations with occurrences: {len(relation_occurrences)}")
-    logger.info(f"Entity mapping size: {len(entity_mapping)}")
-    logger.info(f"Relation mapping size: {len(relation_mapping)}")
-
-    return entity_occurrences, relation_occurrences, entity_mapping, relation_mapping
-
-def load_queries(
-    context: TrainingContext,
-    entity_occurrences,
-    relation_occurrences,
-    entity_mapping,
-    relation_mapping,
-):
-    """Load queries and create train/test split."""
-    config = context.config
-    # Keep queries on CPU initially - they'll be moved to GPU batch by batch
-    
-    logger.info("Loading queries...")
-    queries_root = Path(config["queries_root"])
-    if not queries_root.exists():
-        raise FileNotFoundError(f"Queries root directory not found: {queries_root}")
-    logger.info(f"Queries root: {queries_root}")
-
-    query_path = queries_root / "raw/Joined_Queries.json"
-
-    if not query_path.exists():
-        raise FileNotFoundError(f"Queries file not found: {query_path}")
-
-
-
-    queries = datasets.NTQueries(
-        root=queries_root,
-        queries_path=query_path,
-        entity_occurrences=entity_occurrences,
-        relation_occurrences=relation_occurrences,
-        global_entity_mapping=entity_mapping,
-        global_relation_mapping=relation_mapping,
-        device=torch.device("cpu"),  # Keep queries on CPU
-    ) #TODO: will change hopefully
-
-    logger.info(f"Queries loaded (on CPU). Total queries: {len(queries)}")
-    return queries
-
-def train_test_split(context: TrainingContext, queries):
-    config = context.config
-    
-    # Process and filter queries
-    queries_list = list(queries)
-    random.shuffle(queries_list)
-    if config["DEBUG_num_queries"] and config["DEBUG_num_queries"] > 0:
-        num_queries = min(config["DEBUG_num_queries"], len(queries_list))
-    else:
-        num_queries = len(queries_list)
-    queries_list = queries_list[:num_queries]
-    logger.info(f"Using debug mode with {num_queries} queries")
-
-    train_size = int(len(queries_list) * config["train_ratio"])
-    test_size = len(queries_list) - train_size
-
-    train_queries = queries_list[:train_size]
-    test_queries = queries_list[train_size:]
-
-
-    return train_queries, test_queries
 
 
 def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: int) -> ModelComponents:
@@ -335,37 +179,29 @@ def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, us
         plt.close('all')
 
 
-def train_epoch(context: TrainingContext, model_components: ModelComponents, data_components: DataComponents):
+def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     # Extract components for easier access
-    config = context.config
-    device = context.device
-    use_wandb = context.use_wandb
-    epoch_num = context.current_epoch
-    
-    model = model_components.model
-    optimizer = model_components.optimizer
-    
-    data = data_components.data
-    train_loader = data_components.train_loader
-    model.train()
+    state.model_components.model.train()
     epoch_train_loss = 0.0
     num_train_batches = 0
+    epochs = state.training_context.config["epochs"]
+    data = state.data_components.data
 
-    epoch_train_predictions_log = []
+    epoch_train_predictions_log = []    
     epoch_train_true_values_log = []
     progress_bar = tqdm(
-        train_loader, desc=f"Epoch {epoch_num+1}/{config['epochs']}", leave=False
+        state.data_components.train_loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False
     )
 
     for batch_idx, query_batch in enumerate(progress_bar):
-        optimizer.zero_grad()
+        state.model_components.optimizer.zero_grad()
 
         # Forward pass - data and batch will be moved to GPU inside model forward
-        log_cardinality_pred = model(data=data, batch=query_batch)
+        log_cardinality_pred = state.model_components.model(data=data, batch=query_batch)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
-        true_cardinality = query_batch.y.to(torch.float32).to(device)
+        true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
         log_true_cardinality = torch.log(true_cardinality)
 
         # Compute loss
@@ -373,7 +209,7 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
 
         # Backward pass
         loss.backward()
-        optimizer.step()
+        state.model_components.optimizer.step()
 
         # Move predictions to CPU for logging to save GPU memory
         epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
@@ -391,9 +227,9 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
         )
         
         # Log batch-level metrics to wandb if enabled
-        if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
+        if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
             wandb.log({
-                f"train_loss_epoch_{context.current_epoch + 1}": loss.item(),
+                f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
             })
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
@@ -402,9 +238,9 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
     log_predictions_scatter_plot(
         predictions=epoch_train_predictions_log,
         true_values=epoch_train_true_values_log,
-        epoch=epoch_num + 1,
+        epoch=state.training_context.current_epoch,
         split_name="train",
-        use_wandb=use_wandb
+        use_wandb=state.training_context.use_wandb
     )
 
     return (
@@ -414,25 +250,23 @@ def train_epoch(context: TrainingContext, model_components: ModelComponents, dat
     )
 
 
-def evaluate_model(context: TrainingContext, model_components: ModelComponents, data_components: DataComponents):
+def evaluate_model(state: TrainingState):   
     """Evaluate the model on test data."""
     # Extract components for easier access
-    device = context.device
-    use_wandb = context.use_wandb
-    epoch = context.current_epoch
-    
-    model = model_components.model
-    data = data_components.data
-    test_loader = data_components.test_loader
-    model.eval()
+    device = state.training_context.device
+    use_wandb = state.training_context.use_wandb
+    data = state.data_components.data
+
+    state.model_components.model.eval()
+
     epoch_test_loss = 0.0
     epoch_test_predictions_log = []
     epoch_test_true_values_log = []
 
     with torch.no_grad():
-        for batch_idx, query_batch in tqdm(enumerate(test_loader), desc="Evaluating", leave=False):
+        for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
             # Forward pass - data and batch will be moved to GPU inside model forward
-            log_cardinality_pred = model(data=data, batch=query_batch)
+            log_cardinality_pred = state.model_components.model(data=data, batch=query_batch)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
             true_cardinality = query_batch.y.to(torch.float32).to(device)
@@ -451,16 +285,16 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
-                    f"test_loss_epoch_{context.current_epoch + 1}": loss.item(),
+                    f"test_loss_epoch_{state.training_context.current_epoch}": loss.item(),
                 })
 
-    avg_test_loss = epoch_test_loss / len(test_loader)
+    avg_test_loss = epoch_test_loss / len(state.data_components.test_loader)
 
     # Log scatter plot for test predictions vs true values
     log_predictions_scatter_plot(
         predictions=epoch_test_predictions_log,
         true_values=epoch_test_true_values_log,
-        epoch=context.current_epoch + 1,
+        epoch=state.training_context.current_epoch,
         split_name="test",
         use_wandb=use_wandb
     )
@@ -473,48 +307,32 @@ def evaluate_model(context: TrainingContext, model_components: ModelComponents, 
 
 
 def train_model(
-    context: TrainingContext,
-    model_components: ModelComponents,
-    data_components: DataComponents
+    state: TrainingState 
 ):
     """Main training loop with progress tracking and evaluation."""
-    # Extract components for easier access
-    config = context.config
-    device = context.device
-    log_dir = context.log_dir
-    checkpoint_dir = context.checkpoint_dir
-    use_wandb = context.use_wandb
-    
-    model = model_components.model
-    optimizer = model_components.optimizer
-    
-    data = data_components.data
-    train_loader = data_components.train_loader
-    test_loader = data_components.test_loader
-    
-    best_test_loss = float("inf")
+   
 
     # Initialize lists for efficient data accumulation (avoid repeated DataFrame concatenation)
     train_metrics_data = []
     test_metrics_data = []
     train_predictions_data = []
     test_predictions_data = []
-
+    epochs = state.training_context.config["epochs"]
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
-    logger.info(f"Starting training for {config['epochs']} epochs...")
+    logger.info(f"Starting training for {epochs} epochs...")
 
 
 
     # Training loop
-    for epoch in range(config["epochs"]):
-        context.current_epoch = epoch
-        
+    for epoch in range(state.training_context.current_epoch, epochs + 1):
+        state.training_context.current_epoch = epoch  # Update current epoch in context
+
         # Training phase
         (
             epoch_avg_train_loss,
             epoch_train_predictions_log,
             epoch_train_true_values_log,
-        ) = train_epoch(context, model_components, data_components)
+        ) = train_epoch(state)
 
         # Calculate training metrics
         # Use original cardinality space for all metrics
@@ -531,7 +349,7 @@ def train_model(
 
         # Append training metrics to list (much more efficient than DataFrame concatenation)
         train_metrics_data.append({
-            'epoch': context.current_epoch + 1,
+            'epoch': state.training_context.current_epoch,
             'loss': epoch_avg_train_loss,
             'mse': mse,
             'mae': mae,
@@ -542,7 +360,7 @@ def train_model(
         # Save training predictions to list
         for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_train_predictions_log, epoch_train_true_values_log, epoch_train_predictions, epoch_train_true_values)):
             train_predictions_data.append({
-                'epoch': context.current_epoch + 1,
+                'epoch': state.training_context.current_epoch,
                 'batch_idx': i,
                 'prediction_log': pred_log,
                 'true_value_log': true_log,
@@ -551,18 +369,20 @@ def train_model(
             })
         
         # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
-        if (context.current_epoch + 1) % 10 == 0 or (context.current_epoch + 1) == config['epochs']:
+        if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == epochs:
             train_metrics_df = pd.DataFrame(train_metrics_data)
             train_predictions_df = pd.DataFrame(train_predictions_data)
+            state.train_predictions = train_predictions_df
+            state.train_metrics = train_metrics_df
             
-            train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
-            train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
+            train_metrics_csv_path = state.training_context.log_dir / TRAIN_METRICS_FILE_NAME
+            train_predictions_csv_path = state.training_context.log_dir / TRAIN_VALUES_FILE_NAME
             train_metrics_df.to_csv(train_metrics_csv_path, index=False)
             train_predictions_df.to_csv(train_predictions_csv_path, index=False)
 
         # Log training metrics to wandb
-        if use_wandb:
-            current_lr = optimizer.param_groups[0]['lr']
+        if state.training_context.use_wandb:
+            current_lr = state.model_components.param_groups[0]['lr']
             wandb.log({
                 "train_loss": epoch_avg_train_loss,
                 "train_mse": mse,
@@ -570,16 +390,16 @@ def train_model(
                 "train_rmse": rmse,
                 "train_q_error": q_error,
                 "learning_rate": current_lr,
-                "epoch": context.current_epoch + 1
+                "epoch": state.training_context.current_epoch
             })
 
         # Evaluation phase
-        if (epoch + 1) % config["eval_every"] == 0:
+        if (epoch) % state.training_context.config["eval_every"] == 0:
             (
                 avg_test_loss,
                 epoch_test_predictions_log,
                 epoch_test_true_values_log,
-            ) = evaluate_model(context, model_components, data_components)
+            ) = evaluate_model(state)
             # Use original cardinality space for all metrics
             epoch_test_predictions = np.exp(epoch_test_predictions_log)
             epoch_test_true_values = np.exp(epoch_test_true_values_log)
@@ -598,7 +418,7 @@ def train_model(
 
             # Append test metrics to list (much more efficient than DataFrame concatenation)
             test_metrics_data.append({
-                'epoch': context.current_epoch + 1,
+                'epoch': state.training_context.current_epoch,
                 'loss': avg_test_loss,
                 'mse': mse,
                 'mae': mae,
@@ -609,7 +429,7 @@ def train_model(
             # Save test predictions to list
             for i, (pred_log, true_log, pred, true) in enumerate(zip(epoch_test_predictions_log, epoch_test_true_values_log, epoch_test_predictions, epoch_test_true_values)):
                 test_predictions_data.append({
-                    'epoch': context.current_epoch + 1,
+                    'epoch': state.training_context.current_epoch,
                     'batch_idx': i,
                     'prediction_log': pred_log,
                     'true_value_log': true_log,
@@ -618,89 +438,72 @@ def train_model(
                 })
             
             # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
-            if (context.current_epoch + 1) % 10 == 0 or (context.current_epoch + 1) == config['epochs']:
+            if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == state.training_context.config['epochs']:
                 test_metrics_df = pd.DataFrame(test_metrics_data)
                 test_predictions_df = pd.DataFrame(test_predictions_data)
-                
-                test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
-                test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
+                state.test_predictions
+                state.test_metrics = test_metrics_df
+
+                test_metrics_csv_path = state.training_context.log_dir / TEST_METRICS_FILE_NAME
+                test_predictions_csv_path = state.training_context.log_dir / TEST_VALUES_FILE_NAME
                 test_metrics_df.to_csv(test_metrics_csv_path, index=False)
                 test_predictions_df.to_csv(test_predictions_csv_path, index=False)
 
             # Log test metrics to wandb
-            if use_wandb:
+            if state.training_context.use_wandb:
                 wandb.log({
                     "test_loss": avg_test_loss,
                     "test_mse": mse,
                     "test_mae": mae,
                     "test_rmse": rmse,
                     "test_q_error": q_error,
-                    "epoch": context.current_epoch + 1
+                    "epoch": state.training_context.current_epoch
                 })
 
             # Log metrics
             logger.info(
-                f"Epoch {context.current_epoch+1}/{config['epochs']} - "
+                f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - "
                 f"Train Loss: {epoch_avg_train_loss:.6f}, "
                 f"Test Loss: {avg_test_loss:.6f}"
             )
 
             # Save best model
-            if avg_test_loss < best_test_loss:
-                best_test_loss = avg_test_loss
-                best_model_path = checkpoint_dir / "best_model.pt"
-                torch.save(
-                    {
-                        "epoch": context.current_epoch,
-                        "model_state_dict": model.state_dict(),
-                        "optimizer_state_dict": optimizer.state_dict(),
-                        "train_loss": epoch_avg_train_loss,
-                        "test_loss": avg_test_loss,
-                        "config": config,
-                    },
-                    best_model_path,
-                )
+            if avg_test_loss < state.best_test_loss:
+                state.best_test_loss = avg_test_loss
+                best_model_path = state.training_context.checkpoint_dir / "best_model.pt"
+
+                save_checkpoint(state, best_model_path)
                 logger.info(
-                    f"New best model saved with test loss: {best_test_loss:.6f}"
+                    f"New best model saved with test loss: {state.best_test_loss:.6f}"
                 )
                 
                 # Log best model as wandb artifact
-                if use_wandb:
+                if state.training_context.use_wandb:
                     artifact = wandb.Artifact(
                         name="best_model",
                         type="model",
-                        description=f"Best model checkpoint at epoch {context.current_epoch+1} with test loss {best_test_loss:.6f}"
+                        description=f"Best model checkpoint at epoch {state.training_context.current_epoch} with test loss {state.best_test_loss:.6f}"
                     )
                     artifact.add_file(str(best_model_path))
                     wandb.log_artifact(artifact)
                     
                     # Also log the best test loss metric
                     wandb.log({
-                        "best_test_loss": best_test_loss,
-                        "best_model_epoch": context.current_epoch + 1
+                        "best_test_loss": state.best_test_loss,
+                        "best_model_epoch": state.training_context.current_epoch
                     })
         else:
             logger.info(
-                f"Epoch {context.current_epoch+1}/{config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
+                f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
             )
 
         # Save checkpoint periodically
-        if (epoch + 1) % config["save_every"] == 0:
+        if (epoch + 1) % state.training_context.config["save_every"] == 0:
             # Get latest test loss from test data list
             latest_test_loss = test_metrics_data[-1]['loss'] if len(test_metrics_data) > 0 else None
-            
-            checkpoint_path = checkpoint_dir / f"checkpoint_epoch_{context.current_epoch+1}.pt"
-            torch.save(
-                {
-                    "epoch": context.current_epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "train_loss": epoch_avg_train_loss,
-                    "test_loss": latest_test_loss,
-                    "config": config,
-                },
-                checkpoint_path,
-            )
+
+            checkpoint_path = state.training_context.checkpoint_dir / f"checkpoint_epoch_{state.training_context.current_epoch}.pt"
+            save_checkpoint(state, checkpoint_path)
             logger.info(f"Checkpoint saved: {checkpoint_path}")
 
     logger.info("Training completed!")
@@ -712,18 +515,18 @@ def train_model(
     final_test_predictions_df = pd.DataFrame(test_predictions_data)
     
     # Save final DataFrames to CSV
-    train_metrics_csv_path = log_dir / TRAIN_METRICS_FILE_NAME
-    train_predictions_csv_path = log_dir / TRAIN_VALUES_FILE_NAME
-    test_metrics_csv_path = log_dir / TEST_METRICS_FILE_NAME
-    test_predictions_csv_path = log_dir / TEST_VALUES_FILE_NAME
-    
+    train_metrics_csv_path = state.training_context.log_dir / TRAIN_METRICS_FILE_NAME
+    train_predictions_csv_path = state.training_context.log_dir / TRAIN_VALUES_FILE_NAME
+    test_metrics_csv_path = state.training_context.log_dir / TEST_METRICS_FILE_NAME
+    test_predictions_csv_path = state.training_context.log_dir / TEST_VALUES_FILE_NAME
+
     final_train_metrics_df.to_csv(train_metrics_csv_path, index=False)
     final_train_predictions_df.to_csv(train_predictions_csv_path, index=False)
     final_test_metrics_df.to_csv(test_metrics_csv_path, index=False)
     final_test_predictions_df.to_csv(test_predictions_csv_path, index=False)
 
     return {
-        "best_test_loss": best_test_loss,
+        "best_test_loss": state.best_test_loss,
         "train_losses": final_train_metrics_df['loss'].tolist() if len(final_train_metrics_df) > 0 else [],
         "train_mse": final_train_metrics_df['mse'].tolist() if len(final_train_metrics_df) > 0 else [],
         "train_mae": final_train_metrics_df['mae'].tolist() if len(final_train_metrics_df) > 0 else [],
@@ -787,150 +590,170 @@ def main():
     """Main function to orchestrate the training process."""
     # Parse arguments and load config
     args = parse_arguments()
-    config = load_config(args.config)
 
-    # Merge command-line arguments with config (overwrite config values with cli values if passed)
-    config = merge_config_with_args(config, args)
-    run_dir, log_dir, checkpoint_dir = setup_directories(config)
+    from_checkpoint = args.checkpoint is not None
+    if from_checkpoint:
+        logger.info(f"Resuming from checkpoint: {args.checkpoint}")
+        checkpoint_path = Path(args.checkpoint)
+        state = load_checkpoint(checkpoint_path=checkpoint_path)
+    else:
+        config = load_config(args.config)
 
-    # Setup logging
-    setup_logging(log_dir)
-    logger.info("Starting training script...")
-    logger.info("All imports successful!")
-    
-    # Log original configuration
-    logger.info("Original Configuration from file:")
-    for key, value in config.items():
-        logger.info(f"  {key}: {value}")
-    
-   
-    logger.info(f"PyTorch version: {torch.__version__}")
-    logger.info(f"CUDA available: {torch.cuda.is_available()}")
-    logger.info(f"CUDA version: {torch.version.cuda}")
-    
-    # Log initial GPU memory if available
-    log_gpu_memory_usage("initialization")
+        # Merge command-line arguments with config (overwrite config values with cli values if passed)
+        run_dir, log_dir, checkpoint_dir = setup_directories(config)
 
-    try:
-        e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
-        logger.info(f"nvcc version: {e.stdout.strip()}")
-    except FileNotFoundError as e:
-        logger.error(f"Error occurred while checking CUDA version: {e}")
-
-    logger.info(f"Run directory: {run_dir}")
-    logger.info(f"Log directory: {log_dir}")
-    logger.info(f"Checkpoint directory: {checkpoint_dir}")
-
-    # Log final configuration (after merging with command-line args)
-    logger.info("Final Configuration (after command-line overrides):")
-    for key, value in config.items():
-        logger.info(f"  {key}: {value}")
-
-    # Set random seeds for reproducibility
-    processed_seed = process_seed(config["seed"])
-    set_random_seeds(processed_seed)
-    logger.info(f"Random seed set to: {processed_seed}")
-
-    # Setup device
-    device = get_device(config["device"])
-    logger.info(f"Using device: {device}")
-
-    # Initialize Weights & Biases
-    wandb_run = initialize_wandb(config, run_dir)
-    use_wandb = wandb_run is not None and args.wandb
-
-    # Create training context
-    context = TrainingContext(
-        config=config,
-        device=device,
-        run_dir=run_dir,
-        log_dir=log_dir,
-        checkpoint_dir=checkpoint_dir,
-        use_wandb=use_wandb
-    )
-
-    # Load data
-    data = load_dataset(context)
-    (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
-        load_occurrences(context)
-    )
-    queries = load_queries(
-        context,
-        entity_occurrences,
-        relation_occurrences,
-        entity_mapping,
-        relation_mapping,
-    )
-    # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
-    # original_y = queries.y
-    # log_y = torch.log(original_y)
-    # queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
-
-    train_queries, test_queries = train_test_split(context, queries)
-    logger.info(f"Dataset split:")
-    logger.info(f"  Total queries: {len(queries)}")
-    logger.info(
-        f"  Train queries: {len(train_queries)} ({len(train_queries)/len(queries)*100:.1f}%)"
-    )
-    logger.info(
-        f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
-    )
-    logger.info(f"  Train ratio: {config['train_ratio']}")
-
-    # Log dataset info to wandb
-    if use_wandb:
-        wandb.log({
-            "dataset_total_queries": len(queries),
-            "dataset_train_queries": len(train_queries),
-            "dataset_test_queries": len(test_queries),
-            "dataset_num_nodes": data.num_nodes,
-            "dataset_num_edges": data.num_edges,
-        })
-
-    train_loader = DataLoader(
-        dataset=train_queries, batch_size=config["batch_size"], shuffle=True
-    )
-    test_loader = DataLoader(
-        dataset=test_queries,
-        batch_size=1,  # Use batch_size=1 for evaluation
-        shuffle=False,
-    )
-
-    # Create data components
-    data_components = DataComponents(
-        data=data,
-        train_loader=train_loader,
-        test_loader=test_loader,
-        train_queries=train_queries,
-        test_queries=test_queries
-    )
-
-    # Initialize model and optimizer
-    model_components = initialize_model_and_optimizer(context, steps_per_epoch=len(train_loader))
-
-    # Log model information to wandb
-    if use_wandb:
-        total_params = sum(p.numel() for p in model_components.model.parameters())
-        trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
-        wandb.log({
-            "model_total_parameters": total_params,
-            "model_trainable_parameters": trainable_params,
-            "model_name": model_components.model.__class__.__name__
-        })
+        # Setup logging
+        setup_logging(log_dir)
+        logger.info("Starting training script...")
+        logger.info("All imports successful!")
         
-        # Watch the model for gradient and parameter tracking
-        wandb.watch(model_components.model, log="all", log_freq=100)
+        # Log original configuration
+        logger.info("Original Configuration from file:")
+        for key, value in config.items():
+            logger.info(f"  {key}: {value}")
+        
+    
+        logger.info(f"PyTorch version: {torch.__version__}")
+        logger.info(f"CUDA available: {torch.cuda.is_available()}")
+        logger.info(f"CUDA version: {torch.version.cuda}")
+        
+        # Log initial GPU memory if available
+        log_gpu_memory_usage("initialization")
+
+        try:
+            e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
+            logger.info(f"nvcc version: {e.stdout.strip()}")
+        except FileNotFoundError as e:
+            logger.error(f"Error occurred while checking CUDA version: {e}")
+
+        logger.info(f"Run directory: {run_dir}")
+        logger.info(f"Log directory: {log_dir}")
+        logger.info(f"Checkpoint directory: {checkpoint_dir}")
+
+        # Log final configuration (after merging with command-line args)
+        logger.info("Final Configuration (after command-line overrides):")
+        for key, value in config.items():
+            logger.info(f"  {key}: {value}")
+
+        # Set random seeds for reproducibility
+        processed_seed = process_seed(config["seed"])
+        set_random_seeds(processed_seed)
+        logger.info(f"Random seed set to: {processed_seed}")
+
+        # Setup device
+        device = get_device(config["device"])
+        logger.info(f"Using device: {device}")
+
+        # Initialize Weights & Biases
+        wandb_run = initialize_wandb(config, run_dir)
+        use_wandb = wandb_run is not None and args.wandb
+
+        # Create training context
+        context = TrainingContext(
+            config=config,
+            device=device,
+            run_dir=run_dir,
+            log_dir=log_dir,
+            checkpoint_dir=checkpoint_dir,
+            use_wandb=use_wandb
+        )
+
+        # Load data
+        data = load_dataset(context)
+        (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
+            load_occurrences(context)
+        )
+        queries = load_queries(
+            context,
+            entity_occurrences,
+            relation_occurrences,
+            entity_mapping,
+            relation_mapping,
+        )
+        # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
+        # original_y = queries.y
+        # log_y = torch.log(original_y)
+        # queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
+
+        train_queries, test_queries = train_test_split(context, queries)
+        logger.info(f"Dataset split:")
+        logger.info(f"  Total queries: {len(queries)}")
+        logger.info(
+            f"  Train queries: {len(train_queries)} ({len(train_queries)/len(queries)*100:.1f}%)"
+        )
+        logger.info(
+            f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
+        )
+        logger.info(f"  Train ratio: {config['train_ratio']}")
+
+        # Log dataset info to wandb
+        if use_wandb:
+            wandb.log({
+                "dataset_total_queries": len(queries),
+                "dataset_train_queries": len(train_queries),
+                "dataset_test_queries": len(test_queries),
+                "dataset_num_nodes": data.num_nodes,
+                "dataset_num_edges": data.num_edges,
+            })
+
+        train_loader = DataLoader(
+            dataset=train_queries, batch_size=config["batch_size"], shuffle=True
+        )
+        test_loader = DataLoader(
+            dataset=test_queries,
+            batch_size=1,  # Use batch_size=1 for evaluation
+            shuffle=False,
+        )
+
+        # Create data components
+        data_components = DataComponents(
+            data=data,
+            train_loader=train_loader,
+            test_loader=test_loader,
+            train_queries=train_queries,
+            test_queries=test_queries,
+
+        )
+
+        # Initialize model and optimizer
+        model_components = initialize_model_and_optimizer(context, steps_per_epoch=len(train_loader))
+
+        # Log model information to wandb
+        if use_wandb:
+            total_params = sum(p.numel() for p in model_components.model.parameters())
+            trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
+            wandb.log({
+                "model_total_parameters": total_params,
+                "model_trainable_parameters": trainable_params,
+                "model_name": model_components.model.__class__.__name__
+            })
+            
+            # Watch the model for gradient and parameter tracking
+            wandb.watch(model_components.model, log="all", log_freq=100)
+        state = TrainingState(
+            best_test_loss=float('inf'),
+            train_metrics = None,
+            test_metrics = None,
+            train_predictions = None,
+            test_predictions = None,
+            training_context=context,
+            model_components=model_components,
+            data_components=data_components,
+        )
 
     # Train the model
-    training_results = train_model(context, model_components, data_components)
+    training_results = train_model(state)
 
     # Print final summary
     print_final_summary(
-        training_results, run_dir, checkpoint_dir, log_dir
+        training_results, 
+        state.training_context.run_dir, 
+        state.training_context.checkpoint_dir, 
+        state.training_context.log_dir
     )
 
     # Finalize wandb run
-    if use_wandb:
+    if state.training_context.use_wandb:
         # Log final metrics summary
         final_metrics = {
             "final_train_loss": training_results['train_losses'][-1],
@@ -945,23 +768,23 @@ def main():
         
         # Save training data
         artifact = wandb.Artifact("training_data", type="dataset")
-        if (log_dir / TRAIN_METRICS_FILE_NAME).exists():
-            artifact.add_file(str(log_dir / TRAIN_METRICS_FILE_NAME))
-        if (log_dir / TEST_METRICS_FILE_NAME).exists():
-            artifact.add_file(str(log_dir / TEST_METRICS_FILE_NAME))
-        if (log_dir / TRAIN_VALUES_FILE_NAME).exists():
-            artifact.add_file(str(log_dir / TRAIN_VALUES_FILE_NAME))
-        if (log_dir / TEST_VALUES_FILE_NAME).exists():
-            artifact.add_file(str(log_dir / TEST_VALUES_FILE_NAME))
+        if (state.training_context.log_dir / TRAIN_METRICS_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TRAIN_METRICS_FILE_NAME))
+        if (state.training_context.log_dir / TEST_METRICS_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TEST_METRICS_FILE_NAME))
+        if (state.training_context.log_dir / TRAIN_VALUES_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TRAIN_VALUES_FILE_NAME))
+        if (state.training_context.log_dir / TEST_VALUES_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TEST_VALUES_FILE_NAME))
         wandb.log_artifact(artifact)
         
         # Save final model state as artifact
-        final_model_path = checkpoint_dir / "final_model.pt"
+        final_model_path = state.training_context.checkpoint_dir / "final_model.pt"
         torch.save({
-            "model_state_dict": model_components.model.state_dict(),
-            "optimizer_state_dict": model_components.optimizer.state_dict(),
+            "model_state_dict": state.model_components.model.state_dict(),
+            "optimizer_state_dict": state.model_components.optimizer.state_dict(),
             "training_results": training_results,
-            "config": config,
+            "config": state.training_context.config,
             "final_epoch": len(training_results['train_losses'])
         }, final_model_path)
         
