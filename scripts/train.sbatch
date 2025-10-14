@@ -13,6 +13,22 @@ CONTAINER="/storage/home/lukasketzer/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"
 
 # -------------------------------
+# Parse arguments
+# -------------------------------
+CHECKPOINT=""
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --checkpoint)
+            CHECKPOINT="$2"
+            shift 2
+            ;;
+        *)
+            shift
+            ;;
+    esac
+done
+
+# -------------------------------
 # Environment setup
 # -------------------------------
 module load cuda/12.6.3
@@ -20,6 +36,13 @@ module load cuda/12.6.3
 # -------------------------------
 # Run inside Apptainer with venv
 # -------------------------------
-srun apptainer exec --nv --cleanenv "$CONTAINER" \
-    bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --wandb"
+if [ -n "$CHECKPOINT" ]; then
+    echo "Resuming from checkpoint: $CHECKPOINT"
+    srun apptainer exec --nv --cleanenv "$CONTAINER" \
+        bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --checkpoint $CHECKPOINT --wandb"
+else
+    echo "Starting training from scratch"
+    srun apptainer exec --nv --cleanenv "$CONTAINER" \
+        bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --wandb"
+fi
 
