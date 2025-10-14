@@ -63,9 +63,6 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     model.to(device)
 
     # Initialize optimizer
-    print('812031092830912839081')
-    print(config.get("weight_decay", None))
-    print('812031092830912839081')
     if config.get("weight_decay", None) is not None: 
         optimizer = torch.optim.AdamW(
             model.parameters(),
