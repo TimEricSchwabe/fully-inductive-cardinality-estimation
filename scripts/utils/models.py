@@ -13,7 +13,7 @@ class TrainingContext:
     log_dir: Path
     checkpoint_dir: Path
     use_wandb: bool = False
-    current_epoch: int = 0  # Start from 0, will be incremented to 1 before first epoch
+    current_epoch: int = 1  # Start from 0, will be incremented to 1 before first epoch
 
 
 @dataclass

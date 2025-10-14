@@ -50,36 +50,36 @@ def setup_directories(config):
     return run_dir, log_dir, checkpoint_dir
 
 
-def initialize_model_and_optimizer(context: TrainingContext, steps_per_epoch: int) -> ModelComponents:
+def initialize_model_components(context: TrainingContext, model_state_dict: dict = None, optimizer_state_dict: dict = None) -> ModelComponents:
     """Initialize the FICE model and optimizer."""
     config = context.config
     device = context.device
     
-    logger.info("Initializing model...")
     model = FICE()
+    if model_state_dict is not None:
+        model.load_state_dict(model_state_dict)
+        logger.info("Model state loaded from checkpoint.")
+
     model.to(device)
 
-    # Count parameters
-    total_params = sum(p.numel() for p in model.parameters())
-    trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-
-    logger.info(f"Model initialized successfully!")
-    logger.info(f"Model: {model.__class__.__name__}")
-    logger.info(f"{model}")
-    logger.info(f"Total parameters: {total_params:,}")
-    logger.info(f"Trainable parameters: {trainable_params:,}")
-    logger.info(f"Model device: {next(model.parameters()).device}")
-
     # Initialize optimizer
-    optimizer = torch.optim.AdamW(
-        model.parameters(),
-        lr=config["learning_rate"],
-        weight_decay=config["weight_decay"],
-    )
-
-    logger.info(f"Optimizer: {optimizer.__class__.__name__}")
-    logger.info(f"Learning rate: {config['learning_rate']}")
-    logger.info(f"Weight decay: {config['weight_decay']}")
+    print('812031092830912839081')
+    print(config.get("weight_decay", None))
+    print('812031092830912839081')
+    if config.get("weight_decay", None) is not None: 
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.get("learning_rate", 1e-3),
+            weight_decay=config.get("weight_decay", None),
+        )
+    else:
+        optimizer = torch.optim.AdamW(
+            model.parameters(),
+            lr=config.get("learning_rate", 1e-3),
+        )
+    if optimizer_state_dict is not None:
+        optimizer.load_state_dict(optimizer_state_dict)
+        logger.info("Optimizer state loaded from checkpoint.")
 
     return ModelComponents(model=model, optimizer=optimizer)
 
@@ -209,7 +209,7 @@ def train_epoch(state: TrainingState):
 
         # Backward pass
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
+        # torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
         state.model_components.optimizer.step()
 
         # Move predictions to CPU for logging to save GPU memory
@@ -325,7 +325,7 @@ def train_model(
 
 
     # Training loop
-    for epoch in range(state.training_context.current_epoch, epochs + 1):
+    for epoch in range(max(state.training_context.current_epoch, 1), epochs + 1):
         state.training_context.current_epoch = epoch  # Update current epoch in context
 
         # Training phase
@@ -594,149 +594,173 @@ def main():
     if from_checkpoint:
         logger.info(f"Resuming from checkpoint: {args.checkpoint}")
         checkpoint_path = Path(args.checkpoint)
-        state = load_checkpoint(checkpoint_path=checkpoint_path)
+        checkpoint = load_checkpoint(checkpoint_path=checkpoint_path)
+        config = load_config(args.config) if args.config is not None else checkpoint['config']
+        model_state_dict = checkpoint['model_state_dict']
+        optimizer_state_dict = checkpoint['optimizer_state_dict']
     else:
         config = load_config(args.config)
+        model_state_dict = None
+        optimizer_state_dict = None
 
-        # Merge command-line arguments with config (overwrite config values with cli values if passed)
-        run_dir, log_dir, checkpoint_dir = setup_directories(config)
 
-        # Setup logging
-        setup_logging(log_dir)
-        logger.info("Starting training script...")
-        logger.info("All imports successful!")
-        
-        # Log original configuration
-        logger.info("Original Configuration from file:")
-        for key, value in config.items():
-            logger.info(f"  {key}: {value}")
-        
+    run_dir, log_dir, checkpoint_dir = setup_directories(config)
+
+    # Setup logging
+    setup_logging(log_dir)
+    logger.info("Starting training script...")
+    logger.info("All imports successful!")
     
-        logger.info(f"PyTorch version: {torch.__version__}")
-        logger.info(f"CUDA available: {torch.cuda.is_available()}")
-        logger.info(f"CUDA version: {torch.version.cuda}")
+    # Log original configuration
+    logger.info("Original Configuration from file:")
+    for key, value in config.items():
+        logger.info(f"  {key}: {value}")
+    
+
+    logger.info(f"PyTorch version: {torch.__version__}")
+    logger.info(f"CUDA available: {torch.cuda.is_available()}")
+    logger.info(f"CUDA version: {torch.version.cuda}")
+    
+    # Log initial GPU memory if available
+    log_gpu_memory_usage("initialization")
+
+    try:
+        e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
+        logger.info(f"nvcc version: {e.stdout.strip()}")
+    except FileNotFoundError as e:
+        logger.error(f"Error occurred while checking CUDA version: {e}")
+
+    logger.info(f"Run directory: {run_dir}")
+    logger.info(f"Log directory: {log_dir}")
+    logger.info(f"Checkpoint directory: {checkpoint_dir}")
+
+    # Log final configuration (after merging with command-line args)
+    logger.info("Final Configuration (after command-line overrides):")
+    for key, value in config.items():
+        logger.info(f"  {key}: {value}")
+
+    # Set random seeds for reproducibility
+    processed_seed = process_seed(config["seed"])
+    set_random_seeds(processed_seed)
+    logger.info(f"Random seed set to: {processed_seed}")
+
+    # Setup device
+    device = get_device(config["device"])
+    logger.info(f"Using device: {device}")
+
+    # Initialize Weights & Biases
+    wandb_run = initialize_wandb(config, run_dir)
+    use_wandb = wandb_run is not None and args.wandb
+
+    # Create training context
+    context = TrainingContext(
+        config=config,
+        device=device,
+        run_dir=run_dir,
+        log_dir=log_dir,
+        checkpoint_dir=checkpoint_dir,
+        use_wandb=use_wandb,
+        current_epoch=checkpoint['epoch'] if from_checkpoint else 1,
+    )
+
+    # Load data
+    data = load_dataset(context)
+    (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
+        load_occurrences(context)
+    )
+    queries = load_queries(
+        context,
+        entity_occurrences,
+        relation_occurrences,
+        entity_mapping,
+        relation_mapping,
+    )
+
+    train_queries, test_queries = train_test_split(context, queries)
+    logger.info(f"Dataset split:")
+    logger.info(f"  Total queries: {len(queries)}")
+    logger.info(
+        f"  Train queries: {len(train_queries)} ({len(train_queries)/len(queries)*100:.1f}%)"
+    )
+    logger.info(
+        f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
+    )
+    logger.info(f"  Train ratio: {config['train_ratio']}")
+
+    # Log dataset info to wandb
+    if use_wandb:
+        wandb.log({
+            "dataset_total_queries": len(queries),
+            "dataset_train_queries": len(train_queries),
+            "dataset_test_queries": len(test_queries),
+            "dataset_num_nodes": data.num_nodes,
+            "dataset_num_edges": data.num_edges,
+        })
+
+    train_loader = DataLoader(
+        dataset=train_queries, batch_size=config["batch_size"], shuffle=True
+    )
+    test_loader = DataLoader(
+        dataset=test_queries,
+        batch_size=1,  # Use batch_size=1 for evaluation
+        shuffle=False,
+    )
+
+    # Create data components
+    data_components = DataComponents(
+        data=data,
+        train_loader=train_loader,
+        test_loader=test_loader,
+        train_queries=train_queries,
+        test_queries=test_queries,
+
+    )
+
+    # Initialize model and optimizer
+    logger.info("Initializing model...")
+    model_components = initialize_model_components(context, model_state_dict=model_state_dict, optimizer_state_dict=optimizer_state_dict)
+
+    # Count parameters
+    total_params = sum(p.numel() for p in model_components.model.parameters())
+    trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
+
+    logger.info(f"Model initialized successfully!")
+    logger.info(f"Model: {model_components.model.__class__.__name__}")
+    logger.info(f"{model_components.model}")
+    logger.info(f"Total parameters: {total_params:,}")
+    logger.info(f"Trainable parameters: {trainable_params:,}")
+    logger.info(f"Model device: {next(model_components.model.parameters()).device}")
+
+    logger.info(f"Optimizer: {model_components.optimizer.__class__.__name__}")
+
+    logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
+    logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
+
+
+
+
+    wandb.watch(model_components.model, log="all", log_freq=100)
+
+    # Log model information to wandb
+    if use_wandb:
+        total_params = sum(p.numel() for p in model_components.model.parameters())
+        trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
+        wandb.log({
+            "model_total_parameters": total_params,
+            "model_trainable_parameters": trainable_params,
+            "model_name": model_components.model.__class__.__name__
+        })
         
-        # Log initial GPU memory if available
-        log_gpu_memory_usage("initialization")
-
-        try:
-            e = subprocess.run(["nvcc", "--version"], check=True, capture_output=True, text=True)
-            logger.info(f"nvcc version: {e.stdout.strip()}")
-        except FileNotFoundError as e:
-            logger.error(f"Error occurred while checking CUDA version: {e}")
-
-        logger.info(f"Run directory: {run_dir}")
-        logger.info(f"Log directory: {log_dir}")
-        logger.info(f"Checkpoint directory: {checkpoint_dir}")
-
-        # Log final configuration (after merging with command-line args)
-        logger.info("Final Configuration (after command-line overrides):")
-        for key, value in config.items():
-            logger.info(f"  {key}: {value}")
-
-        # Set random seeds for reproducibility
-        processed_seed = process_seed(config["seed"])
-        set_random_seeds(processed_seed)
-        logger.info(f"Random seed set to: {processed_seed}")
-
-        # Setup device
-        device = get_device(config["device"])
-        logger.info(f"Using device: {device}")
-
-        # Initialize Weights & Biases
-        wandb_run = initialize_wandb(config, run_dir)
-        use_wandb = wandb_run is not None and args.wandb
-
-        # Create training context
-        context = TrainingContext(
-            config=config,
-            device=device,
-            run_dir=run_dir,
-            log_dir=log_dir,
-            checkpoint_dir=checkpoint_dir,
-            use_wandb=use_wandb
-        )
-
-        # Load data
-        data = load_dataset(context)
-        (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
-            load_occurrences(context)
-        )
-        queries = load_queries(
-            context,
-            entity_occurrences,
-            relation_occurrences,
-            entity_mapping,
-            relation_mapping,
-        )
-        # Process target values but keep them on CPU - they'll be moved to GPU batch by batch
-        # original_y = queries.y
-        # log_y = torch.log(original_y)
-        # queries.y = log_y.detach().clone().to(torch.float32)  # Keep on CPU
-
-        train_queries, test_queries = train_test_split(context, queries)
-        logger.info(f"Dataset split:")
-        logger.info(f"  Total queries: {len(queries)}")
-        logger.info(
-            f"  Train queries: {len(train_queries)} ({len(train_queries)/len(queries)*100:.1f}%)"
-        )
-        logger.info(
-            f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
-        )
-        logger.info(f"  Train ratio: {config['train_ratio']}")
-
-        # Log dataset info to wandb
-        if use_wandb:
-            wandb.log({
-                "dataset_total_queries": len(queries),
-                "dataset_train_queries": len(train_queries),
-                "dataset_test_queries": len(test_queries),
-                "dataset_num_nodes": data.num_nodes,
-                "dataset_num_edges": data.num_edges,
-            })
-
-        train_loader = DataLoader(
-            dataset=train_queries, batch_size=config["batch_size"], shuffle=True
-        )
-        test_loader = DataLoader(
-            dataset=test_queries,
-            batch_size=1,  # Use batch_size=1 for evaluation
-            shuffle=False,
-        )
-
-        # Create data components
-        data_components = DataComponents(
-            data=data,
-            train_loader=train_loader,
-            test_loader=test_loader,
-            train_queries=train_queries,
-            test_queries=test_queries,
-
-        )
-
-        # Initialize model and optimizer
-        model_components = initialize_model_and_optimizer(context, steps_per_epoch=len(train_loader))
-
-        # Log model information to wandb
-        if use_wandb:
-            total_params = sum(p.numel() for p in model_components.model.parameters())
-            trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
-            wandb.log({
-                "model_total_parameters": total_params,
-                "model_trainable_parameters": trainable_params,
-                "model_name": model_components.model.__class__.__name__
-            })
-            
-        state = TrainingState(
-            best_test_loss=float('inf'),
-            train_metrics = None,
-            test_metrics = None,
-            train_predictions = None,
-            test_predictions = None,
-            training_context=context,
-            model_components=model_components,
-            data_components=data_components,
-        )
+    state = TrainingState(
+        best_test_loss=float('inf'),
+        train_metrics = None,
+        test_metrics = None,
+        train_predictions = None,
+        test_predictions = None,
+        training_context=context,
+        model_components=model_components,
+        data_components=data_components,
+    )
 
     # Train the model
     training_results = train_model(state)
@@ -750,6 +774,9 @@ def main():
     )
 
     # Finalize wandb run
+    # Save final model state using save_checkpoint
+    final_model_path = state.training_context.checkpoint_dir / "final_model.pt"
+    save_checkpoint(state, final_model_path)
     if state.training_context.use_wandb:
         # Log final metrics summary
         final_metrics = {
@@ -775,23 +802,6 @@ def main():
             artifact.add_file(str(state.training_context.log_dir / TEST_VALUES_FILE_NAME))
         wandb.log_artifact(artifact)
         
-        # Save final model state as artifact
-        final_model_path = state.training_context.checkpoint_dir / "final_model.pt"
-        torch.save({
-            "model_state_dict": state.model_components.model.state_dict(),
-            "optimizer_state_dict": state.model_components.optimizer.state_dict(),
-            "training_results": training_results,
-            "config": state.training_context.config,
-            "final_epoch": len(training_results['train_losses'])
-        }, final_model_path)
-        
-        final_model_artifact = wandb.Artifact(
-            name="final_model",
-            type="model",
-            description=f"Final model state after {len(training_results['train_losses'])} epochs of training"
-        )
-        final_model_artifact.add_file(str(final_model_path))
-        wandb.log_artifact(final_model_artifact)
         
         wandb.finish()
         logger.info("Weights & Biases run finished")

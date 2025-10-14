@@ -65,7 +65,7 @@ def parse_arguments():
         "--config",
         "-c",
         type=str,
-        required=True,
+        required=False,
         help="Path to configuration JSON file containing all training parameters",
     )
     
@@ -81,7 +81,11 @@ def parse_arguments():
         help="Enable Weights & Biases logging.",
     )
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    # Enforce --config is required unless --checkpoint is specified
+    if not args.checkpoint and not args.config:
+        parser.error("--config is mandatory unless --checkpoint is specified")
+    return args
 
 # Utility functions
 def setup_logging(log_dir: Path, log_level: str = "INFO") -> None:
