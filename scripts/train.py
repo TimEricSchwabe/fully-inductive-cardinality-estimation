@@ -657,7 +657,6 @@ def main():
         log_dir=log_dir,
         checkpoint_dir=checkpoint_dir,
         use_wandb=use_wandb,
-        current_epoch=checkpoint['epoch'] if from_checkpoint else 1,
     )
 
     # Load data
