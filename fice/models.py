@@ -2,7 +2,7 @@ from torch import nn
 
 from easydict import EasyDict
 from fice.ultra.models import RelNBFNet, EntityNBFNet
-from fice.gnce.models import QueryGNN
+from fice.gnce.models import QueryGNN, TripleModel
 import torch.nn.functional as F
 import torch
 import torch.nn as nn
@@ -35,9 +35,8 @@ class FICE(nn.Module):
             layer_norm=True
         )
         
-        self.query_gnn = QueryGNN(hidden_dim=self.vector_dim + 3)
+        self.query_gnn = TripleModel()
 
-        
     def forward(self, data, batch):
         # Get model device from model parameters
         device = next(self.parameters()).device

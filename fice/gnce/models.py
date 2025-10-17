@@ -240,10 +240,16 @@ class TripleModel(torch.nn.Module):
 
         self.dropout = torch.nn.Dropout(p=0.2)
 
-    def forward(self, x, edge_index, edge_type, edge_attr, batch=None):
+    def forward(self, batch, graph_size):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+
+
+
         x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
         x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
-        x = global_add_pool(x, batch)
+        x = global_add_pool(x, batch.batch)
         x = self.lin(x)
         # x = self.dropout(x)
         x = F.relu(x)
