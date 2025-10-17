@@ -42,7 +42,7 @@ class QueryGNN(torch.nn.Module):
         self.head = nn.Sequential(
             nn.Linear(hidden_dim + 1, hidden_dim),
             nn.ReLU(),
-            nn.Dropout(dropout),
+            # nn.Dropout(dropout),
             nn.Linear(hidden_dim, 1)
         )
 
@@ -148,15 +148,9 @@ class TripleConv(MessagePassing):
         else:
             self.register_buffer('eps', torch.Tensor([eps]))
         if edge_dim is not None:
-            if isinstance(self.nn, torch.nn.Sequential):
-                nn = self.nn[0]
-            if hasattr(nn, 'in_features'):
-                in_channels = nn.in_features
-            elif hasattr(nn, 'in_channels'):
-                in_channels = nn.in_channels
-            else:
-                raise ValueError("Could not infer input channels from `nn`.")
-            in_channels = 101
+            # Use the provided edge_dim as the edge feature dimensionality.
+            # Do not override with a hard-coded value here — the dataset
+            # determines the true feature size (e.g. feat_dim + 3).
             self.lin = Linear(3 * edge_dim, edge_dim)
 
         else:
@@ -194,7 +188,7 @@ class TripleConv(MessagePassing):
             x_i[reverse], x_j[reverse] = x_j[reverse], x_i[reverse]
 
         #x_i[edge_attr[:, -1] == -1] = x_j[edge_attr[:, -1] == -1]
-        edge_attr = edge_attr[:, :-1]
+        # edge_attr = edge_attr[:, :-1]
 
 
         return self.lin(torch.cat((x_i, edge_attr, x_j), 1)).relu()
@@ -213,32 +207,34 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self):
+    def __init__(self, feat_dim: int = 101):
         super().__init__()
-        torch.manual_seed(12345)
+        self.feat_dim = feat_dim
 
         self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(101, 101),
+            torch.nn.Linear(self.feat_dim, self.feat_dim),
             # torch.nn.Dropout(p=0.2),
             torch.nn.ReLU(),
-            torch.nn.Linear(101, 101),
+            torch.nn.Linear(self.feat_dim, self.feat_dim),
             # torch.nn.Dropout(p=0.2)
         )
 
+        # second MLP maps feat_dim -> 200 (via 100)
         self.mlp2 = torch.nn.Sequential(
-            torch.nn.Linear(101, 100),
+            torch.nn.Linear(self.feat_dim, 100),
             # torch.nn.Dropout(p=0.2),
             torch.nn.ReLU(),
             torch.nn.Linear(100, 200),
             # torch.nn.Dropout(p=0.2)
         )
 
-        self.conv1 = TripleConv(nn=self.mlp, edge_dim=101)
-        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=101)
+        # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
+        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
+        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)
 
-        self.dropout = torch.nn.Dropout(p=0.2)
+        # self.dropout = torch.nn.Dropout(p=0.2)
 
     def forward(self, batch, graph_size):
         x = batch.x
@@ -254,94 +250,6 @@ class TripleModel(torch.nn.Module):
         # x = self.dropout(x)
         x = F.relu(x)
         x = self.lin2(x)
-        return torch.abs(x)
+        return torch.abs(x).squeeze()
 
-
-class TripleModelAdapt(torch.nn.Module):
-    """
-    GNN model to predict cardinality of a query,
-    given the query graph and embeddings of nodes
-    and edges.
-
-    Args:
-
-
-    """
-    def __init__(self):
-        super().__init__()
-        torch.manual_seed(12345)
-
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(101, 101),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(101, 101),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        self.mlp2 = torch.nn.Sequential(
-            torch.nn.Linear(101, 100),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(100, 200),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        self.conv1 = TripleConv(nn=self.mlp, edge_dim=101)
-        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=101)
-        self.lin = Linear(200, 50)
-        self.lin2 = Linear(50, 1)
-
-        self.dropout = torch.nn.Dropout(p=0.2)
-
-    def forward(self, data):
-        x, edge_index, edge_attr, batch = data.x, data.edge_index, data.edge_attr, data.batch
-        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
-        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
-        x = global_add_pool(x, batch=batch)
-        x = self.lin(x)
-        # x = self.dropout(x)
-        x = F.relu(x)
-        x = self.lin2(x)
-        return torch.abs(x)
-
-
-
-class GINmodel(torch.nn.Module):
-    def __init__(self):
-        super().__init__()
-        torch.manual_seed(12345)
-
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(101, 101),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(101, 101),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        self.mlp2 = torch.nn.Sequential(
-            torch.nn.Linear(101, 100),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(100, 200),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        self.conv1 = GINEConv(nn=self.mlp, edge_dim=101)
-        self.conv2 = GINEConv(nn=self.mlp2, edge_dim=101)
-        self.lin = Linear(200, 50)
-        self.lin2 = Linear(50, 1)
-
-        self.dropout = torch.nn.Dropout(p=0.2)
-
-    def forward(self, x, edge_index, edge_type, edge_attr, batch=None):
-        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
-        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
-        x = global_add_pool(x, batch)
-        x = self.lin(x)
-        # x = self.dropout(x)
-        x = F.relu(x)
-        x = self.lin2(x)
-        return torch.abs(x)
 

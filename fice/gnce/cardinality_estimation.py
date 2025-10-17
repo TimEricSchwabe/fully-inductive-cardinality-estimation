@@ -32,7 +32,7 @@ import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler, RobustScaler
 import os
 import random
-from fice.gnce.models import GINmodel, TripleModel
+from fice.gnce.models import  TripleModel
 from fice.gnce.utils import get_query_graph_data, StatisticsLoader, get_query_graph_data_new, ToUndirectedCustom
 import time
 
