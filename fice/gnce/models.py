@@ -250,6 +250,6 @@ class TripleModel(torch.nn.Module):
         # x = self.dropout(x)
         x = F.relu(x)
         x = self.lin2(x)
-        return torch.abs(x).squeeze()
+        return torch.abs(x.squeeze(-1))
 
 
