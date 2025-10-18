@@ -2,7 +2,7 @@
     "data_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/wikidata",
     "queries_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/wikidata_star_queries",
     "epochs": 150,
-    "batch_size": 32,
+    "batch_size": 1,
     "learning_rate": 1e-4,
     "train_ratio": 0.8,
     
@@ -12,5 +12,5 @@
 
     "seed": 42,
     "device": "auto",
-    "DEBUG_num_queries": 20
+    "DEBUG_num_queries": -1
 }
