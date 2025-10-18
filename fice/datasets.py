@@ -59,7 +59,8 @@ class NTDatasets(InMemoryDataset):
 
         # Stream the NT file line-by-line and parse robustly
         with open(self.nt_path, "r", encoding="utf-8") as file:
-            for line in file:
+            lines = file.readlines()
+            for line in tqdm(lines, desc="Processing triples"):
                 # split into three last whitespace-separated tokens (s, p, o.)
                 parts = line.strip().split(" ")[:3]
                 if len(parts) != 3:
