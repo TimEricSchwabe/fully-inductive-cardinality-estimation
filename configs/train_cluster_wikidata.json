@@ -1,6 +1,6 @@
  {
-    "data_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata",
-    "queries_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_star_queries",
+    "data_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/wikidata",
+    "queries_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/wikidata_star_queries",
     "epochs": 150,
     "batch_size": 32,
     "learning_rate": 1e-4,
