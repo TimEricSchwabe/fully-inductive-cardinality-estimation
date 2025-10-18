@@ -27,7 +27,7 @@ def load_dataset(context: TrainingContext):
 
     # Load dataset
     logger.info("Loading dataset...")
-    nt_path = data_root / "raw/swdf.nt"
+    nt_path = data_root / "raw/wikidata.ttl"
 
     if not nt_path.exists():
         raise FileNotFoundError(f"Dataset file not found: {nt_path}")
@@ -59,10 +59,10 @@ def load_occurrences(context: TrainingContext):
     
     logger.info("Loading occurrences...")
     data_root = Path(config["data_root"]) # TODO: check if this is necessary
-    entity_occurrences_path = data_root / "processed/swdf_entity_occurrences.json"
-    relation_occurrences_path = data_root / "processed/swdf_relation_occurrences.json"
-    entity_mapping_path = data_root / "processed/swdf_entity_to_id.json"
-    relation_mapping_path = data_root / "processed/swdf_relation_to_id.json"
+    entity_occurrences_path = data_root / "processed/entity_occurrences.json"
+    relation_occurrences_path = data_root / "processed/relation_occurrences.json"
+    entity_mapping_path = data_root / "processed/entity_to_id.json"
+    relation_mapping_path = data_root / "processed/relation_to_id.json"
 
     with open(entity_occurrences_path, "r") as f:
         entity_occurrences = json.load(f)
