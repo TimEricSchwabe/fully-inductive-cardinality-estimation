@@ -1,0 +1,16 @@
+ {
+    "data_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/datasets/wikidata",
+    "queries_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/datasets/wikidata_star_queries",
+    "epochs": 2,
+    "batch_size": 4,
+    "learning_rate": 1e-4,
+    "train_ratio": 0.8,
+    
+    "output_dir": "output/",
+    "save_every": 5,
+    "eval_every": 1,
+
+    "seed": 42,
+    "device": "auto",
+    "DEBUG_num_queries": 20
+}
