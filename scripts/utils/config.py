@@ -18,6 +18,6 @@ def load_config(config_path):
             print(f"Warning: Could not load config file {config_file}: {e}")
             print("Using default configuration values")
     else:
-        print(f"Config file {config_file} not found. Using default configuration values")
+        raise FileNotFoundError(f"Config file {config_file} not found")
     
     return config

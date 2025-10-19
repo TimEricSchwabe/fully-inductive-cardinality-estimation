@@ -1,30 +1,35 @@
-import torch
+# Standard library imports
 import json
-import random
-import numpy as np
 import logging
 import math
-from pathlib import Path
-from datetime import datetime
-import pandas as pd
-from tqdm import tqdm
+import random
 import subprocess
-import wandb
-import matplotlib.pyplot as plt
-import matplotlib
-from utils.models import *
-from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
-matplotlib.use('Agg')  # Use non-interactive backend for server environments
+from datetime import datetime
+from pathlib import Path
 
-# Import project modules
-from utils.helper import parse_arguments, setup_logging, set_random_seeds, get_device, initialize_wandb, process_seed
-from utils.config import load_config
+# Third-party imports
+import matplotlib
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import torch
+import torch.nn.functional as F
+import wandb
+from torch_geometric.loader import DataLoader, NeighborLoader
+from tqdm import tqdm
+
+# Configure matplotlib for server environments
+matplotlib.use('Agg')
+
+# Project imports
 import utils.metrics as metrics
 from fice import datasets
 from fice.models import FICE
-import torch.nn.functional as F
-from torch_geometric.loader import DataLoader
-from utils.checkpoint_helper import save_checkpoint, load_checkpoint
+from utils.checkpoint_helper import load_checkpoint, save_checkpoint
+from utils.config import load_config
+from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
+from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
+from utils.models import *
 
 logger = logging.getLogger(__name__)
 

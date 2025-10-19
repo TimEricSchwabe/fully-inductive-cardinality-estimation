@@ -39,7 +39,7 @@ def load_dataset(context: TrainingContext):
     # Move graph to GPU once and keep it there for the entire training
     graph = graph[0].to(device)
     
-    logger.info(f"Graph loaded successfully and moved to {graph.device}!")
+    logger.info(f"Graph loaded successfully and moved to {graph.edge_index.device}!")
     logger.info(f"Number of nodes: {graph.num_nodes}")
     logger.info(f"Number of edges: {graph.num_edges}")
     logger.info(
