@@ -60,7 +60,7 @@ class FICE(nn.Module):
         input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
         neighbor_loader = NeighborLoader(
             data=data,
-            num_neighbors=[-1] * 3,
+            num_neighbors=[-1] * 2,
             batch_size=input_nodes.size(0),
             shuffle=True,
             disjoint=False,
