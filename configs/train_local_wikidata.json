@@ -2,7 +2,7 @@
     "data_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/datasets/wikidata",
     "queries_root": "/Users/lukas/Workspace/Uni/BachelorsThesis/datasets/wikidata_star_queries",
     "epochs": 2,
-    "batch_size": 4,
+    "batch_size": 1,
     "learning_rate": 1e-4,
     "train_ratio": 0.8,
     
