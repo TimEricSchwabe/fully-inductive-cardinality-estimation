@@ -1,11 +1,13 @@
-from torch import nn
-
-from easydict import EasyDict
-from fice.ultra.models import RelNBFNet, EntityNBFNet
-from fice.gnce.models import QueryGNN, TripleModel
-import torch.nn.functional as F
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
+from torch import nn
+from torch_geometric.loader import NeighborLoader
+
+from easydict import EasyDict
+
+from fice.gnce.models import QueryGNN, TripleModel
+from fice.ultra.models import RelNBFNet, EntityNBFNet, map_global_to_neighborhood
 
 
 class FICE(nn.Module):
@@ -41,6 +43,8 @@ class FICE(nn.Module):
     def forward(self, data, batch):
         # Get model device from model parameters
         device = next(self.parameters()).device
+
+        entity_graph = data
         
         # Move only the batch to GPU (data/graph is already on GPU)
         batch = batch.to(device)
@@ -53,16 +57,28 @@ class FICE(nn.Module):
         relation_representations = self.relation_model(batch=batch, data=data.relation_graph)
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
-        node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
+        input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
+        neighbor_loader = NeighborLoader(
+            data=data,
+            num_neighbors=[10, 5],
+            batch_size=input_nodes.size(0),
+            shuffle=True,
+            disjoint=False,
+            input_nodes=input_nodes
+        )
+        entity_batch = next(iter(neighbor_loader)).to(device) 
+
+        # TODO: Always passes the large relation graph with it even though not needed
+        node_representations = self.entity_model(batch=batch, data=entity_batch, relation_representations=relation_representations)
         assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
 
 
         # Merging ULTRA embeddings with precomputed query features
         bound_nodes = embedding_indices >= 0
         graph_indices = batch.batch
-        embedding_indices = embedding_indices
         # HACK: not the most efficient
-        node_embeddings = node_representations[graph_indices, embedding_indices]
+        neighborhood_graph_mapped_indices = map_global_to_neighborhood(entity_batch.n_id, embedding_indices)
+        node_embeddings = node_representations[graph_indices, neighborhood_graph_mapped_indices]
 
         # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
         last = torch.where(bound_nodes.unsqueeze(-1),          

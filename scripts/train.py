@@ -198,7 +198,7 @@ def train_epoch(state: TrainingState):
 
     for batch_idx, query_batch in enumerate(progress_bar):
         state.model_components.optimizer.zero_grad()
-
+        
         # Forward pass - data and batch will be moved to GPU inside model forward
         log_cardinality_pred = state.model_components.model(data=data, batch=query_batch)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)

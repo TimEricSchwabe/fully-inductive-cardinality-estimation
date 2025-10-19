@@ -6,6 +6,37 @@ from fice.ultra.base_nbfnet import BaseNBFNet
 from easydict import EasyDict
 
 
+def map_global_to_neighborhood(data_n_id, node_indices):
+    """
+    Maps node indices from a batch to their corresponding positions in data.n_id.
+    
+    Uses torch.searchsorted to efficiently find the positions of node_indices values
+    within the potentially unsorted data.n_id tensor.
+    
+    Args:
+        data_n_id: Tensor containing node IDs from the data object (potentially unsorted)
+        node_indices: Tensor containing node indices to map
+        
+    Returns:
+        Tensor of indices corresponding to positions in data.n_id
+        
+    Example:
+        data_n_id = tensor([1, 3, 5, 2, 6])
+        node_indices = tensor([5, 6, 1])
+        result = tensor([2, 4, 0])  # positions of [5, 6, 1] in data_n_id
+    """
+    # Sort data.n_id and keep track of original indices
+    sorted_n_id, sort_indices = torch.sort(data_n_id)
+    
+    # Find positions in sorted array
+    sorted_positions = torch.searchsorted(sorted_n_id, node_indices)
+    
+    # Map back to original indices
+    original_indices = sort_indices[sorted_positions]
+    
+    return original_indices
+
+
 # NBFNet to work on the graph of relations with 4 fundamental interactions
 # Doesn't have the final projection MLP from hidden dim -> 1, returns all node representations 
 # of shape [bs, num_rel, hidden]
@@ -86,17 +117,6 @@ class RelNBFNet(BaseNBFNet):
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
         boundary[graph_indices, node_indices] = 1.0
 
-        # assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        # assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        # assert boundary.shape[2] == self.dims[0]
-        # for i in range(batch_size):
-        #     data_list = batch.to_data_list()[i].edge_embedding_indices.unique()
-        #     mask = data_list != -1
-        #     edge_idx = data_list[mask]
-        #     assert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
-
-
-
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)
 
@@ -176,17 +196,12 @@ class EntityNBFNet(BaseNBFNet):
         graph_indices = node2graph[valid_mask]
         node_indices = batch.node_embedding_indices[valid_mask]
 
-        # Use advanced indexing to set the boundary values to 1.0 in a single operation
-        boundary[graph_indices, node_indices] = 1.0
+        # TODO: check if this is correct
+        # Map node_indices to their positions in data.n_id
+        neighborhood_graph_mapped_indices = map_global_to_neighborhood(data.n_id, node_indices)
 
-        # assert boundary.shape[0] == batch.batch_size, "Output shape does not match batch size"
-        # assert boundary.shape[1] == data.num_nodes, "Output shape does not match number of relations"
-        # assert boundary.shape[2] == self.dims[0]
-        # for i in range(batch_size):
-        #     data_list = batch.to_data_list()[i].node_embedding_indices.unique()
-        #     mask = data_list != -1
-        #     edge_idx = data_list[mask]
-        #     sert (int(boundary[i].sum() / self.dims[0]) == edge_idx.numel()), f"Boundary condition for graph {i} is all zeros!"
+        # Use advanced indexing to set the boundary values to 1.0 in a single operation
+        boundary[graph_indices, neighborhood_graph_mapped_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)
@@ -196,10 +211,6 @@ class EntityNBFNet(BaseNBFNet):
         layer_input = boundary
 
         for layer in self.layers:
-
-            # for visualization
-            # if separate_grad:
-            #     edge_weight = edge_weight.clone().requires_grad_()
 
             # Bellman-Ford iteration, we send the original boundary condition in addition to the updated node states
             hidden = layer(layer_input, query, boundary, data.edge_index, data.edge_type, size, edge_weight)
