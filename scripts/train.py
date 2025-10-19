@@ -408,9 +408,6 @@ def train_model(
             q_error = metrics.calculate_q_error(
                 epoch_test_predictions, epoch_test_true_values
             )
-            print("==============================================================")
-            print(f"Test Q-Error: {q_error:.6f}")
-            print("==============================================================")
 
             # Append test metrics to list (much more efficient than DataFrame concatenation)
             test_metrics_data.append({
