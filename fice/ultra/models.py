@@ -198,10 +198,10 @@ class EntityNBFNet(BaseNBFNet):
 
         # TODO: check if this is correct
         # Map node_indices to their positions in data.n_id
-        neighborhood_graph_mapped_indices = map_global_to_neighborhood(data.n_id, node_indices)
+        neighbor_graph_mapped_indices = map_global_to_neighborhood(data.n_id, node_indices)
 
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
-        boundary[graph_indices, neighborhood_graph_mapped_indices] = 1.0
+        boundary[graph_indices, neighbor_graph_mapped_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)

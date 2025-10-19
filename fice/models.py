@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
-from torch_geometric.loader import NeighborLoader
+from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
 
 from easydict import EasyDict
 
@@ -58,14 +58,20 @@ class FICE(nn.Module):
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
         input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
+        if input_nodes.numel() == 0:
+            input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
+            input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
+
+
         neighbor_loader = NeighborLoader(
             data=data,
-            num_neighbors=[500] * 2,
+            num_neighbors=[500],
             batch_size=input_nodes.size(0),
             shuffle=True,
             disjoint=False,
             input_nodes=input_nodes
         )
+
         entity_batch = next(iter(neighbor_loader)).to(device) 
 
         # TODO: Always passes the large relation graph with it even though not needed
@@ -77,8 +83,8 @@ class FICE(nn.Module):
         bound_nodes = embedding_indices >= 0
         graph_indices = batch.batch
         # HACK: not the most efficient
-        neighborhood_graph_mapped_indices = map_global_to_neighborhood(entity_batch.n_id, embedding_indices)
-        node_embeddings = node_representations[graph_indices, neighborhood_graph_mapped_indices]
+        neighbor_graph_mapped_indices = map_global_to_neighborhood(entity_batch.n_id, embedding_indices)
+        node_embeddings = node_representations[graph_indices, neighbor_graph_mapped_indices]
 
         # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
         last = torch.where(bound_nodes.unsqueeze(-1),          
