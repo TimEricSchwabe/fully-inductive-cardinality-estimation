@@ -8,19 +8,13 @@ venv/
 # Ignore everything under data
 data/*
 
-# Allow Git to see inside all subdirectories of data
-!data/*/
-
 .env
 # Inside each subdirectory, ignore everything again
-data/*/*
 output/
 *.egg-info/
 files/
 
 # …but unignore any raw folder and its contents
-!data/*/raw/
-!data/*/raw/**
 run_*/
 run_*.zip
 
