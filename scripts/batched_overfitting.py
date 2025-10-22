@@ -36,16 +36,16 @@ if __name__ == "__main__":
     print("Dataset loaded.")
 
     print("Loading occurrences...")
-    with open(f"{root}/processed/swdf_entity_occurrences.json", "r") as f:
+    with open(f"{root}/processed/entity_occurrences.json", "r") as f:
         entity_occurrences = json.load(f)
-    with open(f"{root}/processed/swdf_relation_occurrences.json", "r") as f:
+    with open(f"{root}/processed/relation_occurrences.json", "r") as f:
         relation_occurrences = json.load(f)
     print("Occurrences loaded.")
 
     print("Loading mappings...")
-    with open(f"{root}/processed/swdf_entity_to_id.json", "r") as f:
+    with open(f"{root}/processed/entity_to_id.json", "r") as f:
         entity_mapping = json.load(f)
-    with open(f"{root}/processed/swdf_relation_to_id.json", "r") as f:
+    with open(f"{root}/processed/relation_to_id.json", "r") as f:
         relation_mapping = json.load(f)
     print("Mappings loaded.")
 
