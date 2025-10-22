@@ -663,6 +663,7 @@ def main():
 
     # Load data
     data = load_dataset(context)
+    data.to(device)
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
         load_occurrences(context)
     )
