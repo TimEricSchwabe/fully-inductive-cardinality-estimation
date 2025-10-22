@@ -1,4 +1,3 @@
-import os
 import pathlib
 from pathlib import Path
 import torch
@@ -97,7 +96,7 @@ class NTDatasets(InMemoryDataset):
 
     def process(self):
         # ensure processed folder exists
-        os.makedirs(self.processed_dir, exist_ok=True)
+        pathlib.Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
 
         # Create id mapping and count occurrences
         entity_to_id: Dict[str, int] = {}
@@ -136,19 +135,12 @@ class NTDatasets(InMemoryDataset):
         num_relations = len(relation_to_id)
 
         # write mappings in a readable/stable way
-        with open(
-            os.path.join(self.processed_dir, f"{self.dataset_name}_entity_to_id.json"),
-            "w",
-            encoding="utf-8",
-        ) as f:
+        entity_to_id_path = pathlib.Path(self.processed_dir) / "entity_to_id.json"
+        relation_to_id_path = pathlib.Path(self.processed_dir) / "relation_to_id.json"
+
+        with entity_to_id_path.open("w", encoding="utf-8") as f:
             json.dump(entity_to_id, f, indent=2, sort_keys=True)
-        with open(
-            os.path.join(
-                self.processed_dir, f"{self.dataset_name}_relation_to_id.json"
-            ),
-            "w",
-            encoding="utf-8",
-        ) as f:
+        with relation_to_id_path.open("w", encoding="utf-8") as f:
             json.dump(relation_to_id, f, indent=2, sort_keys=True)
 
         # split occurrences by kind (keep original string keys for readability)
@@ -163,22 +155,13 @@ class NTDatasets(InMemoryDataset):
                 # should not happen, but be robust
                 continue
 
-        with open(
-            os.path.join(
-                self.processed_dir, f"{self.dataset_name}_entity_occurrences.json"
-            ),
-            "w",
-            encoding="utf-8",
-        ) as f:
+        entity_occurrences_path = pathlib.Path(self.processed_dir) / "entity_occurrences.json"
+        relation_occurrences_path = pathlib.Path(self.processed_dir) / "relation_occurrences.json"
+
+        with entity_occurrences_path.open("w", encoding="utf-8") as f:
             json.dump(occurrences_entity, f, indent=2, sort_keys=True)
 
-        with open(
-            os.path.join(
-                self.processed_dir, f"{self.dataset_name}_relation_occurrences.json"
-            ),
-            "w",
-            encoding="utf-8",
-        ) as f:
+        with relation_occurrences_path.open("w", encoding="utf-8") as f:
             json.dump(occurrences_relations, f, indent=2, sort_keys=True)
 
         # build tensors with explicit dtypes
