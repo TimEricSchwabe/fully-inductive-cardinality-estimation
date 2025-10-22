@@ -91,11 +91,10 @@ def load_occurrences(context: TrainingContext):
     processed_dir = get_dataset_processed_dir(dataset_name)
     
     # Construct file paths using the dataset name
-    dataset_name_lower = dataset_name.lower()
-    entity_occurrences_path = processed_dir / f"{dataset_name_lower}_entity_occurrences.json"
-    relation_occurrences_path = processed_dir / f"{dataset_name_lower}_relation_occurrences.json"
-    entity_mapping_path = processed_dir / f"{dataset_name_lower}_entity_to_id.json"
-    relation_mapping_path = processed_dir / f"{dataset_name_lower}_relation_to_id.json"
+    entity_occurrences_path = processed_dir / "entity_occurrences.json"
+    relation_occurrences_path = processed_dir / "relation_occurrences.json"
+    entity_mapping_path = processed_dir / "entity_to_id.json"
+    relation_mapping_path = processed_dir / "relation_to_id.json"
 
     # Load the JSON files
     with open(entity_occurrences_path, "r") as f:
