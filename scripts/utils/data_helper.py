@@ -15,29 +15,13 @@ logger = logging.getLogger(__name__)
 
 def load_dataset(context: TrainingContext):
     """Load the graph dataset and verify its properties."""
-    config = context.config
-    device = context.device
-    
-    data_root = Path(config["data_root"])
-
-    if not data_root.exists():
-        raise FileNotFoundError(f"Data root directory not found: {data_root}")
-    logger.info(f"Data root: {data_root}")
-
 
     # Load dataset
     logger.info("Loading dataset...")
-    nt_path = data_root / "raw/wikidata.ttl"
 
-    if not nt_path.exists():
-        raise FileNotFoundError(f"Dataset file not found: {nt_path}")
-
-    graph = datasets.NTDatasets(
-        root=data_root, nt_path=nt_path
-    )  # TODO: passing the paramaters will change eventual, but for now this is the solution
-    
+    graph = datasets.Wikidata()
     # Move graph to GPU once and keep it there for the entire training
-    graph = graph[0].to(device)
+    graph = graph[0].to("cpu")
     
     logger.info(f"Graph loaded successfully and moved to {graph.edge_index.device}!")
     logger.info(f"Number of nodes: {graph.num_nodes}")
@@ -93,21 +77,8 @@ def load_queries(
     # Keep queries on CPU initially - they'll be moved to GPU batch by batch
     
     logger.info("Loading queries...")
-    queries_root = Path(config["queries_root"])
-    if not queries_root.exists():
-        raise FileNotFoundError(f"Queries root directory not found: {queries_root}")
-    logger.info(f"Queries root: {queries_root}")
 
-    query_path = queries_root / "raw/Joined_Queries.json"
-
-    if not query_path.exists():
-        raise FileNotFoundError(f"Queries file not found: {query_path}")
-
-
-
-    queries = datasets.NTQueries(
-        root=queries_root,
-        queries_path=query_path,
+    queries = datasets.WIKIDATA_Star_Queries(
         entity_occurrences=entity_occurrences,
         relation_occurrences=relation_occurrences,
         global_entity_mapping=entity_mapping,

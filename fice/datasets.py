@@ -1,35 +1,82 @@
 import pathlib
+from pathlib import Path
 import torch
 import json
 from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Union
+import requests
+from tqdm import tqdm as _tqdm
 
 from fice.ultra.tasks import build_relation_graph
 from tqdm import tqdm
 
+DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
 
+def download(url: str, dest: Union[Path, str], progress: bool = False):
+    resp = requests.get(url, stream=True, timeout=30)
+    resp.raise_for_status()
+
+    total = int(resp.headers.get('content-length', 0))
+    chunk_size = 1024 * 16
+
+    if progress:
+        with open(dest, 'wb') as f, _tqdm(
+            total=total, unit='B', unit_scale=True, desc=f"Downloading {dest.name}"
+        ) as pbar:
+            for chunk in resp.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                f.write(chunk)
+                pbar.update(len(chunk))
+    else:
+        with open(dest, 'wb') as f:
+            for chunk in resp.iter_content(chunk_size=chunk_size):
+                if not chunk:
+                    continue
+                f.write(chunk)
 
 # TODO: Make the nt_path file optinal
 class NTDatasets(InMemoryDataset):
     def __init__(
         self,
-        root: str,
-        nt_path: str,
+        url: str,
+        root: Optional[str] = None,
+        device: str = "cpu",
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,
     ):
 
-        self.root = pathlib.Path(root)
-        self.nt_path = pathlib.Path(nt_path)
+        self.url = url
+        raw_file_path = pathlib.Path(self.url).name
+
+        if raw_file_path is None or raw_file_path == "":
+            raw_file_path = f"raw_dataset.nt"
+
         self.dataset_name = (
-            dataset_name if dataset_name is not None else self.nt_path.stem
+            dataset_name if dataset_name is not None else Path(self.url).stem
         )
+
+        if root is None:
+            self.root = DEFAULT_DATA_ROOT / dataset_name 
+        else:
+            self.root = pathlib.Path(root)
+
+        if not self.root.exists():
+            self.root.mkdir(parents=True, exist_ok=True)
+
+        # prepare raw file path from url
+        raw_dir = pathlib.Path(self.root) / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        self.raw_file_path = raw_dir / raw_file_path
 
         # forward transform / pre_transform and use string root as expected by InMemoryDataset
         super().__init__(str(self.root), transform, pre_transform)
+
         # load processed data (if present)
-        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+        data, slices = torch.load(self.processed_paths[0], weights_only=False)
+        self.data, self.slices = data.to(device), slices
 
     @property
     def processed_file_names(self):
@@ -37,15 +84,15 @@ class NTDatasets(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return [self.nt_path.name]
+        return [self.raw_file_path.name]
 
-    # @property
-    # def raw_dir(self):
-    #     return super().raw_dir
+    def download(self):
+        # Stream download with requests and show tqdm progress bar
+        try:
+            download(self.url, self.raw_file_path, progress=True)
+        except Exception as download_exc:
+            raise RuntimeError(f"Failed to download dataset from {self.url}: {download_exc}") from download_exc
 
-    # @property
-    # def processed_dir(self):
-    #     return super().processed_dir
 
     def process(self):
         # ensure processed folder exists
@@ -58,7 +105,7 @@ class NTDatasets(InMemoryDataset):
         mapped_triplets: List[Tuple[int, int, int]] = []
 
         # Stream the NT file line-by-line and parse robustly
-        with open(self.nt_path, "r", encoding="utf-8") as file:
+        with open(self.raw_file_path, "r", encoding="utf-8") as file:
             lines = file.readlines()
             for line in tqdm(lines, desc="Processing triples"):
                 # split into three last whitespace-separated tokens (s, p, o.)
@@ -144,14 +191,42 @@ class NTDatasets(InMemoryDataset):
 
         # Save in the same location that __init__ expects
         torch.save(self.collate([data]), self.processed_paths[0])
-        return None
+
+class LUBM(NTDatasets):       
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fi4eAR8gs7LCD6VYR8UWBn/lubm.nt",
+            dataset_name="lubm",
+            **kwargs
+        )
 
 
+class SWDF(NTDatasets):       
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fi9H5tjyd2bb4d9Fh5Aiws/swdf.nt",
+            dataset_name="swdf",
+            **kwargs
+        )
+
+class Wikidata(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fiGoYG8gbeEoPpBjCxQLGH/wikidata.ttl",
+            dataset_name="wikidata",
+            **kwargs
+        )
 class NTQueries(InMemoryDataset):
     def __init__(
         self,
-        root: str,
-        queries_path: str,
+        url: str,
+        root: Optional[str] = None,
         entity_occurrences: Dict = None,
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
@@ -162,7 +237,9 @@ class NTQueries(InMemoryDataset):
         pre_transform=None,
         dim: int = 128,
     ):
+        self.url = url
         self.dim = dim
+        self.device = device
         if entity_occurrences is None:
             entity_occurrences = {}
         if relation_occurrences is None:
@@ -176,18 +253,39 @@ class NTQueries(InMemoryDataset):
         self.relation_occurrences = relation_occurrences
         self.global_entity_mapping = global_entity_mapping
         self.global_relation_mapping = global_relation_mapping
-        self.device = device
-
-        self.root = pathlib.Path(root)
-        self.queries_path = pathlib.Path(queries_path)
+        # determine dataset root and raw file locations similar to NTDatasets
         self.dataset_name = (
-            dataset_name if dataset_name is not None else self.queries_path.stem
+            dataset_name if dataset_name is not None else pathlib.Path(self.url).stem
+        )
+
+        if root is None:
+            self.root = DEFAULT_DATA_ROOT / self.dataset_name
+        else:
+            self.root = pathlib.Path(root)
+
+        if not self.root.exists():
+            self.root.mkdir(parents=True, exist_ok=True)
+
+        raw_dir = pathlib.Path(self.root) / "raw"
+        raw_dir.mkdir(parents=True, exist_ok=True)
+
+        # Keep the original queries source (can be a URL or a local path)
+        raw_file_name = pathlib.Path(self.url).name
+        if raw_file_name is None or raw_file_name == "":
+            raw_file_name = f"raw_queries.json"
+
+        # The dataset expects the raw file to live in the dataset's raw/ folder
+        self.raw_file_path = raw_dir / raw_file_name
+        # For backward compatibility keep attribute used elsewhere
+        self.dataset_name = (
+            dataset_name if dataset_name is not None else self.raw_file_path.stem
         )
 
         # forward transform / pre_transform and use string root as expected by InMemoryDataset
         super().__init__(str(self.root), transform, pre_transform)
         # load processed data (if present)
-        self.data, self.slices = torch.load(self.processed_paths[0], weights_only=False)
+        data, slices = torch.load(self.processed_paths[0], weights_only=False)
+        self.data, self.slices = data.to(device), slices
 
     @property
     def processed_file_names(self):
@@ -195,7 +293,14 @@ class NTQueries(InMemoryDataset):
 
     @property
     def raw_file_names(self):
-        return [self.queries_path.name]
+        return [self.raw_file_path.name]
+
+    def download(self):
+        try:
+            download(self.url, self.raw_file_path, progress=True)
+        except Exception as download_exc:
+            raise RuntimeError(f"Failed to download dataset from {self.url}: {download_exc}") from download_exc
+
 
     def process_query_single(
         self,
@@ -290,8 +395,11 @@ class NTQueries(InMemoryDataset):
         )
 
     def process(self):
+        # ensure processed folder exists
+        pathlib.Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
 
-        with open(self.queries_path, "r") as file:
+        # Read the queries JSON from the dataset raw/ folder
+        with open(self.raw_file_path, "r", encoding="utf-8") as file:
             data = json.load(file)
         queries = [
             self.process_query_single(
@@ -301,3 +409,76 @@ class NTQueries(InMemoryDataset):
         ]
 
         torch.save(self.collate(queries), self.processed_paths[0])
+
+class LUBMQueries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        device: str = "cpu",
+        **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fiRN5BQwrFgTQkQfzAViFn/Joined_Queries.json",
+            dataset_name="lubm_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            device=device,
+            **kwargs
+        )
+
+class SWDF_Star_Queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        device: str = "cpu",
+        **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fiFJfpCn2pRyQBQgeCqkA2/Joined_Queries.json",
+            dataset_name="swdf_star_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            device=device,
+            **kwargs
+        )
+
+class WIKIDATA_Star_Queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        device: str = "cpu",
+        **kwargs
+    ):
+        super().__init__(
+            url="https://syncandshare.lrz.de/dl/fi518Mo23SxQuyuC57JJGT/Joined_Queries.json",
+            dataset_name="wikidata_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            device=device,
+            **kwargs
+        )
+
+if __name__ == "__main__":
+    dataset = LUBM()
+    proc = pathlib.Path(dataset.processed_dir)
+    queries = LUBMQueries(
+        entity_occurrences=json.load((proc / "entity_occurrences.json").open("r", encoding="utf-8")),
+        relation_occurrences=json.load((proc / "relation_occurrences.json").open("r", encoding="utf-8")),
+        global_entity_mapping=json.load((proc / "entity_to_id.json").open("r", encoding="utf-8")),
+        global_relation_mapping=json.load((proc / "relation_to_id.json").open("r", encoding="utf-8")),
+    )
