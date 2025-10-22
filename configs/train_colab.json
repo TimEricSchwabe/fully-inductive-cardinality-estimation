@@ -1,6 +1,6 @@
 {
-    "data_root": "/content/fully-inductive-cardinality-estimation/data/swdf",
-    "queries_root": "/content/fully-inductive-cardinality-estimation/data/swdf_queries",
+    "dataset": "SWDF",
+    "queries": "SWDF_Star_Queries",
     "epochs": 5,
     "batch_size": 4,
     "learning_rate": 1e-4,
@@ -10,9 +10,6 @@
     "output_dir": "output/",
     "save_every": 5,
     "eval_every": 1,
-
-    "use_scheduler": true,
-    "scheduler_max_lr": 0.01,
 
     "seed": 42,
     "device": "auto",

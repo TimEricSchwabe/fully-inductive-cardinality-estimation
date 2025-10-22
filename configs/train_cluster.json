@@ -1,6 +1,6 @@
- {
-    "data_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/swdf",
-    "queries_root": "/storage/home/lukasketzer/fully-inductive-cardinality-estimation/data/swdf_queries",
+{
+    "dataset": "SWDF",
+    "queries": "SWDF_Star_Queries",
     "epochs": 120,
     "batch_size": 32,
     "learning_rate": 1e-4,
