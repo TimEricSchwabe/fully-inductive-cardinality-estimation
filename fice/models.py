@@ -51,7 +51,7 @@ class FICE(nn.Module):
         edge_embedding_indices = batch.edge_embedding_indices
 
         # Provide shape [1, K] to seed K relations at once
-        relation_representations = self.relation_model(batch=batch, data=data.relation_graph)
+        relation_representations = self.relation_model(batch=batch.to(device), data=data.relation_graph.to(device))
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
         if use_neighbor_loader:
