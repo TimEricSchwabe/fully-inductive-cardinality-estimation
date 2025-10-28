@@ -201,6 +201,9 @@ class EntityNBFNet(BaseNBFNet):
         neighbor_graph_mapped_indices = map_global_to_neighborhood(data.n_id, node_indices)
 
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
+        # TODO: Hier sollten eigentlich die (query) relation mappings rein, anstelle 1.0
+        # jetzt ist halt die frage, welchess emebdding reinsoll, wenn es mehrere gibt, 
+        # kann man die emebddings aufaddiren?
         boundary[graph_indices, neighbor_graph_mapped_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)

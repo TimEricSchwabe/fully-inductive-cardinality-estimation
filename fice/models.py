@@ -62,10 +62,10 @@ class FICE(nn.Module):
             input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
             input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
 
-        input_nodes = input_nodes[:20].to(device)
+        input_nodes = input_nodes.to(device)
         neighbor_loader = NeighborLoader(
             data=data,
-            num_neighbors=[500],
+            num_neighbors=[-1],
             batch_size=input_nodes.size(0),
             shuffle=True,
             disjoint=False,
