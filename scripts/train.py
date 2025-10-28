@@ -189,6 +189,7 @@ def train_epoch(state: TrainingState):
     num_train_batches = 0
     epochs = state.training_context.config["epochs"]
     data = state.data_components.data
+    device = state.training_context.device
 
     epoch_train_predictions_log = []    
     epoch_train_true_values_log = []
@@ -197,10 +198,12 @@ def train_epoch(state: TrainingState):
     )
 
     for batch_idx, query_batch in enumerate(progress_bar):
+
+
         state.model_components.optimizer.zero_grad()
         
         # Forward pass - data and batch will be moved to GPU inside model forward
-        log_cardinality_pred = state.model_components.model(data=data, batch=query_batch)
+        log_cardinality_pred = state.model_components.model(data=data.to(device), batch=query_batch.to(device))
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
@@ -313,7 +316,6 @@ def train_model(
     state: TrainingState 
 ):
     """Main training loop with progress tracking and evaluation."""
-   
 
     # Initialize lists for efficient data accumulation (avoid repeated DataFrame concatenation)
     train_metrics_data = []
@@ -323,6 +325,10 @@ def train_model(
     epochs = state.training_context.config["epochs"]
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {epochs} epochs...")
+
+    device = state.training_context.device
+    if torch.cuda.is_available() and device.type != 'cuda':
+        logger.warning(f"Using GPU: {torch.cuda.get_device_name(device)} even though cuda is available. (torch.cuda.is_available() = {torch.cuda.is_available()}).")
 
 
 
@@ -663,6 +669,7 @@ def main():
 
     # Load data
     data = load_dataset(context)
+    logger.info(f"Dataset loaded successfully on device: {data.edge_index.device}!")
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
         load_occurrences(context)
     )
@@ -673,6 +680,7 @@ def main():
         entity_mapping,
         relation_mapping,
     )
+    logger.info(f"Queries loaded successfully on device: {queries.device}!")
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")
@@ -717,6 +725,8 @@ def main():
     # Initialize model and optimizer
     logger.info("Initializing model...")
     model_components = initialize_model_components(context, model_state_dict=model_state_dict, optimizer_state_dict=optimizer_state_dict)
+
+    model_components.model = model_components.model.to(device)
 
     # Count parameters
     total_params = sum(p.numel() for p in model_components.model.parameters())

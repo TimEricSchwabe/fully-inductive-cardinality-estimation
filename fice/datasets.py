@@ -41,7 +41,7 @@ class NTDatasets(InMemoryDataset):
         self,
         url: str,
         root: Optional[str] = None,
-        device: str = "cpu",
+        device: torch.device = torch.device("cpu"),
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,
@@ -194,7 +194,7 @@ class NTDatasets(InMemoryDataset):
 
 class LUBM(NTDatasets):       
     def __init__(
-        self, **kwargs
+        self,**kwargs
     ):
         super().__init__(
             url="https://syncandshare.lrz.de/dl/fi4eAR8gs7LCD6VYR8UWBn/lubm.nt",
@@ -231,7 +231,7 @@ class NTQueries(InMemoryDataset):
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
         global_relation_mapping: Dict = None,
-        device: str = "cpu",
+        device: torch.device = torch.device("cpu"),
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,

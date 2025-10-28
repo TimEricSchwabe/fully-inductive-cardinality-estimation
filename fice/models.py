@@ -40,41 +40,42 @@ class FICE(nn.Module):
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
-    def forward(self, data, batch):
-        # Get model device from model parameters
-        device = next(self.parameters()).device
-
-        entity_graph = data
+    def forward(self, data, batch, use_neighbor_loader=True):
         
         # Move only the batch to GPU (data/graph is already on GPU)
-        batch = batch.to(device)
-        query_features = batch.x.to(device)
-        edge_attr = batch.edge_attr.to(device)
-        embedding_indices = batch.node_embedding_indices.to(device)
-        edge_embedding_indices = batch.edge_embedding_indices.to(device)
+        device = batch.x.device
+
+        query_features = batch.x
+        edge_attr = batch.edge_attr
+        embedding_indices = batch.node_embedding_indices
+        edge_embedding_indices = batch.edge_embedding_indices
 
         # Provide shape [1, K] to seed K relations at once
         relation_representations = self.relation_model(batch=batch, data=data.relation_graph)
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
-        input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
-        if input_nodes.numel() == 0:
-            input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
-            input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
+        if use_neighbor_loader:
+            input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
+            if input_nodes.numel() == 0:
+                input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
+                input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
+    
+            input_nodes = input_nodes.to(device)
+            neighbor_loader = NeighborLoader(
+                data=data,
+                num_neighbors=[-1],
+                batch_size=input_nodes.size(0),
+                shuffle=True,
+                disjoint=False,
+                input_nodes=input_nodes
+            )
 
-        input_nodes = input_nodes.to(device)
-        neighbor_loader = NeighborLoader(
-            data=data,
-            num_neighbors=[-1],
-            batch_size=input_nodes.size(0),
-            shuffle=True,
-            disjoint=False,
-            input_nodes=input_nodes
-        )
+            entity_batch = next(iter(neighbor_loader)).to(device) 
+        else:
+            entity_batch = data
+        
 
-        entity_batch = next(iter(neighbor_loader)).to(device) 
-
-        # TODO: Always passes the large relation graph with it even though not needed
+        # TODO: Always passes the large relation graph with it (in data-obejct) even though not needed
         node_representations = self.entity_model(batch=batch, data=entity_batch, relation_representations=relation_representations)
         assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
 
