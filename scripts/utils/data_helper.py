@@ -52,7 +52,7 @@ def get_dataset_processed_dir(dataset_name: str):
     return Path(datasets.DEFAULT_DATA_ROOT) / dataset_name_lower / "processed"
 
 
-def load_dataset(context: TrainingContext, device: torch.device = torch.device("cpu")):
+def load_dataset(context: TrainingContext):
     """Load the graph dataset and verify its properties."""
     config = context.config
     dataset_name = config.get("dataset", "SWDF")  # Default to SWDF for backwards compatibility
@@ -63,7 +63,7 @@ def load_dataset(context: TrainingContext, device: torch.device = torch.device("
     DatasetClass = get_dataset_class(dataset_name)
     
     # Instantiate and load the dataset
-    graph_dataset = DatasetClass(device=device)
+    graph_dataset = DatasetClass(device=context.device)
     graph = graph_dataset[0]
 
     logger.info(f"Graph loaded successfully!")
@@ -137,9 +137,10 @@ def load_queries(
         relation_occurrences=relation_occurrences,
         global_entity_mapping=entity_mapping,
         global_relation_mapping=relation_mapping,
+        device=context.device
     )
 
-    logger.info(f"Queries loaded (on CPU). Total queries: {len(queries)}")
+    logger.info(f"Queries loaded (on {context.device}). Total queries: {len(queries)}")
     return queries
 
 def train_test_split(context: TrainingContext, queries):
