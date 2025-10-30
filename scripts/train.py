@@ -26,10 +26,10 @@ import utils.metrics as metrics
 from fice import datasets
 from fice.models import FICE
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
-from utils.config import load_config
+from utils.config import load_config_yaml, Config
 from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
 from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
-from utils.models import *
+from utils.models import TrainingContext, ModelComponents, DataComponents, TrainingState
 
 logger = logging.getLogger(__name__)
 
@@ -68,16 +68,16 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     model.to(device)
 
     # Initialize optimizer
-    if config.get("weight_decay", None) is not None: 
+    if config.weight_decay is not None:
         optimizer = torch.optim.AdamW(
             model.parameters(),
-            lr=config.get("learning_rate", 1e-3),
-            weight_decay=config.get("weight_decay", None),
+            lr=config.learning_rate,
+            weight_decay=config.weight_decay,
         )
     else:
         optimizer = torch.optim.AdamW(
             model.parameters(),
-            lr=config.get("learning_rate", 1e-3),
+            lr=config.learning_rate,
         )
     if optimizer_state_dict is not None:
         optimizer.load_state_dict(optimizer_state_dict)
@@ -187,7 +187,7 @@ def train_epoch(state: TrainingState):
     state.model_components.model.train()
     epoch_train_loss = 0.0
     num_train_batches = 0
-    epochs = state.training_context.config["epochs"]
+    epochs = state.training_context.config.epochs
     data = state.data_components.data
 
     epoch_train_predictions_log = []    
@@ -320,7 +320,7 @@ def train_model(
     test_metrics_data = []
     train_predictions_data = []
     test_predictions_data = []
-    epochs = state.training_context.config["epochs"]
+    epochs = state.training_context.config.epochs
     logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {epochs} epochs...")
 
@@ -395,7 +395,7 @@ def train_model(
             })
 
         # Evaluation phase
-        if (epoch) % state.training_context.config["eval_every"] == 0:
+        if (epoch) % state.training_context.config.eval_every == 0:
             (
                 avg_test_loss,
                 epoch_test_predictions_log,
@@ -436,7 +436,7 @@ def train_model(
                 })
             
             # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
-            if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == state.training_context.config['epochs']:
+            if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == state.training_context.config.epochs:
                 test_metrics_df = pd.DataFrame(test_metrics_data)
                 test_predictions_df = pd.DataFrame(test_predictions_data)
                 state.test_predictions
@@ -460,7 +460,7 @@ def train_model(
 
             # Log metrics
             logger.info(
-                f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - "
+                f"Epoch {state.training_context.current_epoch}/{state.training_context.config.epochs} - "
                 f"Train Loss: {epoch_avg_train_loss:.6f}, "
                 f"Test Loss: {avg_test_loss:.6f}"
             )
@@ -496,7 +496,7 @@ def train_model(
             )
 
         # Save checkpoint periodically
-        if (epoch + 1) % state.training_context.config["save_every"] == 0:
+        if (epoch + 1) % state.training_context.config.save_every == 0:
             # Get latest test loss from test data list
             latest_test_loss = test_metrics_data[-1]['loss'] if len(test_metrics_data) > 0 else None
 
@@ -579,7 +579,7 @@ def print_final_summary(
 
 def setup_run_dir(config):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    run_dir = Path(config.get("output_dir")) / f"run_{timestamp}"
+    run_dir = Path(config.output_dir) / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
@@ -594,11 +594,11 @@ def main():
         logger.info(f"Resuming from checkpoint: {args.checkpoint}")
         checkpoint_path = Path(args.checkpoint)
         checkpoint = load_checkpoint(checkpoint_path=checkpoint_path)
-        config = load_config(args.config) if args.config is not None else checkpoint['config']
+        config = load_config_yaml(args.config) if args.config is not None else Config(**checkpoint['config'])
         model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
     else:
-        config = load_config(args.config)
+        config = load_config_yaml(args.config)
         model_state_dict = None
         optimizer_state_dict = None
 
@@ -612,7 +612,7 @@ def main():
     
     # Log original configuration
     logger.info("Original Configuration from file:")
-    for key, value in config.items():
+    for key, value in config.dict().items():
         logger.info(f"  {key}: {value}")
     
 
@@ -635,21 +635,22 @@ def main():
 
     # Log final configuration (after merging with command-line args)
     logger.info("Final Configuration (after command-line overrides):")
-    for key, value in config.items():
+    for key, value in config.dict().items():
         logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
-    processed_seed = process_seed(config["seed"])
+    processed_seed = process_seed(config.seed)
     set_random_seeds(processed_seed)
     logger.info(f"Random seed set to: {processed_seed}")
 
     # Setup device
-    device = get_device(config["device"])
+    device = get_device(config.device)
     logger.info(f"Using device: {device}")
 
     # Initialize Weights & Biases
-    wandb_run = initialize_wandb(config, run_dir)
-    use_wandb = wandb_run is not None and args.wandb
+    use_wandb = args.wandb
+    if use_wandb:
+        initialize_wandb(config, run_dir)
 
     # Create training context
     context = TrainingContext(
@@ -684,7 +685,7 @@ def main():
     logger.info(
         f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
     )
-    logger.info(f"  Train ratio: {config['train_ratio']}")
+    logger.info(f"  Train ratio: {config.train_ratio}")
 
     # Log dataset info to wandb
     if use_wandb:
@@ -697,7 +698,7 @@ def main():
         })
 
     train_loader = DataLoader(
-        dataset=train_queries, batch_size=config["batch_size"], shuffle=True
+        dataset=train_queries, batch_size=config.batch_size, shuffle=True
     )
     test_loader = DataLoader(
         dataset=test_queries,
@@ -737,8 +738,8 @@ def main():
 
 
 
-
-    wandb.watch(model_components.model, log="all", log_freq=100)
+    if use_wandb:
+        wandb.watch(model_components.model, log="all", log_freq=100)
 
     # Log model information to wandb
     if use_wandb:
