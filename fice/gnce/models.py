@@ -24,26 +24,35 @@ class QueryGNN(torch.nn.Module):
                 nn.ReLU(),
                 nn.Linear(hidden_dim, hidden_dim),
             )
+        
+        def seconds_gine_mlp():
+            return nn.Sequential(
+                nn.Linear(hidden_dim, 100),
+                nn.ReLU(),
+                nn.Linear(100, 200),
+            )
 
         self.layers = nn.ModuleList([
             GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
-            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
-            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            GINEConv(seconds_gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            # GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
         ])
 
+        # TODO: Auch anders: batchNorm1d pro layer
         self.bns = nn.ModuleList([
             nn.BatchNorm1d(hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
-            nn.BatchNorm1d(hidden_dim),
+            nn.BatchNorm1d(200),
+            # nn.BatchNorm1d(hidden_dim),
         ])
 
         # 2-layer MLP head to a single scalar (linear activation)
         # Input dimension is hidden_dim + 1 to account for graph_size concatenation
+        # TODO: Hier anders: wir haben nicht den "graduellen" drop von hidden dim  zu 200 zu 100 zu 1 sondern direkt von hidden_dim zu 1
         self.head = nn.Sequential(
-            nn.Linear(hidden_dim + 1, hidden_dim),
+            nn.Linear(200, 50),
             nn.ReLU(),
             # nn.Dropout(dropout),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(50, 1)
         )
 
     def forward(self, batch, graph_size):
@@ -58,7 +67,7 @@ class QueryGNN(torch.nn.Module):
                 x = layer(x, edge_index)
             x = bn(x)
             x = F.relu(x)
-            x = F.dropout(x, p=self.dropout, training=self.training)
+            # x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global add pooling over nodes -> graph embedding
         # TODO: Funktioniert, aber kein ahnung ob es das macht, was es machen soll
@@ -66,16 +75,16 @@ class QueryGNN(torch.nn.Module):
 
 
         # TODO: Adding the graph size |E| to the final MLP
-        if graph_size.dim() == 1 and graph_size.size(0) == 1:
-            graph_size_expanded = graph_size.expand(g.size(0))
-        else:
-            graph_size_expanded = graph_size
+        # if graph_size.dim() == 1 and graph_size.size(0) == 1:
+        #     graph_size_expanded = graph_size.expand(g.size(0))
+        # else:
+        #     graph_size_expanded = graph_size
         
-        # Concatenate along feature dimension
-        g_with_size = torch.cat([g, graph_size_expanded.unsqueeze(-1)], dim=-1)
+        # # Concatenate along feature dimension
+        # g_with_size = torch.cat([g, graph_size_expanded.unsqueeze(-1)], dim=-1)
 
 
-        out = self.head(g_with_size)     # [batch_size, 1]
+        out = self.head(g)     # [batch_size, 1]
         return torch.abs(out.squeeze(-1))           # [batch_size]
 
 

@@ -35,8 +35,8 @@ class FICE(nn.Module):
             layer_norm=True
         )
         # Dataset creates node/edge features of size (vector_dim + 3)
-        # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
-        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+        self.query_gnn = QueryGNN(hidden_dim=self.vector_dim + 3)
+        # self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
     def forward(self, data, batch):
         # Get model device from model parameters
