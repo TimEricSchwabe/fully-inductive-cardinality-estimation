@@ -55,7 +55,7 @@ def get_dataset_processed_dir(dataset_name: str):
 def load_dataset(context: TrainingContext):
     """Load the graph dataset and verify its properties."""
     config = context.config
-    dataset_name = config.get("dataset", "SWDF")  # Default to SWDF for backwards compatibility
+    dataset_name = config.dataset  # Use attribute access
     
     logger.info(f"Loading dataset: {dataset_name}...")
     
@@ -83,7 +83,7 @@ def load_dataset(context: TrainingContext):
 def load_occurrences(context: TrainingContext):
     """Load entity and relation mappings and occurrence data."""
     config = context.config
-    dataset_name = config.get("dataset", "SWDF")  # Default to SWDF for backwards compatibility
+    dataset_name = config.dataset  # Use attribute access
     
     logger.info(f"Loading occurrences for dataset: {dataset_name}...")
     
@@ -123,7 +123,7 @@ def load_queries(
 ):
     """Load queries and create train/test split."""
     config = context.config
-    query_name = config.get("queries", "SWDF")  # Default to SWDF for backwards compatibility
+    query_name = config.queries  # Use attribute access
     
     logger.info(f"Loading queries: {query_name}...")
     
@@ -145,23 +145,22 @@ def load_queries(
 
 def train_test_split(context: TrainingContext, queries):
     config = context.config
-    
+
     # Process and filter queries
     queries_list = list(queries)
     random.shuffle(queries_list)
-    if config["DEBUG_num_queries"] and config["DEBUG_num_queries"] > 0:
-        num_queries = min(config["DEBUG_num_queries"], len(queries_list))
+    if config.DEBUG_num_queries and config.DEBUG_num_queries > 0:
+        num_queries = min(config.DEBUG_num_queries, len(queries_list))
     else:
         num_queries = len(queries_list)
     queries_list = queries_list[:num_queries]
     logger.info(f"Using debug mode with {num_queries} queries")
 
-    train_size = int(len(queries_list) * config["train_ratio"])
+    train_size = int(len(queries_list) * config.train_ratio)
     test_size = len(queries_list) - train_size
 
     train_queries = queries_list[:train_size]
     test_queries = queries_list[train_size:]
-
 
     return train_queries, test_queries
 

@@ -7,7 +7,7 @@
 # Variables
 # -------------------------------
 PROJECT_DIR="/storage/home/lukasketzer/fully-inductive-cardinality-estimation"
-CONFIG_FILE="$PROJECT_DIR/configs/train_cluster.json"
+CONFIG_FILE="$PROJECT_DIR/configs/train_cluster.yaml"
 SCRIPT="$PROJECT_DIR/scripts/train.py"
 CONTAINER="/storage/home/lukasketzer/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"

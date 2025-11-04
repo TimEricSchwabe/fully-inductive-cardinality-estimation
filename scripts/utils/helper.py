@@ -14,7 +14,6 @@ logger = logging.getLogger(__name__)
 
 # Weights & Biases configuration
 WANDB_CONFIG = {
-    'enabled': True,
     'project': 'fice',
     'entity': "fice",  # Set to your wandb username/team or leave None for default
     'run_name': None,  # Will be auto-generated if None
@@ -27,11 +26,6 @@ WANDB_CONFIG = {
 def initialize_wandb(config, run_dir):
     """Initialize Weights & Biases logging if enabled."""
     # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
-    wandb_enabled = config.get('wandb', WANDB_CONFIG['enabled'])
-
-    if not wandb_enabled:
-        logger.info("Weights & Biases logging is disabled")
-        return None
 
     # Prepare training config for wandb
     training_config = config.copy()
@@ -51,7 +45,6 @@ def initialize_wandb(config, run_dir):
     )
     
     logger.info(f"Weights & Biases initialized: {run.url}")
-    return run
 
 
 
