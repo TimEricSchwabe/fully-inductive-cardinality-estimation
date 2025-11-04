@@ -4,10 +4,12 @@ import pandas as pd
 from torch_geometric.loader import DataLoader
 from dataclasses import dataclass
 
+from .config import Config
+
 @dataclass
 class TrainingContext:
     """Container for training configuration and environment."""
-    config: dict
+    config: Config
     device: torch.device
     run_dir: Path
     log_dir: Path
