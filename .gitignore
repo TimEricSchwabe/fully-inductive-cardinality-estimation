@@ -2,8 +2,10 @@ __pycache__/
 
 # Virtual environment
 venv/
+*venv*/
 .venv/
 .env/
+slurm*.out
 
 # Ignore everything under data
 data/*
