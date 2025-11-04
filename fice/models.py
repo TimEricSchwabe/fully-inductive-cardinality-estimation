@@ -57,13 +57,16 @@ class FICE(nn.Module):
         if use_neighbor_loader:
             input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
             if input_nodes.numel() == 0:
+                # TODO: Das hier ist eine notlösung für den fall, dass alle knoten vom query-graph Variabeln sind. 
+                # In so einem fall gibt es ja keine "Seed nodes" für den neighbor loader.
                 input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
                 input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
-    
+                input_nodes = input_nodes[:5]
             input_nodes = input_nodes.to(device)
+
             neighbor_loader = NeighborLoader(
                 data=data,
-                num_neighbors=[-1],
+                num_neighbors=[-1], 
                 batch_size=input_nodes.size(0),
                 shuffle=True,
                 disjoint=False,
