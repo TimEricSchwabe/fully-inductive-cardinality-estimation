@@ -195,7 +195,6 @@ def build_relation_graph(graph):
         num_relations=4
     )
 
-    graph.relation_graph = rel_graph
-    return graph
+    return rel_graph
 
 

@@ -172,7 +172,7 @@ class NTDatasets(InMemoryDataset):
         edge_index = triplets[:, [0, 2]].t().contiguous()
         edge_type = triplets[:, 1].contiguous().long()
 
-        data = Data(
+        graph = Data(
             edge_index=edge_index,
             edge_type=edge_type,
             num_nodes=num_nodes,
@@ -181,9 +181,13 @@ class NTDatasets(InMemoryDataset):
 
         # Apply pre_transform if provided, otherwise ensure relation graph is built
         if self.pre_transform is not None:
-            data = self.pre_transform(data)
+            rel_graph = self.pre_transform(graph)
         else:
-            data = build_relation_graph(data)
+            rel_graph = build_relation_graph(graph)
+
+        data = Data()
+        data.graph = graph
+        data.relation_graph = rel_graph
 
         assert (
             getattr(data, "relation_graph", None) is not None

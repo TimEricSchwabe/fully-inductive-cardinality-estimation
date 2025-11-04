@@ -16,6 +16,7 @@ import torch
 import torch.nn.functional as F
 import wandb
 from torch_geometric.loader import DataLoader, NeighborLoader
+from torch_geometric.data import Data
 from tqdm import tqdm
 
 # Configure matplotlib for server environments
@@ -38,6 +39,101 @@ TRAIN_METRICS_FILE_NAME = "train_training_metrics.csv"
 TEST_METRICS_FILE_NAME = "test_training_metrics.csv"
 TRAIN_VALUES_FILE_NAME = "train_values.csv"
 TEST_VALUES_FILE_NAME = "test_values.csv"
+
+
+def map_global_to_neighborhood(data_n_id, node_indices):
+    """
+    Maps node indices from a batch to their corresponding positions in data.n_id.
+    
+    Uses torch.searchsorted to efficiently find the positions of node_indices values
+    within the potentially unsorted data.n_id tensor.
+    
+    Args:
+        data_n_id: Tensor containing node IDs from the data object (potentially unsorted)
+        node_indices: Tensor containing node indices to map
+        
+    Returns:
+        Tensor of indices corresponding to positions in data.n_id
+        
+    Example:
+        data_n_id = tensor([1, 3, 5, 2, 6])
+        node_indices = tensor([5, 6, 1])
+        result = tensor([2, 4, 0])  # positions of [5, 6, 1] in data_n_id
+    """
+    # Sort data.n_id and keep track of original indices
+    sorted_n_id, sort_indices = torch.sort(data_n_id)
+    
+    # Find positions in sorted array
+    sorted_positions = torch.searchsorted(sorted_n_id, node_indices)
+    
+    # Map back to original indices
+    original_indices = sort_indices[sorted_positions]
+    
+    return original_indices
+
+
+def build_neighborhood_subgraph(
+    data_graph,
+    query_batch,
+    device: torch.device,
+    num_neighbors=[-1],
+    disjoint: bool = False,
+    shuffle: bool = False,
+):
+    """
+    Sample a neighborhood subgraph for the node indices found in `query_batch` and map
+    the original `query_batch.node_embedding_indices` into the subgraph's index space.
+
+    Args:
+        data_graph: torch_geometric.data.Data (full graph)
+        query_batch: batch object that contains `node_embedding_indices` (tensor with -1 placeholders)
+        device: torch.device to move the sampled subgraph to
+        num_neighbors: list passed to NeighborLoader (default [-1])
+        disjoint: pass-through to NeighborLoader
+        shuffle: pass-through to NeighborLoader
+
+    Returns:
+        (subgraph_or_none, mapped_node_indices)
+        - subgraph_or_none: Data moved to `device`, or None if no positive input nodes
+        - mapped_node_indices: LongTensor same shape as query_batch.node_embedding_indices where
+          entries < 0 remain -1, and entries >=0 are replaced with indices into subgraph.n_id.
+          The returned mapped tensor is on CPU. If a global node id is not present in the
+          sampled subgraph, it will be mapped to -1.
+    """
+    # Extract the node indices tensor and work on CPU for mapping
+    node_indices = query_batch.node_embedding_indices
+    node_indices_cpu = node_indices.detach().cpu()
+
+    positive_mask = node_indices_cpu >= 0
+    positive_nodes = node_indices_cpu[positive_mask].unique()
+
+    if positive_nodes.numel() == 0:
+        # Nothing to sample; return None and a copy of the original indices
+        return None, node_indices_cpu.clone()
+
+    # Create NeighborLoader to sample the neighborhood for the selected nodes
+    neighbor_loader = NeighborLoader(
+        data=data_graph,
+        num_neighbors=num_neighbors,
+        batch_size=positive_nodes.size(0),
+        shuffle=shuffle,
+        disjoint=disjoint,
+        input_nodes=positive_nodes,
+    )
+
+    # There should be a single batch corresponding to the requested input_nodes
+    subgraph = next(iter(neighbor_loader))
+    subgraph = subgraph.to(device)
+
+    # Use existing helper to map global ids to neighborhood positions (on CPU)
+    # Note: map_global_to_neighborhood expects (data_n_id, node_indices)
+    mapped = map_global_to_neighborhood(subgraph.n_id.detach().cpu(), node_indices_cpu)
+    # Ensure placeholder negative indices remain -1
+    mapped = torch.where(node_indices_cpu >= 0, mapped, torch.full_like(mapped, -1))
+    mapped = mapped.to(torch.long)
+
+    return subgraph, mapped
+
 
 
 # TODO: logging
@@ -203,7 +299,26 @@ def train_epoch(state: TrainingState):
         state.model_components.optimizer.zero_grad()
         
         # Forward pass - data and batch will be moved to GPU inside model forward
-        log_cardinality_pred = state.model_components.model(data=data.to(device), batch=query_batch.to(device))
+        do_neighbor_sampling = True
+        if do_neighbor_sampling:
+            # Use reusable helper to sample a neighborhood and map node indices
+            graph, mapped_indices = build_neighborhood_subgraph(
+                data_graph=data.graph,
+                query_batch=query_batch,
+                device=device,
+                num_neighbors=[-1],
+                disjoint=False,
+                shuffle=False,
+            )
+            if graph is None:
+                graph = None
+            else:
+                # Keep mapped indices on CPU; query_batch.to(device) will move them along with the batch
+                query_batch.node_embedding_indices = mapped_indices
+        else:
+            graph = data.graph.to(device)
+
+        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device))
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
@@ -271,8 +386,26 @@ def evaluate_model(state: TrainingState):
 
     with torch.no_grad():
         for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
-            # Forward pass - data and batch will be moved to GPU inside model forward
-            log_cardinality_pred = state.model_components.model(data=data, batch=query_batch)
+            # Optionally perform neighborhood sampling for evaluation too (keeps behavior consistent with training)
+            do_neighbor_sampling = True
+            if do_neighbor_sampling:
+                graph, mapped_indices = build_neighborhood_subgraph(
+                    data_graph=data.graph,
+                    query_batch=query_batch,
+                    device=device,
+                    num_neighbors=[-1],
+                    disjoint=False,
+                    shuffle=False,
+                )
+                if graph is None:
+                    graph = None
+                else:
+                    query_batch.node_embedding_indices = mapped_indices
+            else:
+                graph = data.graph.to(device)
+
+            # Forward pass - move batch and graph to device (mapped indices are on CPU but will be moved with batch)
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device))
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
             true_cardinality = query_batch.y.to(torch.float32).to(device)
@@ -670,7 +803,7 @@ def main():
 
     # Load data
     data = load_dataset(context)
-    data.to(device)
+
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
         load_occurrences(context)
     )

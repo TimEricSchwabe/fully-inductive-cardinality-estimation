@@ -64,20 +64,20 @@ def load_dataset(context: TrainingContext):
     
     # Instantiate and load the dataset
     graph_dataset = DatasetClass(device=context.device)
-    graph = graph_dataset[0]
+    data = graph_dataset[0]
 
     logger.info(f"Graph loaded successfully!")
-    logger.info(f"Number of nodes: {graph.num_nodes}")
-    logger.info(f"Number of edges: {graph.num_edges}")
+    logger.info(f"Number of nodes: {data.graph.num_nodes}")
+    logger.info(f"Number of edges: {data.graph.num_edges}")
     logger.info(
-        f"Node features shape: {graph.x.shape if hasattr(graph, 'x') and graph.x is not None else 'None'}"
+        f"Node features shape: {data.graph.x.shape if hasattr(data.graph, 'x') and data.graph.x is not None else 'None'}"
     )
-    logger.info(f"Edge indices shape: {graph.edge_index.shape}")
+    logger.info(f"Edge indices shape: {data.graph.edge_index.shape}")
     logger.info(
-        f"Edge types shape: {graph.edge_type.shape if hasattr(graph, 'edge_type') and graph.edge_type is not None else 'None'}"
+        f"Edge types shape: {data.graph.edge_type.shape if hasattr(data.graph, 'edge_type') and data.graph.edge_type is not None else 'None'}"
     )
 
-    return graph
+    return data
 
 
 def load_occurrences(context: TrainingContext):

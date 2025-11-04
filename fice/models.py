@@ -7,7 +7,7 @@ from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
 from easydict import EasyDict
 
 from fice.gnce.models import QueryGNN, TripleModel
-from fice.ultra.models import RelNBFNet, EntityNBFNet, map_global_to_neighborhood
+from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 
 class FICE(nn.Module):
@@ -40,7 +40,7 @@ class FICE(nn.Module):
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
-    def forward(self, data, batch, use_neighbor_loader=True):
+    def forward(self, data, relation_graph, batch, use_neighbor_loader=True):
         
         # Move only the batch to GPU (data/graph is already on GPU)
         device = batch.x.device
@@ -51,52 +51,28 @@ class FICE(nn.Module):
         edge_embedding_indices = batch.edge_embedding_indices
 
         # Provide shape [1, K] to seed K relations at once
-        relation_representations = self.relation_model(batch=batch.to(device), data=data.relation_graph.to(device))
+        relation_representations = self.relation_model(batch=batch.to(device), data=relation_graph.to(device))
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
-        if use_neighbor_loader:
-            input_nodes = batch.node_embedding_indices[batch.node_embedding_indices >= 0].unique()
-            if input_nodes.numel() == 0:
-                # TODO: Das hier ist eine notlösung für den fall, dass alle knoten vom query-graph Variabeln sind. 
-                # In so einem fall gibt es ja keine "Seed nodes" für den neighbor loader.
-                input_edges = batch.edge_embedding_indices[batch.edge_embedding_indices >= 0].unique()
-                input_nodes = torch.flatten(data.edge_index[:, torch.isin(data.edge_type, input_edges)]).unique()
-                input_nodes = input_nodes[:5]
-            input_nodes = input_nodes.to(device)
-
-            neighbor_loader = NeighborLoader(
-                data=data,
-                num_neighbors=[-1], 
-                batch_size=input_nodes.size(0),
-                shuffle=True,
-                disjoint=False,
-                input_nodes=input_nodes
-            )
-
-            entity_batch = next(iter(neighbor_loader)).to(device) 
-        else:
-            entity_batch = data
-        
-
         # TODO: Always passes the large relation graph with it (in data-obejct) even though not needed
-        node_representations = self.entity_model(batch=batch, data=entity_batch, relation_representations=relation_representations)
-        assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
+        if data is not None:
+            node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
+            assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
 
 
-        # Merging ULTRA embeddings with precomputed query features
-        bound_nodes = embedding_indices >= 0
-        graph_indices = batch.batch
-        # HACK: not the most efficient
-        neighbor_graph_mapped_indices = map_global_to_neighborhood(entity_batch.n_id, embedding_indices)
-        node_embeddings = node_representations[graph_indices, neighbor_graph_mapped_indices]
+            # If there are no node representations, we cannot map anything, so we keep the original features
+            bound_nodes = embedding_indices >= 0
+            graph_indices = batch.batch
+            # HACK: not the most efficient
+            node_embeddings = node_representations[graph_indices, embedding_indices]
 
-        # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
-        last = torch.where(bound_nodes.unsqueeze(-1),          
-                             node_embeddings,
-                             query_features[:, 3:])         
+            # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
+            last = torch.where(bound_nodes.unsqueeze(-1),          
+                                node_embeddings,
+                                query_features[:, 3:])         
 
-        query_features = torch.cat([query_features[:, :3], last], dim=1)
-        batch.x = query_features
+            query_features = torch.cat([query_features[:, :3], last], dim=1)
+            batch.x = query_features
 
 
         # Handle edge embeddings similar to node embeddings

@@ -6,36 +6,6 @@ from fice.ultra.base_nbfnet import BaseNBFNet
 from easydict import EasyDict
 
 
-def map_global_to_neighborhood(data_n_id, node_indices):
-    """
-    Maps node indices from a batch to their corresponding positions in data.n_id.
-    
-    Uses torch.searchsorted to efficiently find the positions of node_indices values
-    within the potentially unsorted data.n_id tensor.
-    
-    Args:
-        data_n_id: Tensor containing node IDs from the data object (potentially unsorted)
-        node_indices: Tensor containing node indices to map
-        
-    Returns:
-        Tensor of indices corresponding to positions in data.n_id
-        
-    Example:
-        data_n_id = tensor([1, 3, 5, 2, 6])
-        node_indices = tensor([5, 6, 1])
-        result = tensor([2, 4, 0])  # positions of [5, 6, 1] in data_n_id
-    """
-    # Sort data.n_id and keep track of original indices
-    sorted_n_id, sort_indices = torch.sort(data_n_id)
-    
-    # Find positions in sorted array
-    sorted_positions = torch.searchsorted(sorted_n_id, node_indices)
-    
-    # Map back to original indices
-    original_indices = sort_indices[sorted_positions]
-    
-    return original_indices
-
 
 # NBFNet to work on the graph of relations with 4 fundamental interactions
 # Doesn't have the final projection MLP from hidden dim -> 1, returns all node representations 
@@ -198,13 +168,12 @@ class EntityNBFNet(BaseNBFNet):
 
         # TODO: check if this is correct
         # Map node_indices to their positions in data.n_id
-        neighbor_graph_mapped_indices = map_global_to_neighborhood(data.n_id, node_indices)
 
         # Use advanced indexing to set the boundary values to 1.0 in a single operation
         # TODO: Hier sollten eigentlich die (query) relation mappings rein, anstelle 1.0
         # jetzt ist halt die frage, welchess emebdding reinsoll, wenn es mehrere gibt, 
         # kann man die emebddings aufaddiren?
-        boundary[graph_indices, neighbor_graph_mapped_indices] = 1.0
+        boundary[graph_indices, node_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)
