@@ -37,3 +37,4 @@ wandb>=0.15.0
 # Optional: For development and testing
 pytest>=7.0.0
 jupyter>=1.0.0
+pydantic_settings
