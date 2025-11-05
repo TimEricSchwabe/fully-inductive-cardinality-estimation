@@ -138,10 +138,9 @@ def load_queries(
         relation_occurrences=relation_occurrences,
         global_entity_mapping=entity_mapping,
         global_relation_mapping=relation_mapping,
-        device=context.device
     )
 
-    logger.info(f"Queries loaded (on {context.device}). Total queries: {len(queries)}")
+    logger.info(f"Queries loaded (on {queries[0].x.device}). Total queries: {len(queries)}")
     return queries
 
 def train_test_split(context: TrainingContext, queries):

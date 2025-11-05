@@ -13,7 +13,7 @@ from tqdm import tqdm
 DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
 
 def download(url: str, dest: Union[Path, str], progress: bool = False):
-    resp = requests.get(url, stream=True, timeout=30)
+    resp = requests.get(url, stream=True, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
     resp.raise_for_status()
 
     total = int(resp.headers.get('content-length', 0))
@@ -41,7 +41,6 @@ class NTDatasets(InMemoryDataset):
         self,
         url: str,
         root: Optional[str] = None,
-        device: torch.device = torch.device("cpu"),
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,
@@ -77,7 +76,7 @@ class NTDatasets(InMemoryDataset):
         # load processed data (keep on CPU - will be moved to device during batching)
         data, slices = torch.load(self.processed_paths[0], weights_only=False)
         # Force data to stay on CPU regardless of device parameter
-        self.data, self.slices = data.to(device), slices
+        self.data, self.slices = data, slices
 
     @property
     def processed_file_names(self):
@@ -211,7 +210,7 @@ class SWDF(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fi9H5tjyd2bb4d9Fh5Aiws/swdf.nt",
+            url="https://figshare.com/ndownloader/files/59320634",
             dataset_name="swdf",
             **kwargs
         )
@@ -221,7 +220,7 @@ class Wikidata(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fiGoYG8gbeEoPpBjCxQLGH/wikidata.ttl",
+            url="https://figshare.com/ndownloader/files/59320361",
             dataset_name="wikidata",
             **kwargs
         )
@@ -234,7 +233,6 @@ class NTQueries(InMemoryDataset):
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
         global_relation_mapping: Dict = None,
-        device: torch.device = torch.device("cpu"),
         dataset_name: Optional[str] = None,
         transform=None,
         pre_transform=None,
@@ -288,7 +286,7 @@ class NTQueries(InMemoryDataset):
         # load processed data (keep on CPU - will be moved to device during batching)
         data, slices = torch.load(self.processed_paths[0], weights_only=False)
         # Force data to stay on CPU regardless of device parameter
-        self.data, self.slices = data.to(device), slices
+        self.data, self.slices = data, slices
 
     @property
     def processed_file_names(self):
@@ -333,17 +331,17 @@ class NTQueries(InMemoryDataset):
         num_edges = len(query["triples"])
 
         query_edge_index = (
-            torch.tensor(query_edge_index, dtype=torch.long).t().to(self.device)
+            torch.tensor(query_edge_index, dtype=torch.long).t()
         )
         assert query_edge_index.dim() == 2 and query_edge_index.size(0) == 2 and query_edge_index.size(1) == num_edges
 
-        query_edge_type = torch.tensor(query_edge_type, dtype=torch.long).to(self.device)
+        query_edge_type = torch.tensor(query_edge_type, dtype=torch.long)
 
         assert query_edge_type.dim() == 1 and query_edge_type.size(0) == num_edges
 
         # Process Nodes
         query_features = torch.zeros(
-            num_nodes, feat_dim + 3, dtype=torch.float, device=self.device
+            num_nodes, feat_dim + 3, dtype=torch.float
         )
         embedding_indices = torch.full(
             (num_nodes,), -1, dtype=torch.long
@@ -365,7 +363,7 @@ class NTQueries(InMemoryDataset):
         query_edge_type_string = [t[1] for t in query.get('triples')]
 
         query_edge_attr = torch.zeros(
-            num_edges, feat_dim + 3, dtype=torch.float, device=self.device
+            num_edges, feat_dim + 3, dtype=torch.float
         )
         edge_embedding_indices = torch.full(
             (num_edges,), -1, dtype=torch.long
@@ -394,7 +392,7 @@ class NTQueries(InMemoryDataset):
             y=query["y"],
 
             node_embedding_indices=embedding_indices,
-            edge_embedding_indices=edge_embedding_indices
+            edge_embedding_indices=edge_embedding_indices,
         )
 
     def process(self):
@@ -420,7 +418,6 @@ class LUBMQueries(NTQueries):
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
         global_relation_mapping: Dict = None,
-        device: str = "cpu",
         **kwargs
     ):
         super().__init__(
@@ -430,7 +427,6 @@ class LUBMQueries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
-            device=device,
             **kwargs
         )
 
@@ -441,17 +437,15 @@ class SWDF_Star_Queries(NTQueries):
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
         global_relation_mapping: Dict = None,
-        device: str = "cpu",
         **kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fiFJfpCn2pRyQBQgeCqkA2/Joined_Queries.json",
+            url="https://figshare.com/ndownloader/files/59320652",
             dataset_name="swdf_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
-            device=device,
             **kwargs
         )
 
@@ -462,17 +456,15 @@ class WIKIDATA_Star_Queries(NTQueries):
         relation_occurrences: Dict = None,
         global_entity_mapping: Dict = None,
         global_relation_mapping: Dict = None,
-        device: str = "cpu",
         **kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fi518Mo23SxQuyuC57JJGT/Joined_Queries.json",
+            url="https://figshare.com/ndownloader/files/59320583",
             dataset_name="wikidata_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
-            device=device,
             **kwargs
         )
 
