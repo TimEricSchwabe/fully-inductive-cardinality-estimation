@@ -74,8 +74,9 @@ class NTDatasets(InMemoryDataset):
         # forward transform / pre_transform and use string root as expected by InMemoryDataset
         super().__init__(str(self.root), transform, pre_transform)
 
-        # load processed data (if present)
+        # load processed data (keep on CPU - will be moved to device during batching)
         data, slices = torch.load(self.processed_paths[0], weights_only=False)
+        # Force data to stay on CPU regardless of device parameter
         self.data, self.slices = data.to(device), slices
 
     @property
@@ -185,16 +186,14 @@ class NTDatasets(InMemoryDataset):
         else:
             rel_graph = build_relation_graph(graph)
 
-        data = Data()
-        data.graph = graph
-        data.relation_graph = rel_graph
+        graph.relation_graph = rel_graph
 
         assert (
-            getattr(data, "relation_graph", None) is not None
+            getattr(graph, "relation_graph", None) is not None
         ), "Relation graph not built"
 
         # Save in the same location that __init__ expects
-        torch.save(self.collate([data]), self.processed_paths[0])
+        torch.save(self.collate([graph]), self.processed_paths[0])
 
 class LUBM(NTDatasets):       
     def __init__(
@@ -243,7 +242,6 @@ class NTQueries(InMemoryDataset):
     ):
         self.url = url
         self.dim = dim
-        self.device = device
         if entity_occurrences is None:
             entity_occurrences = {}
         if relation_occurrences is None:
@@ -287,8 +285,9 @@ class NTQueries(InMemoryDataset):
 
         # forward transform / pre_transform and use string root as expected by InMemoryDataset
         super().__init__(str(self.root), transform, pre_transform)
-        # load processed data (if present)
+        # load processed data (keep on CPU - will be moved to device during batching)
         data, slices = torch.load(self.processed_paths[0], weights_only=False)
+        # Force data to stay on CPU regardless of device parameter
         self.data, self.slices = data.to(device), slices
 
     @property

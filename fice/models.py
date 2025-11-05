@@ -41,9 +41,15 @@ class FICE(nn.Module):
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
     def forward(self, data, relation_graph, batch, graph_size):
-        
-        # Move only the batch to GPU (data/graph is already on GPU)
+
+        # All inputs should already be on the correct device
         device = batch.x.device
+        if data is not None:
+            assert data.edge_index.device == device
+
+        assert relation_graph.edge_index.device == device
+        assert batch.x.device == device
+        assert graph_size.device == device
 
         query_features = batch.x
         edge_attr = batch.edge_attr
@@ -51,7 +57,8 @@ class FICE(nn.Module):
         edge_embedding_indices = batch.edge_embedding_indices
 
         # Provide shape [1, K] to seed K relations at once
-        relation_representations = self.relation_model(batch=batch.to(device), data=relation_graph.to(device))
+        # No need to call .to(device) - already on correct device
+        relation_representations = self.relation_model(batch=batch, data=relation_graph)
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
         # TODO: Always passes the large relation graph with it (in data-obejct) even though not needed

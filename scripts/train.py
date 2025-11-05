@@ -24,7 +24,6 @@ matplotlib.use('Agg')
 
 # Project imports
 import utils.metrics as metrics
-from fice import datasets
 from fice.models import FICE
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
 from utils.config import load_config_yaml, Config
@@ -75,7 +74,7 @@ def map_global_to_neighborhood(data_n_id, node_indices):
 def build_neighborhood_subgraph(
     data_graph,
     query_batch,
-    device: torch.device,
+    device: torch.device = None,
     num_neighbors=[-1],
     disjoint: bool = False,
     shuffle: bool = False,
@@ -124,7 +123,8 @@ def build_neighborhood_subgraph(
     # There should be a single batch corresponding to the requested input_nodes
     subgraph = next(iter(neighbor_loader))
 
-    subgraph = subgraph.to(device)
+    if device is not None:
+        subgraph = subgraph.to(device)
 
     # Use existing helper to map global ids to neighborhood positions (on CPU)
     # Note: map_global_to_neighborhood expects (data_n_id, node_indices)
@@ -284,9 +284,18 @@ def train_epoch(state: TrainingState):
     state.model_components.model.train()
     epoch_train_loss = 0.0
     num_train_batches = 0
-    epochs = state.training_context.config.epochs
-    data = state.data_components.data
     device = state.training_context.device
+    epochs = state.training_context.config.epochs
+
+    original_graph = state.data_components.data
+    relation_graph = state.data_components.data.relation_graph
+    assert original_graph.edge_index.device == torch.device('cpu')
+    assert relation_graph.edge_index.device == torch.device('cpu')
+
+    # Move relation_graph to device once (it's static and reused every batch)
+    relation_graph = relation_graph.to(device)
+
+    graph_size = torch.tensor([original_graph.num_edges], device=device)
 
     epoch_train_predictions_log = []    
     epoch_train_true_values_log = []
@@ -304,23 +313,22 @@ def train_epoch(state: TrainingState):
         if do_neighbor_sampling:
             # Use reusable helper to sample a neighborhood and map node indices
             graph, mapped_indices = build_neighborhood_subgraph(
-                data_graph=data.graph,
+                data_graph=original_graph,
                 query_batch=query_batch,
-                device=device,
                 num_neighbors=[-1],
                 disjoint=False,
                 shuffle=False,
             )
-            if graph is None:
-                graph = None
-            else:
+            if graph is not None:
                 # Keep mapped indices on CPU; query_batch.to(device) will move them along with the batch
+                graph = graph.to(device)
                 query_batch.node_embedding_indices = mapped_indices
-        else:
-            graph = data.graph.to(device)
 
-        graph_size = torch.tensor([data.graph.num_edges], device=device)
-        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device), graph_size=graph_size)
+        else:
+            graph = graph.to(device)
+
+        
+        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph, batch=query_batch.to(device), graph_size=graph_size)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
@@ -348,12 +356,23 @@ def train_epoch(state: TrainingState):
                 "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
             }
         )
+
+        # Clean up batch tensors to free GPU memory
+        del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
+        if do_neighbor_sampling and graph is not None:
+            del graph
+
+        
         
         # Log batch-level metrics to wandb if enabled
         if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
             wandb.log({
                 f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
             })
+
+    # Clear GPU cache after training epoch
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
 
@@ -378,7 +397,15 @@ def evaluate_model(state: TrainingState):
     # Extract components for easier access
     device = state.training_context.device
     use_wandb = state.training_context.use_wandb
-    data = state.data_components.data
+    original_graph = state.data_components.data
+    relation_graph = state.data_components.data.relation_graph
+    
+    assert original_graph.edge_index.device == torch.device('cpu')
+    assert relation_graph.edge_index.device == torch.device('cpu')
+
+    # Move relation_graph to device once (it's static and reused every batch)
+    relation_graph = relation_graph.to(device)
+    graph_size = torch.tensor([original_graph.num_edges], device=device)
 
     state.model_components.model.eval()
 
@@ -389,26 +416,26 @@ def evaluate_model(state: TrainingState):
     with torch.no_grad():
         for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
             # Optionally perform neighborhood sampling for evaluation too (keeps behavior consistent with training)
-            do_neighbor_sampling = True
+            do_neighbor_sampling = True     
             if do_neighbor_sampling:
+                # Use reusable helper to sample a neighborhood and map node indices
                 graph, mapped_indices = build_neighborhood_subgraph(
-                    data_graph=data.graph,
+                    data_graph=original_graph,
                     query_batch=query_batch,
-                    device=device,
                     num_neighbors=[-1],
                     disjoint=False,
                     shuffle=False,
                 )
-                if graph is None:
-                    graph = None
-                else:
+                if graph is not None:
+                    # Keep mapped indices on CPU; query_batch.to(device) will move them along with the batch
+                    graph = graph.to(device)
                     query_batch.node_embedding_indices = mapped_indices
+
             else:
-                graph = data.graph.to(device)
+                graph = graph.to(device)
 
             # Forward pass - move batch and graph to device (mapped indices are on CPU but will be moved with batch)
-            graph_size = torch.tensor([data.graph.num_edges], device=device)
-            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device), graph_size=graph_size)
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
             true_cardinality = query_batch.y.to(torch.float32).to(device)
@@ -423,12 +450,21 @@ def evaluate_model(state: TrainingState):
 
             epoch_test_loss += loss.item()
 
+            # Clean up batch tensors to free GPU memory
+            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
+            if do_neighbor_sampling and graph is not None:
+                del graph
+
             # Store predictions for analysis - move to CPU immediately
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
                     f"test_loss_epoch_{state.training_context.current_epoch}": loss.item(),
                 })
+
+    # Clear GPU cache after evaluation
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
     avg_test_loss = epoch_test_loss / len(state.data_components.test_loader)
 
@@ -777,7 +813,7 @@ def main():
 
     # Log final configuration (after merging with command-line args)
     logger.info("Final Configuration (after command-line overrides):")
-    for key, value in config.dict().items():
+    for key, value in config.model_dump().items():
         logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
@@ -806,6 +842,8 @@ def main():
 
     # Load data
     data = load_dataset(context)
+    assert data.edge_index.device == torch.device('cpu')
+    assert data.relation_graph.edge_index.device == torch.device('cpu')
 
     (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
         load_occurrences(context)
@@ -817,7 +855,8 @@ def main():
         entity_mapping,
         relation_mapping,
     )
-    logger.info(f"Queries loaded successfully on device: {queries.device}!")
+    assert queries[0].x.device == torch.device('cpu')
+    logger.info(f"Queries loaded successfully on device: {queries[0].x.device}!")
 
     train_queries, test_queries = train_test_split(context, queries)
     logger.info(f"Dataset split:")

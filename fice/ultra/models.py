@@ -112,13 +112,16 @@ class RelNBFNet(BaseNBFNet):
         else:
             output = hiddens[-1]
 
+        # Clean up intermediate tensors to free memory
+        del hiddens, edge_weights, layer_input, boundary
+
         # assert output.shape[0] == batch.batch_size, "Output shape does not match batch size"
         # assert output.shape[1] == data.num_nodes, "Output shape does not match number of relations"
         # assert output.shape[2] == self.dims[0], "Output shape does not match hidden dim"
 
         return {
             "node_feature": output,
-            "edge_weights": edge_weights,
+            "edge_weights": [],  # Return empty list since we deleted edge_weights
         }
 
     def forward(self, data, batch):
@@ -195,9 +198,12 @@ class EntityNBFNet(BaseNBFNet):
 
         output = hiddens[-1]
 
+        # Clean up intermediate tensors to free memory
+        del hiddens, edge_weights, layer_input, boundary
+
         return {
             "node_feature": output,
-            "edge_weights": edge_weights,
+            "edge_weights": [],  # Return empty list since we deleted edge_weights
         }
 
     def forward(self, data, batch, relation_representations):

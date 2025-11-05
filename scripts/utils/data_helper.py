@@ -63,18 +63,19 @@ def load_dataset(context: TrainingContext):
     DatasetClass = get_dataset_class(dataset_name)
     
     # Instantiate and load the dataset
-    graph_dataset = DatasetClass(device=context.device)
-    data = graph_dataset[0]
+    graph_dataset = DatasetClass()
+
+    data = graph_dataset[0].to(torch.device('cpu'))  # Load on CPU initially
 
     logger.info(f"Graph loaded successfully!")
-    logger.info(f"Number of nodes: {data.graph.num_nodes}")
-    logger.info(f"Number of edges: {data.graph.num_edges}")
+    logger.info(f"Number of nodes: {data.num_nodes}")
+    logger.info(f"Number of edges: {data.num_edges}")
     logger.info(
-        f"Node features shape: {data.graph.x.shape if hasattr(data.graph, 'x') and data.graph.x is not None else 'None'}"
+        f"Node features shape: {data.x.shape if hasattr(data, 'x') and data.x is not None else 'None'}"
     )
-    logger.info(f"Edge indices shape: {data.graph.edge_index.shape}")
+    logger.info(f"Edge indices shape: {data.edge_index.shape}")
     logger.info(
-        f"Edge types shape: {data.graph.edge_type.shape if hasattr(data.graph, 'edge_type') and data.graph.edge_type is not None else 'None'}"
+        f"Edge types shape: {data.edge_type.shape if hasattr(data, 'edge_type') and data.edge_type is not None else 'None'}"
     )
 
     return data
