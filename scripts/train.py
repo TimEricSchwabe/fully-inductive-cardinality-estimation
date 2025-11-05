@@ -357,18 +357,17 @@ def train_epoch(state: TrainingState):
             }
         )
 
-        # Clean up batch tensors to free GPU memory
-        del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-        if do_neighbor_sampling and graph is not None:
-            del graph
-
-        
-        
+       
         # Log batch-level metrics to wandb if enabled
         if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
             wandb.log({
                 f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
             })
+
+        # Clean up batch tensors to free GPU memory
+        del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
+        if do_neighbor_sampling and graph is not None:
+            del graph
 
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
