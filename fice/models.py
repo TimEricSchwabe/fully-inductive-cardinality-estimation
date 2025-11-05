@@ -40,7 +40,7 @@ class FICE(nn.Module):
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
-    def forward(self, data, relation_graph, batch, use_neighbor_loader=True):
+    def forward(self, data, relation_graph, batch, graph_size):
         
         # Move only the batch to GPU (data/graph is already on GPU)
         device = batch.x.device
@@ -89,8 +89,9 @@ class FICE(nn.Module):
         edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
         batch.edge_attr = edge_features
 
-        graph_size = torch.tensor([data.num_edges], device=data.edge_index.device)
-        log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch) 
+        # TODO:
+
+        log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
 
         return log_cardinality_pred
 

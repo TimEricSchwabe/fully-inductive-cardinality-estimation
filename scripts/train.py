@@ -123,6 +123,7 @@ def build_neighborhood_subgraph(
 
     # There should be a single batch corresponding to the requested input_nodes
     subgraph = next(iter(neighbor_loader))
+
     subgraph = subgraph.to(device)
 
     # Use existing helper to map global ids to neighborhood positions (on CPU)
@@ -318,7 +319,8 @@ def train_epoch(state: TrainingState):
         else:
             graph = data.graph.to(device)
 
-        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device))
+        graph_size = torch.tensor([data.graph.num_edges], device=device)
+        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device), graph_size=graph_size)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
@@ -405,7 +407,8 @@ def evaluate_model(state: TrainingState):
                 graph = data.graph.to(device)
 
             # Forward pass - move batch and graph to device (mapped indices are on CPU but will be moved with batch)
-            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device))
+            graph_size = torch.tensor([data.graph.num_edges], device=device)
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=data.relation_graph.to(device), batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
             true_cardinality = query_batch.y.to(torch.float32).to(device)
