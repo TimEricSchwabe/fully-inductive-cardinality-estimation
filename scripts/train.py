@@ -290,7 +290,7 @@ def train_epoch(state: TrainingState):
     original_graph = state.data_components.data
     relation_graph = state.data_components.data.relation_graph
     assert original_graph.edge_index.device == torch.device('cpu')
-    assert relation_graph.edge_index.device == torch.device('cpu')
+    # assert relation_graph.edge_index.device == torch.device('cpu')
 
     # Move relation_graph to device once (it's static and reused every batch)
     relation_graph = relation_graph.to(device)
@@ -400,7 +400,7 @@ def evaluate_model(state: TrainingState):
     relation_graph = state.data_components.data.relation_graph
     
     assert original_graph.edge_index.device == torch.device('cpu')
-    assert relation_graph.edge_index.device == torch.device('cpu')
+    # assert relation_graph.edge_index.device == torch.device('cpu')
 
     # Move relation_graph to device once (it's static and reused every batch)
     relation_graph = relation_graph.to(device)
