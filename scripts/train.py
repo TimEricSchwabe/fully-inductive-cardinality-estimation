@@ -315,7 +315,7 @@ def train_epoch(state: TrainingState):
             graph, mapped_indices = build_neighborhood_subgraph(
                 data_graph=original_graph,
                 query_batch=query_batch,
-                num_neighbors=[-1],
+                num_neighbors=[100],
                 disjoint=False,
                 shuffle=False,
             )
@@ -449,17 +449,19 @@ def evaluate_model(state: TrainingState):
 
             epoch_test_loss += loss.item()
 
-            # Clean up batch tensors to free GPU memory
-            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-            if do_neighbor_sampling and graph is not None:
-                del graph
-
             # Store predictions for analysis - move to CPU immediately
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
                     f"test_loss_epoch_{state.training_context.current_epoch}": loss.item(),
                 })
+
+            # Clean up batch tensors to free GPU memory
+            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
+            if do_neighbor_sampling and graph is not None:
+                del graph
+
+
 
     # Clear GPU cache after evaluation
     if torch.cuda.is_available():
@@ -775,7 +777,8 @@ def main():
         model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
     else:
-        config = load_config_yaml(args.config)
+        default_config_path = "configs/train_local.yaml"
+        config = load_config_yaml(args.config or default_config_path)
         model_state_dict = None
         optimizer_state_dict = None
 
@@ -826,6 +829,7 @@ def main():
 
     # Initialize Weights & Biases
     use_wandb = args.wandb
+    use_wandb = False # todo
     if use_wandb:
         initialize_wandb(config, run_dir)
 

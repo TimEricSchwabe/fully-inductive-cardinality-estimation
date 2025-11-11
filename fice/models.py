@@ -3,11 +3,74 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
+from torch_geometric.nn import GATv2Conv
 
 from easydict import EasyDict
 
 from fice.gnce.models import QueryGNN, TripleModel
 from fice.ultra.models import RelNBFNet, EntityNBFNet
+
+
+class EntityGNN(nn.Module):
+    def __init__(self, input_dim, hidden_dims, num_relation=1, **kwargs):
+        super(EntityGNN, self).__init__()
+
+        self.input_dim = input_dim
+        self.hidden_dims = hidden_dims
+        
+        self.layers = nn.ModuleList([
+            GATv2Conv(self.input_dim, self.hidden_dims[0], heads=1, concat=False, edge_dim=self.input_dim),
+            GATv2Conv(self.hidden_dims[0], self.hidden_dims[1], heads=1, concat=False, edge_dim=self.input_dim)
+        ])
+
+    def forward(self, data, batch, relation_representations=None):
+        batch_size = batch.batch_size
+        device = batch.edge_index.device
+
+        # Preparing node features 
+        x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+
+        # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
+        x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
+
+
+        # Indices of the nodes that appear in the query batch
+        node_indices = batch.node_embedding_indices 
+        valid = node_indices != -1
+        graph_idx = batch.batch[valid] # gives the graph index for each node
+        node_pos = node_indices[valid] # gives the position of each node in the graph
+
+        # Set input of nodes appearing in query to 1.0 ( conditioning / labelling trick)
+        x[graph_idx, node_pos] = 1.0
+        
+        # Create batched edge_index once: replicate edges for each batch element
+        num_nodes = data.num_nodes
+        edge_index = data.edge_index
+        # Create edge_index for batched graph: replicate edges for each batch element
+        batch_edge_list = []
+        # also replicate the edge types for each batch element
+        batched_edge_type_list = []
+        for b in range(batch_size):
+            offset = b * num_nodes
+            batch_edges = edge_index + offset
+            batch_edge_list.append(batch_edges)
+            batched_edge_type_list.append(data.edge_type)
+        batched_edge_index = torch.cat(batch_edge_list, dim=1)
+        batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
+
+        all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
+
+        edge_attr = relation_representations[all_edges, batched_edge_type]
+        
+        for layer in self.layers:
+            x = layer(x, batched_edge_index, edge_attr=edge_attr)
+            x = F.gelu(x)
+        
+        # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
+        x = x.view(batch_size, num_nodes, -1)
+        
+        return x
+
 
 
 class FICE(nn.Module):
@@ -28,13 +91,18 @@ class FICE(nn.Module):
             layer_norm=True
         )
         
-        self.entity_model = EntityNBFNet(
+        #self.entity_model = EntityNBFNet(
+        #    input_dim=self.vector_dim,
+        #    hidden_dims=self.hidden_dims_entitynet,
+       #     message_func='distmult',
+       #     aggregate_func='sum',
+       #     short_cut=True,
+       #     layer_norm=True
+       # )
+
+        self.entity_model = EntityGNN(
             input_dim=self.vector_dim,
-            hidden_dims=self.hidden_dims_entitynet,
-            message_func='distmult',
-            aggregate_func='sum',
-            short_cut=True,
-            layer_norm=True
+            hidden_dims=[128, 128],
         )
         # Dataset creates node/edge features of size (vector_dim + 3)
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)

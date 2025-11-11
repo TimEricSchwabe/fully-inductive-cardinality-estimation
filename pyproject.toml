@@ -6,10 +6,28 @@ authors = [
     { name = "Lukas Ketzer" }
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.12"
 dependencies = [
-    # Add your dependencies here, or leave empty if using requirements.txt
+    "easydict>=1.13",
+    "matplotlib",
+    "pandas",
+    "pydantic-settings>=2.8.1",
+    "torch==2.8.0+cpu",
+    "torch-geometric==2.7.0",
+    "torchaudio==2.8.0+cpu",
+    "torchvision==0.23.0+cpu",
+    "wandb>=0.22.3",
 ]
+
+[[tool.uv.index]]
+url = "https://pypi.org/simple"
+default = true
+
+[[tool.uv.index]]
+url = "https://download.pytorch.org/whl/cpu"
+
+[tool.uv]
+index-strategy = "unsafe-best-match"
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

@@ -76,8 +76,8 @@ def parse_arguments():
 
     args = parser.parse_args()
     # Enforce --config is required unless --checkpoint is specified
-    if not args.checkpoint and not args.config:
-        parser.error("--config is mandatory unless --checkpoint is specified")
+    #if not args.checkpoint and not args.config:
+    #    parser.error("--config is mandatory unless --checkpoint is specified")
     return args
 
 # Utility functions

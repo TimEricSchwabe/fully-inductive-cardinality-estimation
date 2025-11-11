@@ -88,6 +88,8 @@ class GeneralizedRelationalConv(MessagePassing):
         return output
 
     def propagate(self, edge_index, size=None, **kwargs):
+        return super(GeneralizedRelationalConv, self).propagate(edge_index, size, **kwargs)
+
         if kwargs["edge_weight"].requires_grad or self.message_func == "rotate":
             # the rspmm cuda kernel only works for TransE and DistMult message functions
             # otherwise we invoke separate message & aggregate functions
