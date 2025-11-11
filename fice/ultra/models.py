@@ -71,8 +71,8 @@ class RelNBFNet(BaseNBFNet):
 
 
         # Labeling Trick
-        # initialize initial nodes (relations of interest in the batch) with all ones
-        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=device)
+        # initialize initial nodes (relations of interest in the batch) with all ones 
+        boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=device) * 0.1
         
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.edge_embedding_indices != -1

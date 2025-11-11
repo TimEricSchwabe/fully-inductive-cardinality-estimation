@@ -88,7 +88,7 @@ class FICE(nn.Module):
         self.relation_model = RelNBFNet(
             input_dim=self.vector_dim,
             hidden_dims=self.hidden_dims_relnet,
-            message_func='distmult',
+            message_func='rotate',
             aggregate_func='sum',
             short_cut=True,
             layer_norm=True
