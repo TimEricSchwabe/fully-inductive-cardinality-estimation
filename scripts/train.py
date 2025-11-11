@@ -829,7 +829,7 @@ def main():
 
     # Initialize Weights & Biases
     use_wandb = args.wandb
-    use_wandb = False # todo
+    #use_wandb = False # todo
     if use_wandb:
         initialize_wandb(config, run_dir)
 
