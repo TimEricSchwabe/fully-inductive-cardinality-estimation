@@ -39,10 +39,10 @@ module load cuda/12.6.3
 if [ -n "$CHECKPOINT" ]; then
     echo "Resuming from checkpoint: $CHECKPOINT"
     srun apptainer exec --nv --cleanenv "$CONTAINER" \
-        bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --checkpoint $CHECKPOINT --wandb"
+        bash -c "source $VENV_PATH && export PYTHONPATH=$PROJECT_DIR:\$PYTHONPATH && python3 $SCRIPT --config $CONFIG_FILE --checkpoint $CHECKPOINT --wandb"
 else
     echo "Starting training from scratch"
     srun apptainer exec --nv --cleanenv "$CONTAINER" \
-        bash -c "source $VENV_PATH && python3 $SCRIPT --config $CONFIG_FILE --wandb"
+        bash -c "source $VENV_PATH && export PYTHONPATH=$PROJECT_DIR:\$PYTHONPATH && python3 $SCRIPT --config $CONFIG_FILE --wandb"
 fi
 
