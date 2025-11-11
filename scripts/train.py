@@ -315,7 +315,7 @@ def train_epoch(state: TrainingState):
             graph, mapped_indices = build_neighborhood_subgraph(
                 data_graph=original_graph,
                 query_batch=query_batch,
-                num_neighbors=[100],
+                num_neighbors=[1000, 1000],
                 disjoint=False,
                 shuffle=False,
             )
