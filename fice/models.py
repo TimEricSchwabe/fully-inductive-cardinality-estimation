@@ -41,7 +41,10 @@ class EntityGNN(nn.Module):
         node_pos = node_indices[valid] # gives the position of each node in the graph
 
         # Set input of nodes appearing in query to 1.0 ( conditioning / labelling trick)
-        x[graph_idx, node_pos] = 1.0
+        #x[graph_idx, node_pos] = 1.0
+
+        rows = graph_idx * data.num_nodes + node_pos      # linear node index in flattened tensor
+        x[rows] = 1.0   
         
         # Create batched edge_index once: replicate edges for each batch element
         num_nodes = data.num_nodes
