@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
-from torch_geometric.nn import GATv2Conv
+from torch_geometric.nn import GATv2Conv, GINEConv
 
 from easydict import EasyDict
 
@@ -17,11 +17,24 @@ class EntityGNN(nn.Module):
 
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
-        
+
+        def gine_mlp(in_dim, out_dim):
+            # The MLP used inside each GINEConv (applied after aggregation)
+            return nn.Sequential(
+                nn.Linear(in_dim, out_dim),
+                nn.ReLU(),
+                nn.Linear(out_dim, out_dim),
+            )
+
         self.layers = nn.ModuleList([
-            GATv2Conv(self.input_dim, self.hidden_dims[0], heads=1, concat=False, edge_dim=self.input_dim),
-            GATv2Conv(self.hidden_dims[0], self.hidden_dims[1], heads=1, concat=False, edge_dim=self.input_dim)
+            GINEConv(gine_mlp(input_dim, hidden_dims[0]), edge_dim=input_dim, train_eps=False),
+            GINEConv(gine_mlp(hidden_dims[0], hidden_dims[1]), edge_dim=input_dim, train_eps=False),
         ])
+        
+       # self.layers = nn.ModuleList([
+       #     GATv2Conv(self.input_dim, self.hidden_dims[0], heads=1, concat=False, edge_dim=self.input_dim),
+       #     GATv2Conv(self.hidden_dims[0], self.hidden_dims[1], heads=1, concat=False, edge_dim=self.input_dim)
+       # ])
 
     def forward(self, data, batch, relation_representations=None):
         batch_size = batch.batch_size
@@ -67,7 +80,7 @@ class EntityGNN(nn.Module):
         
         for layer in self.layers:
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
-            x = F.gelu(x)
+            #x = F.gelu(x)
         
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -89,7 +102,7 @@ class FICE(nn.Module):
             input_dim=self.vector_dim,
             hidden_dims=self.hidden_dims_relnet,
             message_func='rotate',
-            aggregate_func='sum',
+            aggregate_func='pna',
             short_cut=True,
             layer_norm=True
         )
