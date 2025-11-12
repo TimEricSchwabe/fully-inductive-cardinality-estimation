@@ -157,7 +157,16 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     config = context.config
     device = context.device
     
-    model = FICE()
+    # Get message functions from config if available
+    entity_message_func = getattr(config, 'EntityGNNMessageFunc', 'rotate')
+    relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
+    conditioning = getattr(config, 'Conditioning', 'all')
+    
+    model = FICE(
+        entity_message_func=entity_message_func,
+        relation_message_func=relation_message_func,
+        conditioning=conditioning
+    )
     if model_state_dict is not None:
         model.load_state_dict(model_state_dict)
         logger.info("Model state loaded from checkpoint.")
@@ -308,14 +317,12 @@ def train_epoch(state: TrainingState):
 
         state.model_components.optimizer.zero_grad()
         
-        # Forward pass - data and batch will be moved to GPU inside model forward
-        do_neighbor_sampling = True
-        if do_neighbor_sampling:
-            # Use reusable helper to sample a neighborhood and map node indices
+        num_neighbors = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
+        if num_neighbors is not False:
             graph, mapped_indices = build_neighborhood_subgraph(
                 data_graph=original_graph,
                 query_batch=query_batch,
-                num_neighbors=[1000, 1000],
+                num_neighbors=num_neighbors,
                 disjoint=False,
                 shuffle=False,
             )
@@ -325,7 +332,7 @@ def train_epoch(state: TrainingState):
                 query_batch.node_embedding_indices = mapped_indices
 
         else:
-            graph = graph.to(device)
+            graph = original_graph.to(device)
 
         
         log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph, batch=query_batch.to(device), graph_size=graph_size)
@@ -366,7 +373,7 @@ def train_epoch(state: TrainingState):
 
         # Clean up batch tensors to free GPU memory
         del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-        if do_neighbor_sampling and graph is not None:
+        if num_neighbors is not False and graph is not None:
             del graph
 
     # Clear GPU cache after training epoch

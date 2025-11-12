@@ -1,8 +1,8 @@
 # Example YAML config for local training
 
-dataset: "SWDF"
-queries: "SWDF_Star_Queries"
-epochs: 120
+dataset: "LUBM"
+queries: "LUBMQueries"
+epochs: 50
 batch_size: 32
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -11,5 +11,9 @@ save_every: 5
 eval_every: 1
 seed: 42
 device: "auto"
-DEBUG_num_queries: -1
+DEBUG_num_queries: 10000
+EntityGNNNeighborhood: [1000, 1000]
+EntityGNNMessageFunc: "rotate" # choices are "rotate", "distmult", "transe", "Gine" ; first 3 use NBFNet, last one uses custom GNN 
+RelationGNNMessageFunc: "rotate" # choices are "rotate", "distmult", "transe", "Gine"
+Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 # weight_decay: 0.01  # Uncomment to use weight decay

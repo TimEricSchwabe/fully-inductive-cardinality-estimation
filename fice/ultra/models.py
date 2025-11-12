@@ -12,7 +12,8 @@ from easydict import EasyDict
 # of shape [bs, num_rel, hidden]
 class RelNBFNet(BaseNBFNet):
 
-    def __init__(self, input_dim, hidden_dims, num_relation=4, **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=4, conditioning='seed only', **kwargs):
+        self.conditioning = conditioning
         super().__init__(input_dim, hidden_dims, num_relation, **kwargs)
         self.layers = nn.ModuleList()
         for i in range(len(self.dims) - 1):
@@ -70,9 +71,14 @@ class RelNBFNet(BaseNBFNet):
 
 
 
-        # Labeling Trick
-        # initialize initial nodes (relations of interest in the batch) with all ones 
-        boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=device) * 0.1
+        # Labeling Trick - initialize boundary based on conditioning strategy
+        # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
+        if self.conditioning == "false":
+            boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=device) * 0.1
+        elif self.conditioning == "seed only":
+            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=device)
+        else:  # "all" or default
+            boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=device) * 0.1
         
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.edge_embedding_indices != -1
@@ -84,8 +90,9 @@ class RelNBFNet(BaseNBFNet):
         graph_indices = edge2graph[valid_mask]
         node_indices = batch.edge_embedding_indices[valid_mask]
 
-        # Use advanced indexing to set the boundary values to 1.0 in a single operation
-        boundary[graph_indices, node_indices] = 1.0
+        # Use advanced indexing to set the boundary values to 1.0 in a single operation (based on conditioning)
+        if self.conditioning != "false":
+            boundary[graph_indices, node_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)
@@ -134,8 +141,8 @@ class RelNBFNet(BaseNBFNet):
 
 class EntityNBFNet(BaseNBFNet):
 
-    def __init__(self, input_dim, hidden_dims, num_relation=1, **kwargs):
-    
+    def __init__(self, input_dim, hidden_dims, num_relation=1, conditioning='seed only', **kwargs):
+        self.conditioning = conditioning
         # dummy num_relation = 1 as we won't use it in the NBFNet layer
         super().__init__(input_dim, hidden_dims, num_relation, **kwargs)
 
@@ -157,7 +164,14 @@ class EntityNBFNet(BaseNBFNet):
         # https://github.com/DeepGraphLearning/ULTRA/blob/main/ultra/models.py
         query = self.query[torch.arange(batch_size, device=device), torch.ones(batch_size, device=device, dtype=torch.long)]
 
-        boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=query.device)
+        # Initialize boundary based on conditioning strategy
+        # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
+        if self.conditioning == "false":
+            boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=query.device) * 0.1
+        elif self.conditioning == "seed only":
+            boundary = torch.zeros(batch_size, data.num_nodes, self.dims[0], device=query.device)
+        else:  # "all" or default
+            boundary = torch.ones(batch_size, data.num_nodes, self.dims[0], device=query.device) * 0.1
 
         # Create a mask to filter out invalid edge embedding indices (-1)
         valid_mask = batch.node_embedding_indices != -1
@@ -172,11 +186,12 @@ class EntityNBFNet(BaseNBFNet):
         # TODO: check if this is correct
         # Map node_indices to their positions in data.n_id
 
-        # Use advanced indexing to set the boundary values to 1.0 in a single operation
+        # Use advanced indexing to set the boundary values to 1.0 in a single operation (based on conditioning)
         # TODO: Hier sollten eigentlich die (query) relation mappings rein, anstelle 1.0
         # jetzt ist halt die frage, welchess emebdding reinsoll, wenn es mehrere gibt, 
         # kann man die emebddings aufaddiren?
-        boundary[graph_indices, node_indices] = 1.0
+        if self.conditioning != "false":
+            boundary[graph_indices, node_indices] = 1.0
 
         size = (data.num_nodes, data.num_nodes)
         edge_weight = torch.ones(data.num_edges, device=device)

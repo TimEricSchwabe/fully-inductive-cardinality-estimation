@@ -12,11 +12,13 @@ from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_relation=1, **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
+        self.message_func = message_func
+        self.conditioning = conditioning
 
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -26,22 +28,30 @@ class EntityGNN(nn.Module):
                 nn.Linear(out_dim, out_dim),
             )
 
-        self.layers = nn.ModuleList([
-            GINEConv(gine_mlp(input_dim, hidden_dims[0]), edge_dim=input_dim, train_eps=False),
-            GINEConv(gine_mlp(hidden_dims[0], hidden_dims[1]), edge_dim=input_dim, train_eps=False),
-        ])
-        
-       # self.layers = nn.ModuleList([
-       #     GATv2Conv(self.input_dim, self.hidden_dims[0], heads=1, concat=False, edge_dim=self.input_dim),
-       #     GATv2Conv(self.hidden_dims[0], self.hidden_dims[1], heads=1, concat=False, edge_dim=self.input_dim)
-       # ])
+        if message_func == 'gine':
+            self.layers = nn.ModuleList([
+                GINEConv(gine_mlp(input_dim, hidden_dims[0]), edge_dim=input_dim, train_eps=False),
+                GINEConv(gine_mlp(hidden_dims[0], hidden_dims[1]), edge_dim=input_dim, train_eps=False),
+            ])
+        else:
+            self.layers = nn.ModuleList([
+                GATv2Conv(input_dim, hidden_dims[0], heads=1, concat=False, edge_dim=input_dim),
+                GATv2Conv(hidden_dims[0], hidden_dims[1], heads=1, concat=False, edge_dim=input_dim),
+            ])
+
 
     def forward(self, data, batch, relation_representations=None):
         batch_size = batch.batch_size
         device = batch.edge_index.device
 
-        # Preparing node features 
-        x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+        # Preparing node features based on conditioning strategy
+        # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
+        if self.conditioning in ["false", "all"]:
+            x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+        elif self.conditioning == "seed only":
+            x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
+        else:
+            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
         # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
@@ -53,11 +63,10 @@ class EntityGNN(nn.Module):
         graph_idx = batch.batch[valid] # gives the graph index for each node
         node_pos = node_indices[valid] # gives the position of each node in the graph
 
-        # Set input of nodes appearing in query to 1.0 ( conditioning / labelling trick)
-        #x[graph_idx, node_pos] = 1.0
-
-        rows = graph_idx * data.num_nodes + node_pos      # linear node index in flattened tensor
-        x[rows] = 1.0   
+        # Set input of nodes appearing in query based on conditioning (labelling trick)
+        if self.conditioning != "false":
+            rows = graph_idx * data.num_nodes + node_pos      # linear node index in flattened tensor
+            x[rows] = 1.0   
         
         # Create batched edge_index once: replicate edges for each batch element
         num_nodes = data.num_nodes
@@ -80,7 +89,8 @@ class EntityGNN(nn.Module):
         
         for layer in self.layers:
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
-            #x = F.gelu(x)
+            if self.message_func != 'gine':
+                x = F.gelu(x)
         
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -91,35 +101,45 @@ class EntityGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all'):
         super(FICE, self).__init__()
         self.vector_dim = 128
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 6  # 6 layers with 64 hidden units each
-
+        
+        # Store message functions and conditioning for later use
+        self.entity_message_func = entity_message_func
+        self.relation_message_func = relation_message_func
+        self.conditioning = conditioning
 
         # Initialize models directly without config dictionaries
         self.relation_model = RelNBFNet(
             input_dim=self.vector_dim,
             hidden_dims=self.hidden_dims_relnet,
-            message_func='rotate',
+            message_func=relation_message_func,
             aggregate_func='pna',
             short_cut=True,
-            layer_norm=True
+            layer_norm=True,
+            conditioning=conditioning
         )
-        
-        #self.entity_model = EntityNBFNet(
-        #    input_dim=self.vector_dim,
-        #    hidden_dims=self.hidden_dims_entitynet,
-       #     message_func='distmult',
-       #     aggregate_func='sum',
-       #     short_cut=True,
-       #     layer_norm=True
-       # )
+ 
+        if entity_message_func in ['rotate', 'distmult', 'transe']:
+            self.entity_model = EntityNBFNet(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_entitynet,
+                message_func=entity_message_func,
+                aggregate_func='sum',
+                short_cut=True,
+                layer_norm=True,
+                conditioning=conditioning
+            )
+        else:
+            self.entity_model = EntityGNN(
+                input_dim=self.vector_dim,
+                hidden_dims=[128, 128],
+                message_func=entity_message_func,
+                conditioning=conditioning
+            )
 
-        self.entity_model = EntityGNN(
-            input_dim=self.vector_dim,
-            hidden_dims=[128, 128],
-        )
         # Dataset creates node/edge features of size (vector_dim + 3)
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
