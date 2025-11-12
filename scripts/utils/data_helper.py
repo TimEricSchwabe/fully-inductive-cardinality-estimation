@@ -147,6 +147,13 @@ def train_test_split(context: TrainingContext, queries):
     config = context.config
 
     # Process and filter queries
+    # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
+    min_card = getattr(config, "min_cardinality", None)
+    if min_card is not None:
+        original_count = len(queries)
+        queries = [q for q in queries if q.y.item() >= min_card]
+        logger.info(f"Filtered queries with cardinality >= {min_card}: {len(queries)}/{original_count}")
+
     queries_list = list(queries)
     random.shuffle(queries_list)
     if config.DEBUG_num_queries and config.DEBUG_num_queries > 0:

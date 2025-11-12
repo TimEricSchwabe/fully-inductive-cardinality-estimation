@@ -16,4 +16,5 @@ EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
 Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
+min_cardinality: 2
 # weight_decay: 0.01  # Uncomment to use weight decay

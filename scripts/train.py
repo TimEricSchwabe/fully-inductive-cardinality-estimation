@@ -865,6 +865,8 @@ def main():
         entity_mapping,
         relation_mapping,
     )
+
+    
     assert queries[0].x.device == torch.device('cpu')
     logger.info(f"Queries loaded successfully on device: {queries[0].x.device}!")
 
