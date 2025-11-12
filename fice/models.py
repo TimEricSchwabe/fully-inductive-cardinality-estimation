@@ -97,6 +97,98 @@ class EntityGNN(nn.Module):
         
         return x
 
+class RelationGNN(nn.Module):
+    """
+    Replacement for RelNBFNet operating on the **relation graph**.
+    Exactly four directed edge types exist and we learn a fixed
+    embedding vector for each of them.
+    """
+
+    def __init__(
+        self,
+        input_dim: int = 128,
+        hidden_dims: tuple = (128, 128),
+        num_relation: int = 4,
+        heads: int = 4,
+        conditioning: str = "all",      
+        layer_norm: bool = False,
+    ):
+        super().__init__()
+        self.num_relation = num_relation
+        self.conditioning = conditioning     
+
+        # 4 trainable relation embeddings
+        self.rel_emb = nn.Embedding(num_relation, input_dim)
+
+        self.layers = nn.ModuleList()
+        dims = (input_dim, *hidden_dims)
+        for i in range(len(dims) - 1):
+            self.layers.append(
+                GATv2Conv(
+                    in_channels=dims[i],
+                    out_channels=dims[i + 1],
+                    heads=heads,
+                    concat=False,               
+                    edge_dim=input_dim,         # relation embedding as edge_attr
+                )
+            )
+
+        self.norms = nn.ModuleList(
+            [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
+        )
+        self.act = nn.GELU()
+
+    def forward(self, data, batch):
+        """
+        data  : PyG Data of the *relation* graph
+        batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
+        """
+        bs        = batch.batch_size
+        num_nodes = data.num_nodes
+        device    = data.edge_index.device
+
+
+        if   self.conditioning == "false":
+            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+        elif self.conditioning == "seed only":
+            h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
+        else:  # "all"
+            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+
+        # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
+        if self.conditioning != "false":
+            valid_mask   = batch.edge_embedding_indices != -1
+            edge2graph   = batch.batch[batch.edge_index[0]]         # which query does every edge belong to?
+            graph_idx    = edge2graph[valid_mask]
+            rel_idx      = batch.edge_embedding_indices[valid_mask] # local relation-ID inside relation graph
+            h[graph_idx, rel_idx] = 1.0
+
+        rel_edges  = data.edge_index        # (2, E)
+        rel_types  = data.edge_type         # (E,)
+        batch_edge_list  = []
+        batch_type_list  = []
+        for b in range(bs):                 # identical to EntityGNN lines 72-84
+            offset = b * num_nodes
+            batch_edge_list.append(rel_edges + offset)
+            batch_type_list.append(rel_types)
+        edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+        edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+
+        edge_attr  = self.rel_emb(edge_type)    
+
+
+        x = h.view(bs * num_nodes, -1)
+
+        # Message passing
+        for i, layer in enumerate(self.layers):
+            x   = layer(x, edge_index, edge_attr)
+            if self.norms: x = self.norms[i](x)
+            x = self.act(x)
+
+        # Reshape back to (batch_size, num_nodes, hidden_dim)
+        out = x.view(bs, num_nodes, -1)
+        return out
+
 
 
 class FICE(nn.Module):
@@ -111,16 +203,28 @@ class FICE(nn.Module):
         self.relation_message_func = relation_message_func
         self.conditioning = conditioning
 
-        # Initialize models directly without config dictionaries
-        self.relation_model = RelNBFNet(
-            input_dim=self.vector_dim,
-            hidden_dims=self.hidden_dims_relnet,
-            message_func=relation_message_func,
-            aggregate_func='pna',
-            short_cut=True,
-            layer_norm=True,
-            conditioning=conditioning
-        )
+
+        if relation_message_func in ['rotate', 'distmult', 'transe']:
+            self.relation_model = RelNBFNet(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_relnet,
+                message_func=relation_message_func,
+                aggregate_func='pna',
+                short_cut=True,
+                layer_norm=True,
+                conditioning=conditioning
+            )
+        elif relation_message_func == 'GAT':
+            self.relation_model = RelationGNN(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_relnet,
+                num_relation=4,
+                heads=4,
+                layer_norm=False,
+                conditioning=conditioning
+            )
+        else:
+            raise ValueError(f"Invalid relation message function: {relation_message_func}")
  
         if entity_message_func in ['rotate', 'distmult', 'transe']:
             self.entity_model = EntityNBFNet(
@@ -132,13 +236,15 @@ class FICE(nn.Module):
                 layer_norm=True,
                 conditioning=conditioning
             )
-        else:
+        elif entity_message_func in ['gine', 'GAT']:
             self.entity_model = EntityGNN(
                 input_dim=self.vector_dim,
                 hidden_dims=[128, 128],
                 message_func=entity_message_func,
                 conditioning=conditioning
             )
+        else:
+            raise ValueError(f"Invalid entity message function: {entity_message_func}")
 
         # Dataset creates node/edge features of size (vector_dim + 3)
         # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
