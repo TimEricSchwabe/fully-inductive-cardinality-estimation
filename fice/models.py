@@ -104,7 +104,7 @@ class FICE(nn.Module):
     def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all'):
         super(FICE, self).__init__()
         self.vector_dim = 128
-        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 6  # 6 layers with 64 hidden units each
+        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
         
         # Store message functions and conditioning for later use
         self.entity_message_func = entity_message_func

@@ -28,7 +28,7 @@ def initialize_wandb(config, run_dir):
     # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
 
     # Prepare training config for wandb
-    training_config = config.copy()
+    training_config = config.model_dump()
 
     os.environ["WANDB_DIR"] = str(run_dir)
     logger.info(f"Weights & Biases dir: {run_dir}")
