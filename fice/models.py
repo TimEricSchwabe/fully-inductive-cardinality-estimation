@@ -316,12 +316,10 @@ class FICE(nn.Module):
 
 
 class FiceBinary(nn.Module):
-    """Ablation model that replaces learned entity / relation encoders with
-    simple *binary* encodings of the corresponding ID.
-
-    The idea is to convert an integer id (e.g. 12 -> 1100) into a fixed-length
-    binary vector (least significant bit first) and pad the remaining
-    dimensions with zeros until the desired embedding size (``vector_dim``).
+    """Ablation model that encodes only the IDs actually present in the
+    *query batch* instead of generating embeddings for the entire entity /
+    relation universe.  ``data`` and ``relation_graph`` inputs are therefore
+    optional (they can be ``None``).
     """
 
     def __init__(self, vector_dim: int = 128):
@@ -329,81 +327,65 @@ class FiceBinary(nn.Module):
         self.vector_dim = vector_dim
         self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
 
-
+    # --- binary encoding helper ------------------------------------------------
     def _binary_encode(self, ids: torch.Tensor) -> torch.Tensor:
-        """Convert a tensor of integer IDs into *binary* vectors.
-
-        Parameters
-        ----------
-        ids: torch.Tensor (any shape) of non-negative ints
-
-        Returns
-        -------
-        torch.FloatTensor with shape ``ids.shape + (vector_dim,)`` containing
-        0/1 entries (least significant bit first).
-        """
         device = ids.device
-        # Ensure long dtype for bit-wise operations
         ids_long = ids.to(torch.long)
-        # Create a column vector of bit positions: 0 .. vector_dim-1
         bits = (ids_long.unsqueeze(-1) >> torch.arange(self.vector_dim, device=device)) & 1
-        return bits.float()  # convert {0,1} -> {0.,1.}
+        return bits.float()
 
-
+    # --- forward ----------------------------------------------------------------
     def forward(self, data, relation_graph, batch, graph_size):
-
+        """Same signature as *FICE* for drop-in use, but `data` and
+        `relation_graph` may be ``None``.  Only the indices stored in
+        ``batch`` are required.
+        """
         device = batch.x.device
-        bs = batch.batch_size
 
-        # Relation *node* encodings – shape: (bs, |R|, D)
-        rel_ids = torch.arange(relation_graph.num_nodes, device=device)
-        rel_emb_single = self._binary_encode(rel_ids)                    # (|R|, D)
-        relation_representations = rel_emb_single.unsqueeze(0).repeat(bs, 1, 1)
+        # ------------------------------------------------------------------
+        # Entity embeddings – encode only *used* entity IDs
+        # ------------------------------------------------------------------
+        embedding_indices = batch.node_embedding_indices  # (N_q,)
+        bound_nodes_mask = embedding_indices >= 0
+        if bound_nodes_mask.any():
+            used_node_ids = embedding_indices[bound_nodes_mask]
+            unique_node_ids, inverse = torch.unique(used_node_ids, return_inverse=True)
+            node_emb_unique = self._binary_encode(unique_node_ids)  # (U, D)
+            node_emb_flat = node_emb_unique[inverse]  # (num_bound_nodes, D)
+        else:
+            node_emb_flat = None  # no bound nodes in this query batch
 
-        # Entity *node* encodings – shape: (bs, |V|, D)
-        if data is not None:
-            node_ids = torch.arange(data.num_nodes, device=device)
-            node_emb_single = self._binary_encode(node_ids)              # (|V|, D)
-            node_representations = node_emb_single.unsqueeze(0).repeat(bs, 1, 1)
-
-            # Inject entity embeddings into the query graph
-            query_features = batch.x                                    # (N_q, 3 + D)
-            embedding_indices = batch.node_embedding_indices            # (N_q,)
-            bound_nodes = embedding_indices >= 0
-
-            # Replace invalid indices (-1) temporarily with 0 to allow gather
-            safe_indices = embedding_indices.clone()
-            safe_indices[~bound_nodes] = 0
-
-            graph_indices = batch.batch                                 # (N_q,)
-            node_embeddings = node_representations[graph_indices, safe_indices]  # (N_q, D)
-
-            # Keep original features for variables, replace for bound nodes
-            last = torch.where(bound_nodes.unsqueeze(-1),
-                               node_embeddings,
-                               query_features[:, 3:])
+        # Start with original features
+        query_features = batch.x
+        if node_emb_flat is not None:
+            last = query_features[:, 3:].clone()  # copy to preserve autograd graph
+            last[bound_nodes_mask] = node_emb_flat
             query_features = torch.cat([query_features[:, :3], last], dim=1)
             batch.x = query_features
 
-        # Inject relation embeddings for *edges*
-        edge_attr = batch.edge_attr                                      # (E_q, 3 + D)
-        edge_embedding_indices = batch.edge_embedding_indices            # (E_q,)
-        bound_edges = edge_embedding_indices >= 0
-        edge2graph = batch.batch[batch.edge_index[0]]                    # (E_q,)
+        # ------------------------------------------------------------------
+        # Relation embeddings – encode only *used* relation IDs for edges
+        # ------------------------------------------------------------------
+        edge_embedding_indices = batch.edge_embedding_indices  # (E_q,)
+        bound_edges_mask = edge_embedding_indices >= 0
+        if bound_edges_mask.any():
+            used_rel_ids = edge_embedding_indices[bound_edges_mask]
+            unique_rel_ids, inverse_e = torch.unique(used_rel_ids, return_inverse=True)
+            rel_emb_unique = self._binary_encode(unique_rel_ids)  # (R_u, D)
+            rel_emb_flat = rel_emb_unique[inverse_e]
+        else:
+            rel_emb_flat = None
 
-        # As above: avoid negative indices when gathering
-        safe_edge_idx = edge_embedding_indices.clone()
-        safe_edge_idx[~bound_edges] = 0
+        edge_attr = batch.edge_attr
+        if rel_emb_flat is not None:
+            edge_last = edge_attr[:, 3:].clone()
+            edge_last[bound_edges_mask] = rel_emb_flat
+            edge_attr = torch.cat([edge_attr[:, :3], edge_last], dim=1)
+            batch.edge_attr = edge_attr
 
-        edge_embeddings = relation_representations[edge2graph, safe_edge_idx]    # (E_q, D)
-
-        edge_last = torch.where(bound_edges.unsqueeze(-1),
-                                edge_embeddings,
-                                edge_attr[:, 3:])
-        edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
-        batch.edge_attr = edge_features
-
-        # Pass through the query GNN for cardinality prediction
+        # ------------------------------------------------------------------
+        # Cardinality prediction through query GNN
+        # ------------------------------------------------------------------
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
         return log_cardinality_pred
 

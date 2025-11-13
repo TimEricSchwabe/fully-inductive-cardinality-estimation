@@ -149,14 +149,12 @@ def train_test_split(context: TrainingContext, queries):
     # Process and filter queries
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
     min_card = getattr(config, "min_cardinality", None)
-    
     # Handle string "None" or convert to int if needed
     if isinstance(min_card, str):
         if min_card.lower() == "none" or min_card.lower() == "null":
             min_card = None
         else:
             min_card = int(min_card)
-    
     if min_card is not None:
         original_count = len(queries)
         queries = [q for q in queries if q.y.item() >= min_card]

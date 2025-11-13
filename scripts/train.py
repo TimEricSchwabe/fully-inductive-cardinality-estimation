@@ -326,26 +326,29 @@ def train_epoch(state: TrainingState):
 
 
         state.model_components.optimizer.zero_grad()
-        
-        num_neighbors = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
-        if num_neighbors is not False:
-            graph, mapped_indices = build_neighborhood_subgraph(
-                data_graph=original_graph,
-                query_batch=query_batch,
-                num_neighbors=num_neighbors,
-                disjoint=False,
-                shuffle=False,
-            )
-            if graph is not None:
-                # Keep mapped indices on CPU; query_batch.to(device) will move them along with the batch
-                graph = graph.to(device)
-                query_batch.node_embedding_indices = mapped_indices
 
+        # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
+        if isinstance(state.model_components.model, FiceBinary):
+            graph = None
+            num_neighbors = False
         else:
-            graph = original_graph.to(device)
+            num_neighbors = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
+            if num_neighbors is not False:
+                graph, mapped_indices = build_neighborhood_subgraph(
+                    data_graph=original_graph,
+                    query_batch=query_batch,
+                    num_neighbors=num_neighbors,
+                    disjoint=False,
+                    shuffle=False,
+                )
+                if graph is not None:
+                    graph = graph.to(device)
+                    query_batch.node_embedding_indices = mapped_indices
+            else:
+                graph = original_graph.to(device)
 
-        
-        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph, batch=query_batch.to(device), graph_size=graph_size)
+        relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
+        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
         log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
         true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
