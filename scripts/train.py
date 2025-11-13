@@ -400,6 +400,12 @@ def train_epoch(state: TrainingState):
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not False:
         sampler = create_reusable_sampler(original_graph, num_neighbors_cfg)
 
+
+    #with torch.profiler.profile(
+    #    activities=[torch.profiler.ProfilerActivity.CPU],
+    #    record_shapes=True,
+    #) as prof:
+
     for batch_idx, query_batch in enumerate(progress_bar):
 
 
@@ -428,6 +434,7 @@ def train_epoch(state: TrainingState):
                 else:
                     graph = None
             elif num_neighbors is not False:
+                raise Exception("NeighborSampler is not supported for training")
                 # Fallback: NeighborLoader per-batch
                 loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
                 pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
@@ -478,7 +485,7 @@ def train_epoch(state: TrainingState):
             }
         )
 
-       
+    
         # Log batch-level metrics to wandb if enabled
         if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
             wandb.log({
@@ -489,6 +496,8 @@ def train_epoch(state: TrainingState):
         del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
         if graph is not None:
             del graph
+
+    #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
 
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
@@ -562,6 +571,7 @@ def evaluate_model(state: TrainingState):
                     else:
                         graph = None
                 elif num_neighbors_eval is not False:
+                    raise Exception("NeighborSampler is not supported for training")
                     # Fallback: NeighborLoader per-batch
                     loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
                     pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
