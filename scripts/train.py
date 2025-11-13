@@ -434,27 +434,30 @@ def evaluate_model(state: TrainingState):
 
     with torch.no_grad():
         for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
-            # Optionally perform neighborhood sampling for evaluation too (keeps behavior consistent with training)
-            do_neighbor_sampling = True     
-            if do_neighbor_sampling:
-                # Use reusable helper to sample a neighborhood and map node indices
-                graph, mapped_indices = build_neighborhood_subgraph(
-                    data_graph=original_graph,
-                    query_batch=query_batch,
-                    num_neighbors=[-1],
-                    disjoint=False,
-                    shuffle=False,
-                )
-                if graph is not None:
-                    # Keep mapped indices on CPU; query_batch.to(device) will move them along with the batch
-                    graph = graph.to(device)
-                    query_batch.node_embedding_indices = mapped_indices
-
+            if isinstance(state.model_components.model, FiceBinary):
+                # No neighborhood sampling, no relation graph
+                graph = None
+                relation_graph_inp = None
             else:
-                graph = graph.to(device)
+                # Optionally perform neighborhood sampling for evaluation too (keeps behavior consistent with training)
+                do_neighbor_sampling = True
+                if do_neighbor_sampling:
+                    graph, mapped_indices = build_neighborhood_subgraph(
+                        data_graph=original_graph,
+                        query_batch=query_batch,
+                        num_neighbors=[-1],
+                        disjoint=False,
+                        shuffle=False,
+                    )
+                    if graph is not None:
+                        graph = graph.to(device)
+                        query_batch.node_embedding_indices = mapped_indices
+                else:
+                    graph = original_graph.to(device)
+                relation_graph_inp = relation_graph
 
-            # Forward pass - move batch and graph to device (mapped indices are on CPU but will be moved with batch)
-            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph, batch=query_batch.to(device), graph_size=graph_size)
+            # Forward pass
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
             true_cardinality = query_batch.y.to(torch.float32).to(device)
@@ -478,7 +481,7 @@ def evaluate_model(state: TrainingState):
 
             # Clean up batch tensors to free GPU memory
             del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-            if do_neighbor_sampling and graph is not None:
+            if 'do_neighbor_sampling' in locals() and do_neighbor_sampling and graph is not None:
                 del graph
 
 
