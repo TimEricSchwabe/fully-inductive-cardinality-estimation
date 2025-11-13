@@ -24,7 +24,7 @@ matplotlib.use('Agg')
 
 # Project imports
 import utils.metrics as metrics
-from fice.models import FICE
+from fice.models import FICE, FiceBinary
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
 from utils.config import load_config_yaml, Config
 from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
@@ -162,11 +162,21 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
     conditioning = getattr(config, 'Conditioning', 'all')
     
-    model = FICE(
-        entity_message_func=entity_message_func,
-        relation_message_func=relation_message_func,
-        conditioning=conditioning
-    )
+    model_type = getattr(config, 'model', 'FICE')
+    
+    if model_type == 'FiceBinary':
+        logger.info("Initializing FiceBinary model (binary embedding ablation)")
+        model = FiceBinary(vector_dim=128)
+    elif model_type == 'FICE':
+        logger.info("Initializing FICE model")
+        model = FICE(
+            entity_message_func=entity_message_func,
+            relation_message_func=relation_message_func,
+            conditioning=conditioning
+        )
+    else:
+        raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
+    
     if model_state_dict is not None:
         model.load_state_dict(model_state_dict)
         logger.info("Model state loaded from checkpoint.")
@@ -866,7 +876,7 @@ def main():
         relation_mapping,
     )
 
-    
+
     assert queries[0].x.device == torch.device('cpu')
     logger.info(f"Queries loaded successfully on device: {queries[0].x.device}!")
 

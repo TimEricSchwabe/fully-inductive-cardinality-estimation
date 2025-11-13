@@ -314,3 +314,98 @@ class FICE(nn.Module):
 
 
 
+
+class FiceBinary(nn.Module):
+    """Ablation model that replaces learned entity / relation encoders with
+    simple *binary* encodings of the corresponding ID.
+
+    The idea is to convert an integer id (e.g. 12 -> 1100) into a fixed-length
+    binary vector (least significant bit first) and pad the remaining
+    dimensions with zeros until the desired embedding size (``vector_dim``).
+    """
+
+    def __init__(self, vector_dim: int = 128):
+        super().__init__()
+        self.vector_dim = vector_dim
+        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+
+
+    def _binary_encode(self, ids: torch.Tensor) -> torch.Tensor:
+        """Convert a tensor of integer IDs into *binary* vectors.
+
+        Parameters
+        ----------
+        ids: torch.Tensor (any shape) of non-negative ints
+
+        Returns
+        -------
+        torch.FloatTensor with shape ``ids.shape + (vector_dim,)`` containing
+        0/1 entries (least significant bit first).
+        """
+        device = ids.device
+        # Ensure long dtype for bit-wise operations
+        ids_long = ids.to(torch.long)
+        # Create a column vector of bit positions: 0 .. vector_dim-1
+        bits = (ids_long.unsqueeze(-1) >> torch.arange(self.vector_dim, device=device)) & 1
+        return bits.float()  # convert {0,1} -> {0.,1.}
+
+
+    def forward(self, data, relation_graph, batch, graph_size):
+
+        device = batch.x.device
+        bs = batch.batch_size
+
+        # Relation *node* encodings – shape: (bs, |R|, D)
+        rel_ids = torch.arange(relation_graph.num_nodes, device=device)
+        rel_emb_single = self._binary_encode(rel_ids)                    # (|R|, D)
+        relation_representations = rel_emb_single.unsqueeze(0).repeat(bs, 1, 1)
+
+        # Entity *node* encodings – shape: (bs, |V|, D)
+        if data is not None:
+            node_ids = torch.arange(data.num_nodes, device=device)
+            node_emb_single = self._binary_encode(node_ids)              # (|V|, D)
+            node_representations = node_emb_single.unsqueeze(0).repeat(bs, 1, 1)
+
+            # Inject entity embeddings into the query graph
+            query_features = batch.x                                    # (N_q, 3 + D)
+            embedding_indices = batch.node_embedding_indices            # (N_q,)
+            bound_nodes = embedding_indices >= 0
+
+            # Replace invalid indices (-1) temporarily with 0 to allow gather
+            safe_indices = embedding_indices.clone()
+            safe_indices[~bound_nodes] = 0
+
+            graph_indices = batch.batch                                 # (N_q,)
+            node_embeddings = node_representations[graph_indices, safe_indices]  # (N_q, D)
+
+            # Keep original features for variables, replace for bound nodes
+            last = torch.where(bound_nodes.unsqueeze(-1),
+                               node_embeddings,
+                               query_features[:, 3:])
+            query_features = torch.cat([query_features[:, :3], last], dim=1)
+            batch.x = query_features
+
+        # Inject relation embeddings for *edges*
+        edge_attr = batch.edge_attr                                      # (E_q, 3 + D)
+        edge_embedding_indices = batch.edge_embedding_indices            # (E_q,)
+        bound_edges = edge_embedding_indices >= 0
+        edge2graph = batch.batch[batch.edge_index[0]]                    # (E_q,)
+
+        # As above: avoid negative indices when gathering
+        safe_edge_idx = edge_embedding_indices.clone()
+        safe_edge_idx[~bound_edges] = 0
+
+        edge_embeddings = relation_representations[edge2graph, safe_edge_idx]    # (E_q, D)
+
+        edge_last = torch.where(bound_edges.unsqueeze(-1),
+                                edge_embeddings,
+                                edge_attr[:, 3:])
+        edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
+        batch.edge_attr = edge_features
+
+        # Pass through the query GNN for cardinality prediction
+        log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+        return log_cardinality_pred
+
+
+
