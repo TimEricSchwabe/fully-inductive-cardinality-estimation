@@ -30,6 +30,15 @@ from utils.config import load_config_yaml, Config
 from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
 from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
 from utils.models import TrainingContext, ModelComponents, DataComponents, TrainingState
+from torch_geometric.utils import subgraph
+
+# Try to import the low-level NeighborSampler (newer API). If unavailable, we'll fallback.
+try:
+    from torch_geometric.sampler import NeighborSampler as PYGNeighborSampler  # type: ignore
+    from torch_geometric.sampler import NodeSamplerInput  # type: ignore
+    HAS_PYG_SAMPLER = True
+except Exception:
+    HAS_PYG_SAMPLER = False
 
 logger = logging.getLogger(__name__)
 
@@ -78,6 +87,9 @@ def build_neighborhood_subgraph(
     num_neighbors=[-1],
     disjoint: bool = False,
     shuffle: bool = False,
+    loader_num_workers: int = 0,
+    loader_pin_memory: bool = False,
+    loader_persistent_workers: bool = False,
 ):
     """
     Sample a neighborhood subgraph for the node indices found in `query_batch` and map
@@ -110,7 +122,6 @@ def build_neighborhood_subgraph(
         # Nothing to sample; return None and a copy of the original indices
         return None, node_indices_cpu.clone()
 
-    # Create NeighborLoader to sample the neighborhood for the selected nodes
     neighbor_loader = NeighborLoader(
         data=data_graph,
         num_neighbors=num_neighbors,
@@ -118,8 +129,9 @@ def build_neighborhood_subgraph(
         shuffle=shuffle,
         disjoint=disjoint,
         input_nodes=positive_nodes,
-        pin_memory=True,
-        num_workers=8,   
+        num_workers=loader_num_workers,
+        pin_memory=loader_pin_memory,
+        persistent_workers=loader_persistent_workers if loader_num_workers > 0 else False,
     )
 
     # There should be a single batch corresponding to the requested input_nodes
@@ -137,6 +149,64 @@ def build_neighborhood_subgraph(
 
     return subgraph, mapped
 
+
+def create_reusable_sampler(data_graph, num_neighbors):
+    """Create a reusable sampler if the low-level sampler API is available.
+
+    Returns sampler or None.
+    """
+    if not HAS_PYG_SAMPLER:
+        return None
+    # Newer API takes a Data object / graph store
+    sampler = PYGNeighborSampler(
+        data_graph,
+        num_neighbors=num_neighbors,
+        replace=False,
+    )
+    return sampler
+
+
+def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
+    """Use reusable sampler to sample nodes around given seeds.
+
+    Returns: (subgraph_data, mapped_indices_cpu)
+    """
+    # Sample using the reusable sampler. Wrap seeds in NodeSamplerInput.
+    inputs = NodeSamplerInput(input_id=None, node=seeds)
+    out = sampler.sample_from_nodes(inputs)
+
+    # Try to obtain the global node ids present in the sampled subgraph
+    n_id = getattr(out, 'n_id', None)
+    if n_id is None:
+        n_id = getattr(out, 'node', None)
+    if n_id is None:
+        # Fallback: cannot obtain nodes; let caller fallback to NeighborLoader path
+        raise RuntimeError("Sampler output missing node ids (n_id)")
+
+    # Build induced subgraph on sampled nodes
+    # subgraph returns (edge_index, edge_attr, edge_mask) when return_edge_mask=True
+    subset = n_id
+    edge_index_sub, _, edge_mask = subgraph(
+        subset,
+        data_graph.edge_index,
+        edge_attr=None,
+        relabel_nodes=True,
+        return_edge_mask=True,
+    )
+    
+    # Build the subgraph Data object
+    sub_data = Data()
+    sub_data.edge_index = edge_index_sub
+    sub_data.num_nodes = subset.numel()
+    if hasattr(data_graph, 'edge_type'):
+        sub_data.edge_type = data_graph.edge_type[edge_mask]
+
+    # Build mapping from global node IDs to local (relabeled) node IDs
+    # After relabel_nodes=True, nodes in subset get consecutive indices 0, 1, 2, ...
+    global_to_local = torch.full((data_graph.num_nodes,), -1, dtype=torch.long, device=subset.device)
+    global_to_local[subset] = torch.arange(subset.numel(), device=subset.device)
+
+    return sub_data, global_to_local.detach().cpu()
 
 
 # TODO: logging
@@ -324,6 +394,12 @@ def train_epoch(state: TrainingState):
         state.data_components.train_loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False
     )
 
+    # Prepare reusable sampler once per epoch if enabled
+    num_neighbors_cfg = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
+    sampler = None
+    if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not False:
+        sampler = create_reusable_sampler(original_graph, num_neighbors_cfg)
+
     for batch_idx, query_batch in enumerate(progress_bar):
 
 
@@ -334,14 +410,37 @@ def train_epoch(state: TrainingState):
             graph = None
             num_neighbors = False
         else:
-            num_neighbors = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
-            if num_neighbors is not False:
+            num_neighbors = num_neighbors_cfg
+            if num_neighbors is not False and sampler is not None:
+                # Reusable sampler path
+                node_indices = query_batch.node_embedding_indices
+                seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                if seeds_cpu.numel() > 0:
+                    graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
+                    query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                    mapped = torch.where(
+                        query_nodes >= 0,
+                        global_to_local[query_nodes],
+                        torch.full_like(query_nodes, -1),
+                    ).to(torch.long)
+                    graph = graph_sub.to(device)
+                    query_batch.node_embedding_indices = mapped
+                else:
+                    graph = None
+            elif num_neighbors is not False:
+                # Fallback: NeighborLoader per-batch
+                loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
+                pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
+                persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
                 graph, mapped_indices = build_neighborhood_subgraph(
                     data_graph=original_graph,
                     query_batch=query_batch,
                     num_neighbors=num_neighbors,
                     disjoint=False,
                     shuffle=False,
+                    loader_num_workers=loader_workers,
+                    loader_pin_memory=pin_memory,
+                    loader_persistent_workers=persistent,
                 )
                 if graph is not None:
                     graph = graph.to(device)
@@ -388,7 +487,7 @@ def train_epoch(state: TrainingState):
 
         # Clean up batch tensors to free GPU memory
         del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-        if num_neighbors is not False and graph is not None:
+        if graph is not None:
             del graph
 
     # Clear GPU cache after training epoch
@@ -435,21 +534,47 @@ def evaluate_model(state: TrainingState):
     epoch_test_true_values_log = []
 
     with torch.no_grad():
+        # Prepare reusable sampler once for evaluation
+        num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
+        sampler = None
+        if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_eval is not False:
+            sampler = create_reusable_sampler(original_graph, num_neighbors_eval)
+
         for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
             if isinstance(state.model_components.model, FiceBinary):
-                # No neighborhood sampling, no relation graph
                 graph = None
                 relation_graph_inp = None
             else:
-                # Optionally perform neighborhood sampling for evaluation too (keeps behavior consistent with training)
-                do_neighbor_sampling = True
-                if do_neighbor_sampling:
+                if num_neighbors_eval is not False and sampler is not None:
+                    # Reusable sampler path
+                    node_indices = query_batch.node_embedding_indices
+                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                    if seeds_cpu.numel() > 0:
+                        graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
+                        query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                        mapped = torch.where(
+                            query_nodes >= 0,
+                            global_to_local[query_nodes],
+                            torch.full_like(query_nodes, -1),
+                        ).to(torch.long)
+                        graph = graph_sub.to(device)
+                        query_batch.node_embedding_indices = mapped
+                    else:
+                        graph = None
+                elif num_neighbors_eval is not False:
+                    # Fallback: NeighborLoader per-batch
+                    loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
+                    pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
+                    persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
                     graph, mapped_indices = build_neighborhood_subgraph(
                         data_graph=original_graph,
                         query_batch=query_batch,
-                        num_neighbors=[-1],
+                        num_neighbors=num_neighbors_eval if isinstance(num_neighbors_eval, list) else [-1],
                         disjoint=False,
                         shuffle=False,
+                        loader_num_workers=loader_workers,
+                        loader_pin_memory=pin_memory,
+                        loader_persistent_workers=persistent,
                     )
                     if graph is not None:
                         graph = graph.to(device)
@@ -483,7 +608,7 @@ def evaluate_model(state: TrainingState):
 
             # Clean up batch tensors to free GPU memory
             del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-            if 'do_neighbor_sampling' in locals() and do_neighbor_sampling and graph is not None:
+            if graph is not None:
                 del graph
 
 
