@@ -485,7 +485,7 @@ def train_epoch(state: TrainingState):
             if graph is not None:
                 del graph
 
-    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
+    #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
 
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
