@@ -168,7 +168,13 @@ def create_reusable_sampler(data_graph, num_neighbors):
 
 def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
     # 1) Sample neighborhood
+    # Wrap seeds in NodeSamplerInput
     inputs = NodeSamplerInput(input_id=None, node=seeds)
+    # get output with fields
+    # node: sampled node ids (global ids)
+    # row: row indices of the sampled edges (local indices)
+    # col: column indices of the sampled edges (local indices)
+    # edge: edge indices of the sampled edges (original edge ids from full graph)
     out = sampler.sample_from_nodes(inputs)
 
     # 2) Get sampled global node IDs
@@ -186,11 +192,13 @@ def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
     sub_data.edge_index = edge_index_local
     sub_data.num_nodes = n_id.numel()
 
-    # Optional: carry edge types via original edge IDs
+    # carry edge types via original edge IDs
+    # we put this as optional but should always be there
     if hasattr(data_graph, 'edge_type') and hasattr(out, 'edge'):
         sub_data.edge_type = data_graph.edge_type[out.edge]
 
     # 5) Global->local mapping (global ID -> local [0..N-1])
+    # i.e. which id do all the global ids from the full graph have (if they dont have one, they map to -1)
     global_to_local = torch.full((data_graph.num_nodes,), -1, dtype=torch.long, device=n_id.device)
     global_to_local[n_id] = torch.arange(n_id.numel(), device=n_id.device)
 
@@ -410,14 +418,20 @@ def train_epoch(state: TrainingState):
                     node_indices = query_batch.node_embedding_indices
                     seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
                     if seeds_cpu.numel() > 0:
+                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+                        # If a node is not in the subgraph, its mapped to -1
                         graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
                         mapped = torch.where(
                             query_nodes >= 0,
                             global_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
+                        # Update the graph to the sampled subgraph
                         graph = graph_sub.to(device)
+                        # Update the node indices to the mapped indices
                         query_batch.node_embedding_indices = mapped
                     else:
                         graph = None
@@ -449,6 +463,7 @@ def train_epoch(state: TrainingState):
 
             true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
             log_true_cardinality = torch.log(true_cardinality)
+            
 
             # Compute loss
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
