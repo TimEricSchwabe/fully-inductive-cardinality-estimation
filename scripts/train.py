@@ -118,6 +118,8 @@ def build_neighborhood_subgraph(
         shuffle=shuffle,
         disjoint=disjoint,
         input_nodes=positive_nodes,
+        pin_memory=True,
+        num_workers=8,   
     )
 
     # There should be a single batch corresponding to the requested input_nodes
