@@ -167,44 +167,32 @@ def create_reusable_sampler(data_graph, num_neighbors):
 
 
 def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
-    """Use reusable sampler to sample nodes around given seeds.
-
-    Returns: (subgraph_data, mapped_indices_cpu)
-    """
-    # Sample using the reusable sampler. Wrap seeds in NodeSamplerInput.
+    # 1) Sample neighborhood
     inputs = NodeSamplerInput(input_id=None, node=seeds)
     out = sampler.sample_from_nodes(inputs)
 
-    # Try to obtain the global node ids present in the sampled subgraph
-    n_id = getattr(out, 'n_id', None)
+    # 2) Get sampled global node IDs
+    n_id = getattr(out, 'node', None)
     if n_id is None:
-        n_id = getattr(out, 'node', None)
+        n_id = getattr(out, 'n_id', None)
     if n_id is None:
-        # Fallback: cannot obtain nodes; let caller fallback to NeighborLoader path
-        raise RuntimeError("Sampler output missing node ids (n_id)")
+        raise RuntimeError("Sampler output missing node ids (node / n_id)")
 
-    # Build induced subgraph on sampled nodes
-    # subgraph returns (edge_index, edge_attr, edge_mask) when return_edge_mask=True
-    subset = n_id
-    edge_index_sub, _, edge_mask = subgraph(
-        subset,
-        data_graph.edge_index,
-        edge_attr=None,
-        relabel_nodes=True,
-        return_edge_mask=True,
-    )
-    
-    # Build the subgraph Data object
+    # 3) Local edge_index from sampler (row/col are local indices)
+    edge_index_local = torch.stack([out.row, out.col], dim=0)
+
+    # 4) Build subgraph Data directly
     sub_data = Data()
-    sub_data.edge_index = edge_index_sub
-    sub_data.num_nodes = subset.numel()
-    if hasattr(data_graph, 'edge_type'):
-        sub_data.edge_type = data_graph.edge_type[edge_mask]
+    sub_data.edge_index = edge_index_local
+    sub_data.num_nodes = n_id.numel()
 
-    # Build mapping from global node IDs to local (relabeled) node IDs
-    # After relabel_nodes=True, nodes in subset get consecutive indices 0, 1, 2, ...
-    global_to_local = torch.full((data_graph.num_nodes,), -1, dtype=torch.long, device=subset.device)
-    global_to_local[subset] = torch.arange(subset.numel(), device=subset.device)
+    # Optional: carry edge types via original edge IDs
+    if hasattr(data_graph, 'edge_type') and hasattr(out, 'edge'):
+        sub_data.edge_type = data_graph.edge_type[out.edge]
+
+    # 5) Global->local mapping (global ID -> local [0..N-1])
+    global_to_local = torch.full((data_graph.num_nodes,), -1, dtype=torch.long, device=n_id.device)
+    global_to_local[n_id] = torch.arange(n_id.numel(), device=n_id.device)
 
     return sub_data, global_to_local.detach().cpu()
 
@@ -406,98 +394,98 @@ def train_epoch(state: TrainingState):
     #    record_shapes=True,
     #) as prof:
 
-    for batch_idx, query_batch in enumerate(progress_bar):
+        for batch_idx, query_batch in enumerate(progress_bar):
 
 
-        state.model_components.optimizer.zero_grad()
+            state.model_components.optimizer.zero_grad()
 
-        # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
-        if isinstance(state.model_components.model, FiceBinary):
-            graph = None
-            num_neighbors = False
-        else:
-            num_neighbors = num_neighbors_cfg
-            if num_neighbors is not False and sampler is not None:
-                # Reusable sampler path
-                node_indices = query_batch.node_embedding_indices
-                seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                if seeds_cpu.numel() > 0:
-                    graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
-                    query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                    mapped = torch.where(
-                        query_nodes >= 0,
-                        global_to_local[query_nodes],
-                        torch.full_like(query_nodes, -1),
-                    ).to(torch.long)
-                    graph = graph_sub.to(device)
-                    query_batch.node_embedding_indices = mapped
-                else:
-                    graph = None
-            elif num_neighbors is not False:
-                raise Exception("NeighborSampler is not supported for training")
-                # Fallback: NeighborLoader per-batch
-                loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
-                pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
-                persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
-                graph, mapped_indices = build_neighborhood_subgraph(
-                    data_graph=original_graph,
-                    query_batch=query_batch,
-                    num_neighbors=num_neighbors,
-                    disjoint=False,
-                    shuffle=False,
-                    loader_num_workers=loader_workers,
-                    loader_pin_memory=pin_memory,
-                    loader_persistent_workers=persistent,
-                )
-                if graph is not None:
-                    graph = graph.to(device)
-                    query_batch.node_embedding_indices = mapped_indices
+            # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
+            if isinstance(state.model_components.model, FiceBinary):
+                graph = None
+                num_neighbors = False
             else:
-                graph = original_graph.to(device)
+                num_neighbors = num_neighbors_cfg
+                if num_neighbors is not False and sampler is not None:
+                    # Reusable sampler path
+                    node_indices = query_batch.node_embedding_indices
+                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                    if seeds_cpu.numel() > 0:
+                        graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
+                        query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                        mapped = torch.where(
+                            query_nodes >= 0,
+                            global_to_local[query_nodes],
+                            torch.full_like(query_nodes, -1),
+                        ).to(torch.long)
+                        graph = graph_sub.to(device)
+                        query_batch.node_embedding_indices = mapped
+                    else:
+                        graph = None
+                elif num_neighbors is not False:
+                    raise Exception("NeighborSampler is not supported for training")
+                    # Fallback: NeighborLoader per-batch
+                    loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
+                    pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
+                    persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
+                    graph, mapped_indices = build_neighborhood_subgraph(
+                        data_graph=original_graph,
+                        query_batch=query_batch,
+                        num_neighbors=num_neighbors,
+                        disjoint=False,
+                        shuffle=False,
+                        loader_num_workers=loader_workers,
+                        loader_pin_memory=pin_memory,
+                        loader_persistent_workers=persistent,
+                    )
+                    if graph is not None:
+                        graph = graph.to(device)
+                        query_batch.node_embedding_indices = mapped_indices
+                else:
+                    graph = original_graph.to(device)
 
-        relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
-        log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
-        log_cardinality_pred = log_cardinality_pred.to(torch.float32)
+            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
+            log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
-        true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
-        log_true_cardinality = torch.log(true_cardinality)
+            true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
+            log_true_cardinality = torch.log(true_cardinality)
 
-        # Compute loss
-        loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
+            # Compute loss
+            loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
-        # Backward pass
-        loss.backward()
-        # torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
-        state.model_components.optimizer.step()
+            # Backward pass
+            loss.backward()
+            # torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
+            state.model_components.optimizer.step()
 
-        # Move predictions to CPU for logging to save GPU memory
-        epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
-        epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
+            # Move predictions to CPU for logging to save GPU memory
+            epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
+            epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
 
-        epoch_train_loss += loss.item()
-        num_train_batches += 1
+            epoch_train_loss += loss.item()
+            num_train_batches += 1
 
-        # Update progress bar
-        progress_bar.set_postfix(
-            {
-                "loss": f"{loss.item():.4f}",
-                "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
-            }
-        )
+            # Update progress bar
+            progress_bar.set_postfix(
+                {
+                    "loss": f"{loss.item():.4f}",
+                    "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
+                }
+            )
 
-    
-        # Log batch-level metrics to wandb if enabled
-        if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
-            wandb.log({
-                f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
-            })
+        
+            # Log batch-level metrics to wandb if enabled
+            if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
+                wandb.log({
+                    f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
+                })
 
-        # Clean up batch tensors to free GPU memory
-        del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-        if graph is not None:
-            del graph
+            # Clean up batch tensors to free GPU memory
+            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
+            if graph is not None:
+                del graph
 
-    #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
+    print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
 
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
