@@ -394,8 +394,10 @@ def train_epoch(state: TrainingState):
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not False:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
+            # TODO: Sampler nicht jedesmal createn (lookup map)
             sampler = create_reusable_sampler(full_graph, num_neighbors_cfg)
             relation_graph = full_graph.relation_graph.to(device)
+            graph_size = torch.tensor([full_graph.num_edges], device=device)
 
 
             state.model_components.optimizer.zero_grad()
@@ -463,7 +465,6 @@ def train_epoch(state: TrainingState):
 
             # Backward pass
             loss.backward()
-            # torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)  # Gradient clipping
             state.model_components.optimizer.step()
 
             # Move predictions to CPU for logging to save GPU memory
@@ -486,6 +487,7 @@ def train_epoch(state: TrainingState):
             if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
                     f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
+                    f"train_loss_epoch_{state.training_context.current_epoch}_{full_graph.dataset_name}": loss.item(),
                 })
 
             # Clean up batch tensors to free GPU memory
@@ -607,6 +609,7 @@ def evaluate_model(state: TrainingState):
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
                     f"test_loss_epoch_{state.training_context.current_epoch}": loss.item(),
+                    f"test_loss_epoch_{state.training_context.current_epoch}_{full_graph.dataset_name}": loss.item(),
                 })
 
             # Clean up batch tensors to free GPU memory
@@ -895,7 +898,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         data.append(dataset)
-        train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries)
+        train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries, min_cardinality=config.min_cardinality)
         train_sets.append(train_q)
         test_sets.append(test_q)
 

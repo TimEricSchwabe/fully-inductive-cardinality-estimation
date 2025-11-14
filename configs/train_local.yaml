@@ -3,12 +3,18 @@
 data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
-    batch_size: 32
+    batch_size: 4
     num_queries: 100
-  - dataset: "SWDF"
-    queries: "SWDF_Star_Queries"
-    batch_size: 32
+  - dataset: "LUNM"
+    queries: "LUBMQueries"
+    batch_size: 4
     num_queries: 200
+  - dataset: "Wikidata"
+    queries: "Wikidata_Star_Queries"
+    batch_size: 4
+    num_queries: 200
+
+
 
 epochs: 10
 learning_rate: 1e-4

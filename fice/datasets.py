@@ -57,7 +57,8 @@ class NTDatasets(InMemoryDataset):
         )
 
         if root is None:
-            self.root = DEFAULT_DATA_ROOT / dataset_name 
+            # use resolved/normalized dataset name attribute
+            self.root = DEFAULT_DATA_ROOT / self.dataset_name
         else:
             self.root = pathlib.Path(root)
 
@@ -192,6 +193,7 @@ class NTDatasets(InMemoryDataset):
         ), "Relation graph not built"
 
         # Save in the same location that __init__ expects
+        graph.dataset_name = self.dataset_name
         torch.save(self.collate([graph]), self.processed_paths[0])
 
 class LUBM(NTDatasets):       

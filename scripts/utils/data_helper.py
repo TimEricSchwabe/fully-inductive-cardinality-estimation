@@ -177,11 +177,12 @@ def load_data(dataset_name: str, queries_name: str):
 
     return dataset, (eo, ro, em, rm), queries
 
-def train_test_split(queries, train_ratio: float, num_queries: int = -1):
+def train_test_split(queries, train_ratio: float, num_queries: int = -1, min_cardinality: int = None) -> Tuple[List, List]:
     # TODO: takes a long time for some reason fix
     # Process and filter queries
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
-    min_card = getattr(config, "min_cardinality", None)
+    # TODO:
+    min_card = min_cardinality
     # Handle string "None" or convert to int if needed
     if isinstance(min_card, str):
         if min_card.lower() == "none" or min_card.lower() == "null":
