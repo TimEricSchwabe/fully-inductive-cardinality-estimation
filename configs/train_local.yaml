@@ -5,12 +5,12 @@ data:
     queries: "SWDF_Star_Queries"
     batch_size: 4
     num_queries: 100
-  - dataset: "LUNM"
+  - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
     num_queries: 200
   - dataset: "Wikidata"
-    queries: "Wikidata_Star_Queries"
+    queries: "WIKIDATA_Star_Queries"
     batch_size: 4
     num_queries: 200
 

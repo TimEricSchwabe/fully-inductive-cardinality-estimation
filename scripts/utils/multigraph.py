@@ -35,14 +35,10 @@ class MultigraphLoader():
             self.queries_loaders.append(loader)
 
         self.queries_iters = []
+        self.empty = []
         self.length = sum([len(ql) for ql in self.queries_loaders])
 
-
-    def __next__(self):
-        # if no loaders available, stop
-        if len(self.queries_iters) == 0:
-            raise StopIteration
-
+    def _get_random_loader(self):
         # use torch.multinomial with uniform weights to choose a loader index
         if not self.fair_chance: 
             weights = torch.ones(len(self.queries_iters), dtype=torch.float32)
@@ -50,11 +46,24 @@ class MultigraphLoader():
         else:
             idx = random.randint(0, len(self.queries_iters) - 1)
 
+        if self.empty[idx]:
+            idx = self._get_random_loader()
+
+        return idx
+
+
+    def __next__(self):
+        # if no loaders available, stop
+        if all(self.empty):
+            raise StopIteration
+
+        idx = self._get_random_loader()
+
         try:
             batch = next(self.queries_iters[idx])
         except StopIteration:
             # remove exhausted loader and continue
-            self.queries_iters.pop(idx)
+            self.empty[idx] = True
             if len(self.queries_iters) == 0:
                 raise StopIteration
             else:
@@ -65,7 +74,7 @@ class MultigraphLoader():
 
     def __iter__(self):
         self.queries_iters = [iter(loader) for loader in self.queries_loaders]
-
+        self.empty = [False] * len(self.queries_loaders)
         return self
     
     def __len__(self):
