@@ -1,9 +1,16 @@
-# Example YAML config for local training
+# Example YAML config for local training (updated to new Config/DataConfig schema)
 
-dataset: "SWDF"
-queries: "SWDF_Star_Queries"
-epochs: 50
-batch_size: 4
+data:
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 32
+    num_queries: 100
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 32
+    num_queries: 200
+
+epochs: 10
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -11,7 +18,6 @@ save_every: 5
 eval_every: 1
 seed: 42
 device: "auto"
-DEBUG_num_queries: 100
 EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"

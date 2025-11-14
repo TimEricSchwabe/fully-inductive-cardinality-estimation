@@ -2,8 +2,9 @@ import torch
 from pathlib import Path
 import pandas as pd
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
 from dataclasses import dataclass
-
+from typing import List
 from .config import Config
 
 @dataclass
@@ -28,11 +29,9 @@ class ModelComponents:
 @dataclass
 class DataComponents:
     """Container for data and data loaders."""
-    data: torch.Tensor
+    data: Data
     train_loader: DataLoader
     test_loader: DataLoader
-    train_queries: list
-    test_queries: list
 
 @dataclass
 class TrainingState:
@@ -45,6 +44,6 @@ class TrainingState:
 
     training_context: TrainingContext 
     model_components: ModelComponents 
-    data_components: DataComponents 
+    data_components: DataComponents
 
 

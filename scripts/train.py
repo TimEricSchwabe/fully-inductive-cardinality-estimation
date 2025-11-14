@@ -6,6 +6,7 @@ import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from typing import Dict, List, Tuple, Union
 
 # Third-party imports
 import matplotlib
@@ -17,6 +18,7 @@ import torch.nn.functional as F
 import wandb
 from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.data import Data
+from utils.multigraph import MultigraphLoader
 from tqdm import tqdm
 
 # Configure matplotlib for server environments
@@ -26,8 +28,8 @@ matplotlib.use('Agg')
 import utils.metrics as metrics
 from fice.models import FICE, FiceBinary
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
-from utils.config import load_config_yaml, Config
-from utils.data_helper import load_dataset, load_occurrences, load_queries, train_test_split
+from utils.config import DataConfig, load_config_yaml, Config
+from utils.data_helper import load_data, train_test_split
 from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
 from utils.models import TrainingContext, ModelComponents, DataComponents, TrainingState
 from torch_geometric.utils import subgraph
@@ -376,35 +378,24 @@ def train_epoch(state: TrainingState):
     device = state.training_context.device
     epochs = state.training_context.config.epochs
 
-    original_graph = state.data_components.data
-    relation_graph = state.data_components.data.relation_graph
-    assert original_graph.edge_index.device == torch.device('cpu')
-    # assert relation_graph.edge_index.device == torch.device('cpu')
-
-    # Move relation_graph to device once (it's static and reused every batch)
-    relation_graph = relation_graph.to(device)
-
-    graph_size = torch.tensor([original_graph.num_edges], device=device)
+    loader = state.data_components.train_loader
+    total_batches = len(loader)
 
     epoch_train_predictions_log = []    
     epoch_train_true_values_log = []
+
     progress_bar = tqdm(
-        state.data_components.train_loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False
+        loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
     )
 
     # Prepare reusable sampler once per epoch if enabled
     num_neighbors_cfg = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
     sampler = None
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not False:
-        sampler = create_reusable_sampler(original_graph, num_neighbors_cfg)
 
-
-    #with torch.profiler.profile(
-    #    activities=[torch.profiler.ProfilerActivity.CPU],
-    #    record_shapes=True,
-    #) as prof:
-
-        for batch_idx, query_batch in enumerate(progress_bar):
+        for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
+            sampler = create_reusable_sampler(full_graph, num_neighbors_cfg)
+            relation_graph = full_graph.relation_graph.to(device)
 
 
             state.model_components.optimizer.zero_grad()
@@ -422,7 +413,7 @@ def train_epoch(state: TrainingState):
                     if seeds_cpu.numel() > 0:
                         # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
                         # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
+                        graph_sub, global_to_local = sample_with_sampler(sampler, full_graph, seeds_cpu)
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
                         # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
                         # This is because now we have a subgrpah instead of the full graph and need to update the node indices
@@ -457,7 +448,7 @@ def train_epoch(state: TrainingState):
                         graph = graph.to(device)
                         query_batch.node_embedding_indices = mapped_indices
                 else:
-                    graph = original_graph.to(device)
+                    graph = full_graph.to(device)
 
             relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
@@ -502,8 +493,7 @@ def train_epoch(state: TrainingState):
             if graph is not None:
                 del graph
 
-    #print(prof.key_averages().table(sort_by="cpu_time_total", row_limit=40))
-
+    progress_bar.close()
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
@@ -531,15 +521,6 @@ def evaluate_model(state: TrainingState):
     # Extract components for easier access
     device = state.training_context.device
     use_wandb = state.training_context.use_wandb
-    original_graph = state.data_components.data
-    relation_graph = state.data_components.data.relation_graph
-    
-    assert original_graph.edge_index.device == torch.device('cpu')
-    # assert relation_graph.edge_index.device == torch.device('cpu')
-
-    # Move relation_graph to device once (it's static and reused every batch)
-    relation_graph = relation_graph.to(device)
-    graph_size = torch.tensor([original_graph.num_edges], device=device)
 
     state.model_components.model.eval()
 
@@ -547,14 +528,21 @@ def evaluate_model(state: TrainingState):
     epoch_test_predictions_log = []
     epoch_test_true_values_log = []
 
+    loader = state.data_components.test_loader
+    total_batches = len(loader)
+
     with torch.no_grad():
         # Prepare reusable sampler once for evaluation
         num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
-        sampler = None
-        if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_eval is not False:
-            sampler = create_reusable_sampler(original_graph, num_neighbors_eval)
 
-        for batch_idx, query_batch in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
+        for batch_idx, (full_graph, query_batch) in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
+            relation_graph = full_graph.relation_graph.to(device)
+            graph_size = torch.tensor([full_graph.num_edges], device=device)
+
+            sampler = None
+            if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_eval is not False:
+                sampler = create_reusable_sampler(full_graph, num_neighbors_eval)
+
             if isinstance(state.model_components.model, FiceBinary):
                 graph = None
                 relation_graph_inp = None
@@ -564,7 +552,7 @@ def evaluate_model(state: TrainingState):
                     node_indices = query_batch.node_embedding_indices
                     seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
                     if seeds_cpu.numel() > 0:
-                        graph_sub, global_to_local = sample_with_sampler(sampler, original_graph, seeds_cpu)
+                        graph_sub, global_to_local = sample_with_sampler(sampler, full_graph, seeds_cpu)
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
                         mapped = torch.where(
                             query_nodes >= 0,
@@ -595,7 +583,7 @@ def evaluate_model(state: TrainingState):
                         graph = graph.to(device)
                         query_batch.node_embedding_indices = mapped_indices
                 else:
-                    graph = original_graph.to(device)
+                    graph = full_graph.to(device)
                 relation_graph_inp = relation_graph
 
             # Forward pass
@@ -632,7 +620,7 @@ def evaluate_model(state: TrainingState):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    avg_test_loss = epoch_test_loss / len(state.data_components.test_loader)
+    avg_test_loss = epoch_test_loss / total_batches
 
     # Log scatter plot for test predictions vs true values
     log_predictions_scatter_plot(
@@ -887,6 +875,51 @@ def train_model(
 
 
 
+def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
+
+    data_configs: List[DataConfig]
+
+    if isinstance(config, Config):
+        data_configs = config.data
+    else:
+        data_configs = config
+
+    train_sets = [] 
+    test_sets = [] 
+    data = []
+    batch_size = [data_config.batch_size for data_config in data_configs]
+
+    for data_config in data_configs:
+        dataset_name = data_config.dataset
+        queries_name = data_config.queries 
+
+        dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
+        data.append(dataset)
+        train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries)
+        train_sets.append(train_q)
+        test_sets.append(test_q)
+
+    train_loader = MultigraphLoader(
+        data=data,
+        queries=train_sets,
+        batch_size=batch_size,
+        shuffle=True,
+    )
+    test_loader = MultigraphLoader(
+        data=data,
+        queries=test_sets,
+        batch_size=1,
+        shuffle=False,
+    )
+
+    data_component = DataComponents(
+        data=data,
+        train_loader=train_loader,
+        test_loader=test_loader,
+    )
+
+
+    return data_component
 
 
 
@@ -957,7 +990,7 @@ def main():
     
     # Log original configuration
     logger.info("Original Configuration from file:")
-    for key, value in config.dict().items():
+    for key, value in config.model_dump().items():
         logger.info(f"  {key}: {value}")
     
 
@@ -1009,64 +1042,35 @@ def main():
     )
 
     # Load data
-    data = load_dataset(context)
-    assert data.edge_index.device == torch.device('cpu')
-    assert data.relation_graph.edge_index.device == torch.device('cpu')
-
-    (entity_occurrences, relation_occurrences, entity_mapping, relation_mapping) = (
-        load_occurrences(context)
-    )
-    queries = load_queries(
-        context,
-        entity_occurrences,
-        relation_occurrences,
-        entity_mapping,
-        relation_mapping,
-    )
+    data_component = prepare_data(config)
 
 
-    assert queries[0].x.device == torch.device('cpu')
-    logger.info(f"Queries loaded successfully on device: {queries[0].x.device}!")
-
-    train_queries, test_queries = train_test_split(context, queries)
-    logger.info(f"Dataset split:")
-    logger.info(f"  Total queries: {len(queries)}")
-    logger.info(
-        f"  Train queries: {len(train_queries)} ({len(train_queries)/len(queries)*100:.1f}%)"
-    )
-    logger.info(
-        f"  Test queries: {len(test_queries)} ({len(test_queries)/len(queries)*100:.1f}%)"
-    )
-    logger.info(f"  Train ratio: {config.train_ratio}")
-
-    # Log dataset info to wandb
+    # Log dataset info to wandb (updated for new prepare_data returning a single DataComponents)
     if use_wandb:
+        total_train = total_test = total_nodes = total_edges = 0
+
+        dc = data_component  # prepare_data now returns a single DataComponents
+
+        # Resolve train/test collections (prefer explicit train_queries/test_queries, fall back to loader.dataset or loader itself)
+        train_ds = getattr(dc, "train_queries", None) or getattr(getattr(dc, "train_loader", None), "dataset", None) or getattr(dc, "train_loader", None)
+        test_ds = getattr(dc, "test_queries", None) or getattr(getattr(dc, "test_loader", None), "dataset", None) or getattr(dc, "test_loader", None)
+
+        total_train += len(train_ds) if train_ds is not None else 0
+        total_test += len(test_ds) if test_ds is not None else 0
+
+        # dc.data is a list of graphs as produced by prepare_data
+        for g in getattr(dc, "data", []) or []:
+            total_nodes += getattr(g, "num_nodes", 0) or 0
+            total_edges += getattr(g, "num_edges", 0) or 0
+
         wandb.log({
-            "dataset_total_queries": len(queries),
-            "dataset_train_queries": len(train_queries),
-            "dataset_test_queries": len(test_queries),
-            "dataset_num_nodes": data.num_nodes,
-            "dataset_num_edges": data.num_edges,
+            "dataset_total_queries": total_train + total_test,
+            "dataset_train_queries": total_train,
+            "dataset_test_queries": total_test,
+            "dataset_num_nodes": total_nodes,
+            "dataset_num_edges": total_edges,
         })
 
-    train_loader = DataLoader(
-        dataset=train_queries, batch_size=config.batch_size, shuffle=True
-    )
-    test_loader = DataLoader(
-        dataset=test_queries,
-        batch_size=1,  # Use batch_size=1 for evaluation
-        shuffle=False,
-    )
-
-    # Create data components
-    data_components = DataComponents(
-        data=data,
-        train_loader=train_loader,
-        test_loader=test_loader,
-        train_queries=train_queries,
-        test_queries=test_queries,
-
-    )
 
     # Initialize model and optimizer
     logger.info("Initializing model...")
@@ -1090,8 +1094,6 @@ def main():
     logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
     logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
 
-
-
     if use_wandb:
         wandb.watch(model_components.model, log="all", log_freq=100)
 
@@ -1113,7 +1115,7 @@ def main():
         test_predictions = None,
         training_context=context,
         model_components=model_components,
-        data_components=data_components,
+        data_components=data_component,
     )
 
     # Train the model

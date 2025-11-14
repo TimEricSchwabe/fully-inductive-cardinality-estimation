@@ -1,9 +1,15 @@
-# Example YAML config for local training
 
-dataset: "Wikidata"
-queries: "WIKIDATA_Star_Queries"
-epochs: 50
-batch_size: 4
+data:
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 4
+    num_queries: 5000
+  - dataset: "LUBM"
+    queries: "LUBMQueries"
+    batch_size: 4
+    num_queries: 5000
+
+epochs: 120
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -11,7 +17,6 @@ save_every: 5
 eval_every: 1
 seed: 42
 device: "auto"
-DEBUG_num_queries: 10000
 EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "Gine" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
@@ -19,3 +24,5 @@ Conditioning: "all" # choices are "seed only", "all", "false". False sets all to
 min_cardinality: None
 model: "FiceBinary" # choices are "FICE", "FiceBinary"
 # weight_decay: 0.01  # Uncomment to use weight decay
+
+
