@@ -12,7 +12,7 @@ from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -38,6 +38,10 @@ class EntityGNN(nn.Module):
                 GATv2Conv(input_dim, hidden_dims[0], heads=1, concat=False, edge_dim=input_dim),
                 GATv2Conv(hidden_dims[0], hidden_dims[1], heads=1, concat=False, edge_dim=input_dim),
             ])
+
+        self.norms = nn.ModuleList(
+            [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
+        )
 
 
     def forward(self, data, batch, relation_representations=None):
@@ -90,8 +94,10 @@ class EntityGNN(nn.Module):
         # Since relation embeddings are different for each batch, we now use all_edges to pick the correct batch and batched_edge_type to get the global id of the relation
         edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
-        for layer in self.layers:
+        for i, layer in enumerate(self.layers):
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
+            if self.norms:
+                x = self.norms[i](x)
             if self.message_func != 'gine':
                 x = F.gelu(x)
         
@@ -199,7 +205,7 @@ class RelationGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all'):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True):
         super(FICE, self).__init__()
         self.vector_dim = 128
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
@@ -226,7 +232,7 @@ class FICE(nn.Module):
                 hidden_dims=self.hidden_dims_relnet,
                 num_relation=4,
                 heads=4,
-                layer_norm=False,
+                layer_norm=layer_norm,
                 conditioning=conditioning
             )
         else:
@@ -247,7 +253,8 @@ class FICE(nn.Module):
                 input_dim=self.vector_dim,
                 hidden_dims=[self.vector_dim, self.vector_dim],
                 message_func=entity_message_func,
-                conditioning=conditioning
+                conditioning=conditioning,
+                layer_norm=layer_norm
             )
         else:
             raise ValueError(f"Invalid entity message function: {entity_message_func}")

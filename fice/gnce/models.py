@@ -141,7 +141,7 @@ class TripleConv(MessagePassing):
         self.initial_eps = eps
 
         # Whether to switch the input to the MLP based on the directionality
-        self.DIRECTIONAL = True
+        self.DIRECTIONAL = False
 
         if train_eps:
             self.eps = torch.nn.Parameter(torch.Tensor([eps]))
@@ -207,9 +207,11 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101):
+    def __init__(self, feat_dim: int = 101, layer_norm=True):
         super().__init__()
         self.feat_dim = feat_dim
+        self.layer_norm = layer_norm
+
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, self.feat_dim),
@@ -228,6 +230,9 @@ class TripleModel(torch.nn.Module):
             # torch.nn.Dropout(p=0.2)
         )
 
+        self.ln1 = nn.LayerNorm(self.feat_dim)
+        self.ln2 = nn.LayerNorm(200)
+
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
         self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
         self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
@@ -244,7 +249,11 @@ class TripleModel(torch.nn.Module):
 
 
         x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
+        if self.layer_norm:
+            x = self.ln1(x)
         x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
+        if self.layer_norm:
+            x = self.ln2(x)
         x = global_add_pool(x, batch.batch)
         x = self.lin(x)
         # x = self.dropout(x)

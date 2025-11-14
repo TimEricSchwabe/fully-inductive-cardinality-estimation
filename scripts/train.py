@@ -228,6 +228,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     # Get message functions from config if available
     entity_message_func = getattr(config, 'EntityGNNMessageFunc', 'rotate')
     relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
+    layer_norm = getattr(config, 'layer_norm', True)
     conditioning = getattr(config, 'Conditioning', 'all')
     
     model_type = getattr(config, 'model', 'FICE')
@@ -240,7 +241,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
         model = FICE(
             entity_message_func=entity_message_func,
             relation_message_func=relation_message_func,
-            conditioning=conditioning
+            conditioning=conditioning,
+            layer_norm=layer_norm
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
