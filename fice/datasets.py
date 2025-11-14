@@ -199,7 +199,7 @@ class LUBM(NTDatasets):
         self,**kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fi4eAR8gs7LCD6VYR8UWBn/lubm.nt",
+            url="https://figshare.com/ndownloader/files/59410577",
             dataset_name="lubm",
             **kwargs
         )
@@ -421,7 +421,7 @@ class LUBMQueries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://syncandshare.lrz.de/dl/fiRN5BQwrFgTQkQfzAViFn/Joined_Queries.json",
+            url="https://figshare.com/ndownloader/files/59410580",
             dataset_name="lubm_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
