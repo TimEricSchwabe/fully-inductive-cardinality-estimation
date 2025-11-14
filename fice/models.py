@@ -60,12 +60,12 @@ class EntityGNN(nn.Module):
         # Indices of the nodes that appear in the query batch
         node_indices = batch.node_embedding_indices 
         valid = node_indices != -1
-        graph_idx = batch.batch[valid] # gives the graph index for each node
-        node_pos = node_indices[valid] # gives the position of each node in the graph
+        graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
+        node_pos = node_indices[valid] # gives the global node ids of the bound nodes
 
         # Set input of nodes appearing in query based on conditioning (labelling trick)
         if self.conditioning != "false":
-            rows = graph_idx * data.num_nodes + node_pos      # linear node index in flattened tensor
+            rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
             x[rows] = 1.0   
         
         # Create batched edge_index once: replicate edges for each batch element
@@ -83,9 +83,12 @@ class EntityGNN(nn.Module):
         batched_edge_index = torch.cat(batch_edge_list, dim=1)
         batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
 
+        
+        # Shape (batch_size * num_edges) - maps each edge to its batch index
         all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
 
-        edge_attr = relation_representations[all_edges, batched_edge_type]
+        # Since relation embeddings are different for each batch, we now use all_edges to pick the correct batch and batched_edge_type to get the global id of the relation
+        edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
         for layer in self.layers:
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
@@ -157,16 +160,18 @@ class RelationGNN(nn.Module):
 
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
         if self.conditioning != "false":
-            valid_mask   = batch.edge_embedding_indices != -1
-            edge2graph   = batch.batch[batch.edge_index[0]]         # which query does every edge belong to?
-            graph_idx    = edge2graph[valid_mask]
-            rel_idx      = batch.edge_embedding_indices[valid_mask] # local relation-ID inside relation graph
+            valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
+            edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
+            graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
+            rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
             h[graph_idx, rel_idx] = 1.0
 
         rel_edges  = data.edge_index        # (2, E)
         rel_types  = data.edge_type         # (E,)
         batch_edge_list  = []
         batch_type_list  = []
+        # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
+        # to increase the edge index per batch, but leave the edge type the same.
         for b in range(bs):                 # identical to EntityGNN lines 72-84
             offset = b * num_nodes
             batch_edge_list.append(rel_edges + offset)
@@ -182,7 +187,8 @@ class RelationGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x   = layer(x, edge_index, edge_attr)
-            if self.norms: x = self.norms[i](x)
+            if self.norms:
+                 x = self.norms[i](x)
             x = self.act(x)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
@@ -239,7 +245,7 @@ class FICE(nn.Module):
         elif entity_message_func in ['gine', 'GAT']:
             self.entity_model = EntityGNN(
                 input_dim=self.vector_dim,
-                hidden_dims=[128, 128],
+                hidden_dims=[self.vector_dim, self.vector_dim],
                 message_func=entity_message_func,
                 conditioning=conditioning
             )
@@ -268,10 +274,9 @@ class FICE(nn.Module):
 
         # Provide shape [1, K] to seed K relations at once
         # No need to call .to(device) - already on correct device
-        relation_representations = self.relation_model(batch=batch, data=relation_graph)
+        relation_representations = self.relation_model(batch=batch, data=relation_graph) # shape (batch_size, num_relations, embedding_dim)
         assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
 
-        # TODO: Always passes the large relation graph with it (in data-obejct) even though not needed
         if data is not None:
             node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
             assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
@@ -295,7 +300,7 @@ class FICE(nn.Module):
         # Handle edge embeddings similar to node embeddings
         # Get relation representations for edges
         bound_edges = (edge_embedding_indices >= 0)  # bools indicating which edges need relation embeddings
-        edge2graph = batch.batch[batch.edge_index[0]]
+        edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
         edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
