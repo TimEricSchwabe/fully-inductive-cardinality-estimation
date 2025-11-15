@@ -588,7 +588,7 @@ def evaluate_model(state: TrainingState):
         # Prepare reusable sampler once for evaluation
         num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
 
-        for batch_idx, (full_graph, query_batch) in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False):
+        for batch_idx, (full_graph, query_batch) in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False, total=total_batches):
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
@@ -848,6 +848,17 @@ def train_model(
                 "train_q_error": q_error,
                 "epoch": state.training_context.current_epoch
             })
+            
+            # Log per-graph training metrics
+            for dataset_name, graph_metrics in train_per_graph_metrics.items():
+                wandb.log({
+                    f"train_loss_{dataset_name}": graph_metrics['loss'],
+                    f"train_mse_{dataset_name}": graph_metrics['mse'],
+                    f"train_mae_{dataset_name}": graph_metrics['mae'],
+                    f"train_rmse_{dataset_name}": graph_metrics['rmse'],
+                    f"train_q_error_{dataset_name}": graph_metrics['q_error'],
+                    "epoch": state.training_context.current_epoch
+                })
 
         # Evaluation phase
         if (epoch) % state.training_context.config.eval_every == 0:
@@ -936,6 +947,17 @@ def train_model(
                     "test_q_error": q_error,
                     "epoch": state.training_context.current_epoch
                 })
+                
+                # Log per-graph test metrics
+                for dataset_name, graph_metrics in test_per_graph_metrics.items():
+                    wandb.log({
+                        f"test_loss_{dataset_name}": graph_metrics['loss'],
+                        f"test_mse_{dataset_name}": graph_metrics['mse'],
+                        f"test_mae_{dataset_name}": graph_metrics['mae'],
+                        f"test_rmse_{dataset_name}": graph_metrics['rmse'],
+                        f"test_q_error_{dataset_name}": graph_metrics['q_error'],
+                        "epoch": state.training_context.current_epoch
+                    })
 
             # Log metrics
             logger.info(
