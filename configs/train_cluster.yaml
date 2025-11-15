@@ -1,3 +1,4 @@
+# Example YAML config for local training (updated to new Config/DataConfig schema)
 
 data:
   - dataset: "SWDF"
@@ -8,8 +9,11 @@ data:
     queries: "LUBMQueries"
     batch_size: 4
     num_queries: 5000
-
-epochs: 120
+  - dataset: "Wikidata"
+    queries: "WIKIDATA_Star_Queries"
+    batch_size: 4
+    num_queries: 5000
+epochs: 1
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -18,11 +22,10 @@ eval_every: 1
 seed: 42
 device: "auto"
 EntityGNNNeighborhood: [100, 100]
-EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "Gine" ; first 3 use NBFNet, last one uses custom GNN 
+EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
 Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: None
-model: "FiceBinary" # choices are "FICE", "FiceBinary"
+model: "FICE" # choices are "FICE", "FiceBinary"
+layer_norm: True # True or False, whether to use layer normalization in the GNNs
 # weight_decay: 0.01  # Uncomment to use weight decay
-
-

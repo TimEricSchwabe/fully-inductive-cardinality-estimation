@@ -4,19 +4,19 @@ data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 4
-    num_queries: 100
+    num_queries: 20
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
-    num_queries: 200
+    num_queries: 20
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 200
+    num_queries: 20
 
 
 
-epochs: 10
+epochs: 1
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
