@@ -2,7 +2,7 @@
 import yaml
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import List
+from typing import List, Union, Literal
 
 
 class DataConfig(BaseSettings):
@@ -10,6 +10,7 @@ class DataConfig(BaseSettings):
     queries: str
     batch_size: int = 32  # Batch size for training
     num_queries: int = -1  # Number of queries for debugging
+    type: Literal['train', 'test', 'mix'] = "train"  # Type of data split (train/test/val)
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use

@@ -19,6 +19,7 @@ import wandb
 from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.data import Data
 from utils.multigraph import MultigraphLoader
+from utils.neighborhood_sampler import MultigraphNeighborSampler
 from tqdm import tqdm
 
 # Configure matplotlib for server environments
@@ -52,6 +53,7 @@ TEST_METRICS_PER_GRAPH_FILE_NAME = "test_metrics_per_graph.csv"
 TRAIN_VALUES_PER_GRAPH_FILE_NAME = "train_values_per_graph.csv"
 TEST_VALUES_PER_GRAPH_FILE_NAME = "test_values_per_graph.csv"
 
+sampler_per_graph: Dict[str, PYGNeighborSampler] = {}
 
 def create_reusable_sampler(data_graph, num_neighbors):
     """Create a reusable sampler if the low-level sampler API is available.
@@ -271,13 +273,19 @@ def train_epoch(state: TrainingState):
     )
 
     # Prepare reusable sampler once per epoch if enabled
-    num_neighbors_cfg = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
-    sampler = None
-    if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not False:
+    num_neighbors_cfg = state.training_context.config.EntityGNNNeighborhood
+    # sampler = None
+    # sampler_per_graph: Dict[str, PYGNeighborSampler] = {}
+    neighbor_sampler = state.data_components.neighbor_sampler
+
+    if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
-            # TODO: Sampler nicht jedesmal createn (lookup map)
-            sampler = create_reusable_sampler(full_graph, num_neighbors_cfg)
+            # sampler = sampler_per_graph.get(full_graph.dataset_name, None)
+            # if sampler is None:
+            #     sampler = create_reusable_sampler(full_graph, num_neighbors_cfg)
+            #     sampler_per_graph[full_graph.dataset_name] = sampler
+
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
@@ -290,14 +298,14 @@ def train_epoch(state: TrainingState):
                 num_neighbors = False
             else:
                 num_neighbors = num_neighbors_cfg
-                if num_neighbors is not False and sampler is not None:
+                if num_neighbors is not None:
                     # Reusable sampler path
                     node_indices = query_batch.node_embedding_indices
                     seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
                     if seeds_cpu.numel() > 0:
                         # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
                         # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = sample_with_sampler(sampler, full_graph, seeds_cpu)
+                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
                         # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
                         # This is because now we have a subgrpah instead of the full graph and need to update the node indices
@@ -312,25 +320,6 @@ def train_epoch(state: TrainingState):
                         query_batch.node_embedding_indices = mapped
                     else:
                         graph = None
-                elif num_neighbors is not False:
-                    raise Exception("NeighborSampler is not supported for training")
-                    # Fallback: NeighborLoader per-batch
-                    loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
-                    pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
-                    persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
-                    graph, mapped_indices = build_neighborhood_subgraph(
-                        data_graph=original_graph,
-                        query_batch=query_batch,
-                        num_neighbors=num_neighbors,
-                        disjoint=False,
-                        shuffle=False,
-                        loader_num_workers=loader_workers,
-                        loader_pin_memory=pin_memory,
-                        loader_persistent_workers=persistent,
-                    )
-                    if graph is not None:
-                        graph = graph.to(device)
-                        query_batch.node_embedding_indices = mapped_indices
                 else:
                     graph = full_graph.to(device)
 
@@ -474,60 +463,43 @@ def evaluate_model(state: TrainingState):
     # Per-graph data collection
     per_graph_data = {}  # {dataset_name: {'predictions_log': [], 'true_values_log': [], 'loss_sum': 0.0, 'batch_count': 0}}
 
-    loader = state.data_components.test_loader
-    total_batches = len(loader)
+    total_batches = len(state.data_components.test_loader)
 
     with torch.no_grad():
         # Prepare reusable sampler once for evaluation
-        num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', False)
+        num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', None)
+        neighbor_sampler = state.data_components.neighbor_sampler
 
         for batch_idx, (full_graph, query_batch) in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False, total=total_batches):
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
-            sampler = None
-            if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_eval is not False:
-                sampler = create_reusable_sampler(full_graph, num_neighbors_eval)
-
             if isinstance(state.model_components.model, FiceBinary):
                 graph = None
                 relation_graph_inp = None
             else:
-                if num_neighbors_eval is not False and sampler is not None:
+                if num_neighbors_eval is not None:
                     # Reusable sampler path
                     node_indices = query_batch.node_embedding_indices
                     seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
                     if seeds_cpu.numel() > 0:
-                        graph_sub, global_to_local = sample_with_sampler(sampler, full_graph, seeds_cpu)
+                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+                        # If a node is not in the subgraph, its mapped to -1
+                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
                         mapped = torch.where(
                             query_nodes >= 0,
                             global_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
+                        # Update the graph to the sampled subgraph
                         graph = graph_sub.to(device)
+                        # Update the node indices to the mapped indices
                         query_batch.node_embedding_indices = mapped
                     else:
                         graph = None
-                elif num_neighbors_eval is not False:
-                    raise Exception("NeighborSampler is not supported for training")
-                    # Fallback: NeighborLoader per-batch
-                    loader_workers = int(getattr(state.training_context.config, 'SamplingNumWorkers', 0) or 0)
-                    pin_memory = bool(getattr(state.training_context.config, 'SamplingPinMemory', False))
-                    persistent = bool(getattr(state.training_context.config, 'SamplingPersistentWorkers', False))
-                    graph, mapped_indices = build_neighborhood_subgraph(
-                        data_graph=original_graph,
-                        query_batch=query_batch,
-                        num_neighbors=num_neighbors_eval if isinstance(num_neighbors_eval, list) else [-1],
-                        disjoint=False,
-                        shuffle=False,
-                        loader_num_workers=loader_workers,
-                        loader_pin_memory=pin_memory,
-                        loader_persistent_workers=persistent,
-                    )
-                    if graph is not None:
-                        graph = graph.to(device)
-                        query_batch.node_embedding_indices = mapped_indices
                 else:
                     graph = full_graph.to(device)
                 relation_graph_inp = relation_graph
@@ -562,7 +534,6 @@ def evaluate_model(state: TrainingState):
 
             epoch_test_loss += loss.item()
 
-            # Store predictions for analysis - move to CPU immediately
             # Log batch-level metrics to wandb if enabled
             if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
                 wandb.log({
@@ -1131,6 +1102,7 @@ def main():
 
     # Load data
     data_component = prepare_data(config)
+    data_component.neighbor_sampler = MultigraphNeighborSampler(num_neighbors=config.EntityGNNNeighborhood)
 
 
     # Log dataset info to wandb (updated for new prepare_data returning a single DataComponents)

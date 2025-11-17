@@ -9,7 +9,7 @@ import random
 
 
 class MultigraphLoader():
-    # TODO: typing
+    # TODO: typing von object 
     def __init__(self, data: Union[object, List[object]], queries: Union[object, List[object]], batch_size: Union[int, List[int]] = 1, fair_chance: bool = True, shuffle: bool = False, **kwargs):
         if not isinstance(data, List):
             data = [data]

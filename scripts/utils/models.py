@@ -6,6 +6,7 @@ from torch_geometric.data import Data
 from dataclasses import dataclass
 from typing import List
 from .config import Config
+from utils.neighborhood_sampler import MultigraphNeighborSampler
 
 @dataclass
 class TrainingContext:
@@ -32,6 +33,7 @@ class DataComponents:
     data: Data
     train_loader: DataLoader
     test_loader: DataLoader
+    neighbor_sampler: MultigraphNeighborSampler = None  # Type depends on the sampler implementation
 
 @dataclass
 class TrainingState:
