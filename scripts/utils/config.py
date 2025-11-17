@@ -22,6 +22,13 @@ class Config(BaseSettings):
     seed: int = 42  # Random seed for reproducibility
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: float | None = None  # Optional weight decay for optimizer
+    EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
+    EntityGNNMessageFunc: str = "gine"  # Message function for entity GNN
+    RelationGNNMessageFunc: str = "GAT"  # Message function for relation GNN
+    Conditioning: str = "all"  # Conditioning strategy for GNN
+    min_cardinality: int | None = None  # Minimum cardinality filter
+    model: str = "FICE"  # Model type to use
+    layer_norm: bool = True  # Whether to use layer normalization in GNNs
 
     class Config:
         extra = "allow"  # Allow extra fields if present

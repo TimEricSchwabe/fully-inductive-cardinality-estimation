@@ -53,107 +53,6 @@ TRAIN_VALUES_PER_GRAPH_FILE_NAME = "train_values_per_graph.csv"
 TEST_VALUES_PER_GRAPH_FILE_NAME = "test_values_per_graph.csv"
 
 
-def map_global_to_neighborhood(data_n_id, node_indices):
-    """
-    Maps node indices from a batch to their corresponding positions in data.n_id.
-    
-    Uses torch.searchsorted to efficiently find the positions of node_indices values
-    within the potentially unsorted data.n_id tensor.
-    
-    Args:
-        data_n_id: Tensor containing node IDs from the data object (potentially unsorted)
-        node_indices: Tensor containing node indices to map
-        
-    Returns:
-        Tensor of indices corresponding to positions in data.n_id
-        
-    Example:
-        data_n_id = tensor([1, 3, 5, 2, 6])
-        node_indices = tensor([5, 6, 1])
-        result = tensor([2, 4, 0])  # positions of [5, 6, 1] in data_n_id
-    """
-    # Sort data.n_id and keep track of original indices
-    sorted_n_id, sort_indices = torch.sort(data_n_id)
-    
-    # Find positions in sorted array
-    sorted_positions = torch.searchsorted(sorted_n_id, node_indices)
-    
-    # Map back to original indices
-    original_indices = sort_indices[sorted_positions]
-    
-    return original_indices
-
-
-def build_neighborhood_subgraph(
-    data_graph,
-    query_batch,
-    device: torch.device = None,
-    num_neighbors=[-1],
-    disjoint: bool = False,
-    shuffle: bool = False,
-    loader_num_workers: int = 0,
-    loader_pin_memory: bool = False,
-    loader_persistent_workers: bool = False,
-):
-    """
-    Sample a neighborhood subgraph for the node indices found in `query_batch` and map
-    the original `query_batch.node_embedding_indices` into the subgraph's index space.
-
-    Args:
-        data_graph: torch_geometric.data.Data (full graph)
-        query_batch: batch object that contains `node_embedding_indices` (tensor with -1 placeholders)
-        device: torch.device to move the sampled subgraph to
-        num_neighbors: list passed to NeighborLoader (default [-1])
-        disjoint: pass-through to NeighborLoader
-        shuffle: pass-through to NeighborLoader
-
-    Returns:
-        (subgraph_or_none, mapped_node_indices)
-        - subgraph_or_none: Data moved to `device`, or None if no positive input nodes
-        - mapped_node_indices: LongTensor same shape as query_batch.node_embedding_indices where
-          entries < 0 remain -1, and entries >=0 are replaced with indices into subgraph.n_id.
-          The returned mapped tensor is on CPU. If a global node id is not present in the
-          sampled subgraph, it will be mapped to -1.
-    """
-    # Extract the node indices tensor and work on CPU for mapping
-    node_indices = query_batch.node_embedding_indices
-    node_indices_cpu = node_indices.detach().cpu()
-
-    positive_mask = node_indices_cpu >= 0
-    positive_nodes = node_indices_cpu[positive_mask].unique()
-
-    if positive_nodes.numel() == 0:
-        # Nothing to sample; return None and a copy of the original indices
-        return None, node_indices_cpu.clone()
-
-    neighbor_loader = NeighborLoader(
-        data=data_graph,
-        num_neighbors=num_neighbors,
-        batch_size=positive_nodes.size(0),
-        shuffle=shuffle,
-        disjoint=disjoint,
-        input_nodes=positive_nodes,
-        num_workers=loader_num_workers,
-        pin_memory=loader_pin_memory,
-        persistent_workers=loader_persistent_workers if loader_num_workers > 0 else False,
-    )
-
-    # There should be a single batch corresponding to the requested input_nodes
-    subgraph = next(iter(neighbor_loader))
-
-    if device is not None:
-        subgraph = subgraph.to(device)
-
-    # Use existing helper to map global ids to neighborhood positions (on CPU)
-    # Note: map_global_to_neighborhood expects (data_n_id, node_indices)
-    mapped = map_global_to_neighborhood(subgraph.n_id.detach().cpu(), node_indices_cpu)
-    # Ensure placeholder negative indices remain -1
-    mapped = torch.where(node_indices_cpu >= 0, mapped, torch.full_like(mapped, -1))
-    mapped = mapped.to(torch.long)
-
-    return subgraph, mapped
-
-
 def create_reusable_sampler(data_graph, num_neighbors):
     """Create a reusable sampler if the low-level sampler API is available.
 
@@ -209,7 +108,6 @@ def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
     return sub_data, global_to_local.detach().cpu()
 
 
-# TODO: logging
 def setup_directories(config):
     """Setup project directories, timestamps, and logging."""
 
