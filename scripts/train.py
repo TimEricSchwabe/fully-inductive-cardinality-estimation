@@ -189,16 +189,18 @@ def log_gpu_memory_usage(step_name: str):
         logger.debug(f"CPU-only mode at {step_name}")
 
 
-def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, use_wandb):
+def log_predictions_to_wandb(predictions, true_values, epoch, split_name, dataset_name, use_wandb, max_points=1000):
     """
-    Create and log a scatter plot of predictions vs true values to wandb.
+    Log predictions and true values as raw data to wandb for scatter plot visualization.
     
     Args:
-        predictions: List of predicted values
-        true_values: List of true values
+        predictions: List or array of predicted values (in original cardinality space)
+        true_values: List or array of true values (in original cardinality space)
         epoch: Current epoch number
         split_name: 'train' or 'test'
+        dataset_name: Name of the dataset (use 'overall' for combined data)
         use_wandb: Whether wandb logging is enabled
+        max_points: Maximum number of points to log (default 1000)
     """
     if not use_wandb or len(predictions) == 0:
         return
@@ -214,59 +216,36 @@ def log_predictions_scatter_plot(predictions, true_values, epoch, split_name, us
         true_values_clean = true_values[valid_mask]
         
         if len(predictions_clean) == 0:
-            logger.warning(f"No valid predictions for {split_name} scatter plot at epoch {epoch}")
+            logger.warning(f"No valid predictions for {split_name}/{dataset_name} at epoch {epoch}")
             return
         
-        # Sample data if too many points for better visualization and performance
-        max_points = 1000
+        # Sample data if too many points
         if len(predictions_clean) > max_points:
             indices = np.random.choice(len(predictions_clean), max_points, replace=False)
-            predictions_clean = predictions_clean[indices]
-            true_values_clean = true_values_clean[indices]
+            predictions_sampled = predictions_clean[indices]
+            true_values_sampled = true_values_clean[indices]
+        else:
+            predictions_sampled = predictions_clean
+            true_values_sampled = true_values_clean
         
-        # Create the scatter plot
-        fig, ax = plt.subplots(figsize=(8, 8))
-        ax.scatter(true_values_clean, predictions_clean, alpha=0.6, s=20, c='blue')
+        # Create a WandB table for scatter plot
+        data = [[float(pred), float(true)] for pred, true in zip(predictions_sampled, true_values_sampled)]
+        table = wandb.Table(data=data, columns=["prediction", "true_value"])
         
-        # Add perfect prediction line (y=x)
-        min_val = min(np.min(true_values_clean), np.min(predictions_clean))
-        max_val = max(np.max(true_values_clean), np.max(predictions_clean))
+        # Log the table with a descriptive key and create a scatter plot
+        table_key = f"{split_name}_predictions_{dataset_name}_epoch_{epoch}"
         
-        # Ensure we have a valid range
-        if min_val == max_val:
-            min_val = min_val * 0.9 if min_val > 0 else min_val - 1
-            max_val = max_val * 1.1 if max_val > 0 else max_val + 1
-        
-        ax.plot([min_val, max_val], [min_val, max_val], 'r--', alpha=0.8, linewidth=2, label='Perfect Prediction')
-        
-        ax.set_xlabel('True Cardinality')
-        ax.set_ylabel('Predicted Cardinality')
-        ax.set_title(f'{split_name.capitalize()} Data: Predictions vs True Values (Epoch {epoch})')
-        ax.legend()
-        ax.grid(True, alpha=0.3)
-        
-        # Use log scale if the range is large and positive
-        if min_val > 0 and max_val / min_val > 100:
-            ax.set_xscale('log')
-            ax.set_yscale('log')
-            ax.set_title(f'{split_name.capitalize()} Data: Predictions vs True Values (Epoch {epoch} - Log Scale)')
-        
-        plt.tight_layout()
-        
-        # Log to wandb
+        # Create scatter plot directly
         wandb.log({
-            f"{split_name}_predictions_scatter_epoch_{epoch}": wandb.Image(fig),
+            table_key: wandb.plot.scatter(table, "true_value", "prediction", 
+                                          title=f"{split_name.capitalize()} {dataset_name} - Epoch {epoch}: Predictions vs True Values"),
+            "epoch": epoch
         })
         
-        # Close the figure to free memory
-        plt.close(fig)
-        
-        logger.debug(f"Successfully logged {split_name} scatter plot for epoch {epoch}")
+        logger.debug(f"Successfully logged {len(predictions_sampled)} predictions for {split_name}/{dataset_name} at epoch {epoch}")
         
     except Exception as e:
-        logger.error(f"Error creating scatter plot for {split_name} at epoch {epoch}: {e}")
-        # Close any open figures
-        plt.close('all')
+        logger.error(f"Error logging predictions to wandb for {split_name}/{dataset_name} at epoch {epoch}: {e}")
 
 
 def train_epoch(state: TrainingState):
@@ -419,6 +398,10 @@ def train_epoch(state: TrainingState):
 
     epoch_avg_train_loss = epoch_train_loss / num_train_batches
     
+    # Convert overall predictions to original cardinality space for logging
+    epoch_train_predictions = np.exp(epoch_train_predictions_log)
+    epoch_train_true_values = np.exp(epoch_train_true_values_log)
+    
     # Calculate per-graph metrics
     per_graph_metrics = {}
     for dataset_name, data in per_graph_data.items():
@@ -447,14 +430,26 @@ def train_epoch(state: TrainingState):
             'true_values': true_values
         }
 
-    # Log scatter plot for training predictions vs true values
-    log_predictions_scatter_plot(
-        predictions=epoch_train_predictions_log,
-        true_values=epoch_train_true_values_log,
+    # Log predictions to wandb for overall training data
+    log_predictions_to_wandb(
+        predictions=epoch_train_predictions,
+        true_values=epoch_train_true_values,
         epoch=state.training_context.current_epoch,
         split_name="train",
+        dataset_name="overall",
         use_wandb=state.training_context.use_wandb
     )
+    
+    # Log predictions to wandb for each graph
+    for dataset_name, graph_metrics in per_graph_metrics.items():
+        log_predictions_to_wandb(
+            predictions=graph_metrics['predictions'],
+            true_values=graph_metrics['true_values'],
+            epoch=state.training_context.current_epoch,
+            split_name="train",
+            dataset_name=dataset_name,
+            use_wandb=state.training_context.use_wandb
+        )
 
     return (
         epoch_avg_train_loss,
@@ -616,14 +611,28 @@ def evaluate_model(state: TrainingState):
             'true_values': true_values
         }
 
-    # Log scatter plot for test predictions vs true values
-    log_predictions_scatter_plot(
-        predictions=epoch_test_predictions_log,
-        true_values=epoch_test_true_values_log,
+    # Log predictions to wandb for overall test data
+    epoch_test_predictions = np.exp(epoch_test_predictions_log)
+    epoch_test_true_values = np.exp(epoch_test_true_values_log)
+    log_predictions_to_wandb(
+        predictions=epoch_test_predictions,
+        true_values=epoch_test_true_values,
         epoch=state.training_context.current_epoch,
         split_name="test",
+        dataset_name="overall",
         use_wandb=use_wandb
     )
+    
+    # Log predictions to wandb for each graph
+    for dataset_name, graph_metrics in per_graph_metrics.items():
+        log_predictions_to_wandb(
+            predictions=graph_metrics['predictions'],
+            true_values=graph_metrics['true_values'],
+            epoch=state.training_context.current_epoch,
+            split_name="test",
+            dataset_name=dataset_name,
+            use_wandb=use_wandb
+        )
 
     return (
         avg_test_loss,
