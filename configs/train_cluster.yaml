@@ -4,15 +4,15 @@ data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 4
-    num_queries: 5000
+    num_queries: 10000
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
-    num_queries: 5000
+    num_queries: 10000
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 5000
+    num_queries: 10000
 epochs: 1
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -27,5 +27,5 @@ RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT
 Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary"
-layer_norm: True # True or False, whether to use layer normalization in the GNNs
+layer_norm: False # True or False, whether to use layer normalization in the GNNs
 # weight_decay: 0.01  # Uncomment to use weight decay
