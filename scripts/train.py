@@ -239,8 +239,7 @@ def log_predictions_to_wandb(predictions, true_values, epoch, split_name, datase
         
         # Create scatter plot directly
         wandb.log({
-            table_key: wandb.plot.scatter(table, "true_value", "prediction", 
-                                          title=f"{split_name.capitalize()} {dataset_name} - Epoch {epoch}: Predictions vs True Values"),
+            table_key: table,
             "epoch": epoch
         })
         
