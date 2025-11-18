@@ -5,6 +5,7 @@ data:
     queries: "SWDF_Star_Queries"
     batch_size: 4
     num_queries: 20
+    type: "test"
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
@@ -15,8 +16,7 @@ data:
     num_queries: 20
 
 
-
-epochs: 5
+epochs: 10
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -28,7 +28,7 @@ EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
 Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
-min_cardinality: None
+min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary"
 layer_norm: True # True or False, whether to use layer normalization in the GNNs
 # weight_decay: 0.01  # Uncomment to use weight decay

@@ -1478,7 +1478,6 @@ class JointDataset(InMemoryDataset):
         torch.save((train_data, valid_data, test_data), self.processed_paths[0])
 
 
-# TODO: Make the nt_path file optinal
 class NTDatasets(InMemoryDataset):
     def __init__(
         self,
@@ -1736,7 +1735,6 @@ class NTQueries(InMemoryDataset):
 
 
         # Process Edges
-        # HACK: Works for now but maybe find more beatuful solution
         query_edge_type_string = [t[1] for t in query.get('triples')]
 
         query_edge_attr = torch.zeros(

@@ -2,14 +2,15 @@
 import yaml
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import List
+from typing import List, Union, Literal
 
 
 class DataConfig(BaseSettings):
     dataset: str 
     queries: str
-    batch_size: int = 32  # Batch size for training
+    batch_size: int = 1  # Batch size for training
     num_queries: int = -1  # Number of queries for debugging
+    type: Literal['train', 'test'] = "train"  # Type of data split (train/test/val)
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use
@@ -22,6 +23,13 @@ class Config(BaseSettings):
     seed: int = 42  # Random seed for reproducibility
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: float | None = None  # Optional weight decay for optimizer
+    EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
+    EntityGNNMessageFunc: str = "gine"  # Message function for entity GNN
+    RelationGNNMessageFunc: str = "GAT"  # Message function for relation GNN
+    Conditioning: str = "all"  # Conditioning strategy for GNN
+    min_cardinality: int | None = None  # Minimum cardinality filter
+    model: str = "FICE"  # Model type to use
+    layer_norm: bool = True  # Whether to use layer normalization in GNNs
 
     class Config:
         extra = "allow"  # Allow extra fields if present
