@@ -10,7 +10,7 @@ class DataConfig(BaseSettings):
     queries: str
     batch_size: int = 1  # Batch size for training
     num_queries: int = -1  # Number of queries for debugging
-    type: Literal['train', 'test'] = "train"  # Type of data split (train/test/val)
+    type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use
@@ -24,9 +24,9 @@ class Config(BaseSettings):
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: float | None = None  # Optional weight decay for optimizer
     EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
-    EntityGNNMessageFunc: str = "gine"  # Message function for entity GNN
-    RelationGNNMessageFunc: str = "GAT"  # Message function for relation GNN
-    Conditioning: str = "all"  # Conditioning strategy for GNN
+    EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
+    RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT'] = "GAT"  # Message function for relation GNN
+    Conditioning: Literal['seed only', 'all', 'false'] = "all"  # Conditioning strategy for GNN
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: str = "FICE"  # Model type to use
     layer_norm: bool = True  # Whether to use layer normalization in GNNs

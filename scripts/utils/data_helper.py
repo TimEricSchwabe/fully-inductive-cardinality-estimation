@@ -183,33 +183,12 @@ def load_data(dataset_name: str, queries_name: str):
 
     return dataset, (eo, ro, em, rm), queries
 
-def train_test_split(queries, train_ratio: float, num_queries: int = -1, min_cardinality: int = None) -> Tuple[List, List]:
+def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[List, List]:
     # TODO: takes a long time for some reason fix
     # Process and filter queries
-    # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
-    # TODO:
-    min_card = min_cardinality
-    # Handle string "None" or convert to int if needed
-    if isinstance(min_card, str):
-        if min_card.lower() == "none" or min_card.lower() == "null":
-            min_card = None
-        else:
-            min_card = int(min_card)
-    if min_card is not None:
-        original_count = len(queries)
-        queries = [q for q in queries if q.y.item() >= min_card]
-        logger.info(f"Filtered queries with cardinality >= {min_card}: {len(queries)}/{original_count}")
-
     queries_list = list(queries)
-    random.shuffle(queries_list)
-
-    if num_queries > 0:
-        num_queries = min(num_queries, len(queries_list))
-    else:
-        num_queries = len(queries_list)
-
-    queries_list = queries_list[:num_queries]
-    # logging moved to `load_data` to centralize runtime messages
+    if shuffle:
+        random.shuffle(queries_list)
 
     train_size = int(len(queries_list) * train_ratio)
     test_size = len(queries_list) - train_size
@@ -218,4 +197,102 @@ def train_test_split(queries, train_ratio: float, num_queries: int = -1, min_car
     test_queries = queries_list[train_size:]
 
     return train_queries, test_queries
+
+def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: int = None) -> List[any]:
+    # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
+    processed_data = data
+    if min_cardinality is not None:
+        processed_data = [d for d in data if d.y.item() >= min_cardinality] 
+
+    if num_queries is not None or num_queries > 0:
+        acutal_num_queries = min(num_queries, len(processed_data))
+        processed_data = processed_data[:acutal_num_queries]
+
+    
+    return processed_data
+
+def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
+
+    data_configs: List[DataConfig]
+
+    if isinstance(config, Config):
+        data_configs = config.data
+    else:
+        data_configs = config
+
+    splits = [dc.type for dc in data_configs]
+    if not ('train' in splits or 'train-val' in splits):
+        raise ValueError("At least one training dataset must be provided in the data configuration.")
+
+    train_datasets = [] 
+    train_sets = [] 
+    train_batch_size = []
+
+    validation_datasets = []
+    validation_sets = [] 
+
+    test_dataset = []
+    test_sets = []
+
+    for data_config in data_configs:
+        dataset_name = data_config.dataset
+        queries_name = data_config.queries 
+        dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
+        queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+
+        if data_config.type == 'train':
+            train_datasets.append(dataset)
+            train_sets.append(queries)
+            train_batch_size.append(data_config.batch_size)
+
+        elif data_config.type == 'validation':
+            validation_datasets.append(dataset)
+            validation_sets.append(queries)
+
+        elif data_config.type == 'test':
+            test_dataset.append(dataset)
+            test_sets.append(queries)
+
+        elif data_config.type == 'train-val': 
+            train_datasets.append(dataset)
+            validation_datasets.append(dataset)
+            train_batch_size.append(data_config.batch_size)
+
+            train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
+            train_sets.append(train_q)
+            validation_sets.append(test_q)
+    
+
+    train_loader = MultigraphLoader(
+        data=train_datasets,
+        queries=train_sets,
+        batch_size=train_batch_size,
+        shuffle=True,
+    )
+    validation_loader = MultigraphLoader(
+        data=validation_datasets,
+        queries=validation_sets,
+        batch_size=1,
+        shuffle=True,
+    )
+
+    # TODO: Besser lösunge findend
+    if len(test_dataset) == 0 or len(test_sets) == 0:
+        test_dataset = validation_datasets
+        test_sets = validation_sets
+
+    test_loader = MultigraphLoader(
+        data=test_dataset,
+        queries=test_sets,
+        batch_size=1,
+        shuffle=True,
+    )
+
+    data_component = DataComponents(
+        train_loader=train_loader,
+        validation_loader=validation_loader,
+        test_loader=test_loader,
+    )
+
+    return data_component
 

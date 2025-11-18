@@ -1,19 +1,29 @@
-# Example YAML config for local training (updated to new Config/DataConfig schema)
+# E# Example YAML config for local training (updated to new Config/DataConfig schema)
 
 data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 4
     num_queries: 20
-    type: "test"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
     num_queries: 20
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
     num_queries: 20
+    type: "validation"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries"
+    batch_size: 4
+    num_queries: 20
+    type: "train-val"
+
+
+
 
 
 epochs: 10

@@ -4,16 +4,26 @@ data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
+    type: "train-val"
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
-    num_queries: 10000
-    type: "test"
+    num_queries: 20000
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
+    type: "validation"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+
+
 epochs: 200
 learning_rate: 1e-4
 train_ratio: 0.8

@@ -30,7 +30,7 @@ import utils.metrics as metrics
 from fice.models import FICE, FiceBinary
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
 from utils.config import DataConfig, load_config_yaml, Config
-from utils.data_helper import load_data, train_test_split
+from utils.data_helper import prepare_data
 from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
 from utils.models import TrainingContext, ModelComponents, DataComponents, TrainingState
 from torch_geometric.utils import subgraph
@@ -938,72 +938,6 @@ def train_model(
         "final_test_predictions_df": None,
         "final_test_per_graph_metrics_df": None,
     }
-
-
-
-def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
-
-    data_configs: List[DataConfig]
-
-    if isinstance(config, Config):
-        data_configs = config.data
-    else:
-        data_configs = config
-
-    train_sets = [] 
-    validation_sets = [] 
-    train_validation_data = []
-    train_batch_size = []
-
-    test_dataset = []
-    test_sets = []
-
-
-    for data_config in data_configs:
-        dataset_name = data_config.dataset
-        queries_name = data_config.queries 
-        dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
-
-        if data_config.type == 'train':
-            train_validation_data.append(dataset)
-            train_batch_size.append(data_config.batch_size)
-
-            train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries, min_cardinality=config.min_cardinality)
-            train_sets.append(train_q)
-            validation_sets.append(test_q)
-        elif data_config.type == 'test':
-            # TODO: Filter richtig implementeiren
-            test_dataset.append(dataset)
-            test_sets.append(queries[:data_config.num_queries])
-    
-
-    train_loader = MultigraphLoader(
-        data=train_validation_data,
-        queries=train_sets,
-        batch_size=train_batch_size,
-        shuffle=True,
-    )
-    validation_loader = MultigraphLoader(
-        data=train_validation_data,
-        queries=validation_sets,
-        batch_size=1,
-        shuffle=True,
-    )
-    test_loader = MultigraphLoader(
-        data=test_dataset,
-        queries=test_sets,
-        batch_size=1,
-        shuffle=True,
-    )
-
-    data_component = DataComponents(
-        train_loader=train_loader,
-        validation_loader=validation_loader,
-        test_loader=test_loader,
-    )
-
-
-    return data_component
 
 
 
