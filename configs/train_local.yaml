@@ -5,6 +5,7 @@ data:
     queries: "SWDF_Star_Queries"
     batch_size: 4
     num_queries: 20
+    type: "test"
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
@@ -15,8 +16,7 @@ data:
     num_queries: 20
 
 
-
-epochs: 5
+epochs: 10
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"

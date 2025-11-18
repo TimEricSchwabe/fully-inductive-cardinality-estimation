@@ -2,7 +2,7 @@ import pathlib
 from pathlib import Path
 import torch
 import json
-from torch_geometric.data import Data, InMemoryDataset, download_url, extract_zip
+from torch_geometric.data import Data, InMemoryDataset
 from typing import Optional, Dict, List, Tuple, Union
 import requests
 from tqdm import tqdm as _tqdm

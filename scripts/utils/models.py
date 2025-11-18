@@ -30,9 +30,10 @@ class ModelComponents:
 @dataclass
 class DataComponents:
     """Container for data and data loaders."""
-    data: Data
     train_loader: DataLoader
+    validation_loader: DataLoader
     test_loader: DataLoader
+
     neighbor_sampler: MultigraphNeighborSampler = None  # Type depends on the sampler implementation
 
 @dataclass

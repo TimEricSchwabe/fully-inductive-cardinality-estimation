@@ -8,9 +8,9 @@ from typing import List, Union, Literal
 class DataConfig(BaseSettings):
     dataset: str 
     queries: str
-    batch_size: int = 32  # Batch size for training
+    batch_size: int = 1  # Batch size for training
     num_queries: int = -1  # Number of queries for debugging
-    type: Literal['train', 'test', 'mix'] = "train"  # Type of data split (train/test/val)
+    type: Literal['train', 'test'] = "train"  # Type of data split (train/test/val)
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use

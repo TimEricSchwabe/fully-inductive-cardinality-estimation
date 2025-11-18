@@ -6,7 +6,7 @@ import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Union
+from typing import Dict, List, Tuple, Union, Literal
 
 # Third-party imports
 import matplotlib
@@ -448,7 +448,7 @@ def train_epoch(state: TrainingState):
     )
 
 
-def evaluate_model(state: TrainingState):   
+def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = 'validation'):   
     """Evaluate the model on test data."""
     # Extract components for easier access
     device = state.training_context.device
@@ -463,14 +463,15 @@ def evaluate_model(state: TrainingState):
     # Per-graph data collection
     per_graph_data = {}  # {dataset_name: {'predictions_log': [], 'true_values_log': [], 'loss_sum': 0.0, 'batch_count': 0}}
 
-    total_batches = len(state.data_components.test_loader)
+    loader = state.data_components.validation_loader if mode == 'validation' else state.data_components.test_loader 
+    total_batches = len(loader)
 
     with torch.no_grad():
         # Prepare reusable sampler once for evaluation
         num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', None)
         neighbor_sampler = state.data_components.neighbor_sampler
 
-        for batch_idx, (full_graph, query_batch) in tqdm(enumerate(state.data_components.test_loader), desc="Evaluating", leave=False, total=total_batches):
+        for batch_idx, (full_graph, query_batch) in tqdm(enumerate(loader), desc="Evaluating", leave=False, total=total_batches):
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
@@ -928,6 +929,15 @@ def train_model(
         "test_metrics_per_graph_df": final_test_metrics_per_graph_df,
         "train_predictions_per_graph_df": final_train_predictions_per_graph_df,
         "test_predictions_per_graph_df": final_test_predictions_per_graph_df,
+        # Placeholder for final test metrics (will be populated in main)
+        "final_test_loss": None,
+        "final_test_mse": None,
+        "final_test_mae": None,
+        "final_test_rmse": None,
+        "final_test_q_error": None,
+        "final_test_metrics_df": None,
+        "final_test_predictions_df": None,
+        "final_test_per_graph_metrics_df": None,
     }
 
 
@@ -942,42 +952,158 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         data_configs = config
 
     train_sets = [] 
-    test_sets = [] 
-    data = []
-    batch_size = [data_config.batch_size for data_config in data_configs]
+    validation_sets = [] 
+    train_validation_data = []
+    train_batch_size = []
+
+    test_dataset = []
+    test_sets = []
+
 
     for data_config in data_configs:
         dataset_name = data_config.dataset
         queries_name = data_config.queries 
-
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
-        data.append(dataset)
-        train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries, min_cardinality=config.min_cardinality)
-        train_sets.append(train_q)
-        test_sets.append(test_q)
+
+        if data_config.type == 'train':
+            train_validation_data.append(dataset)
+            train_batch_size.append(data_config.batch_size)
+
+            train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, num_queries=data_config.num_queries, min_cardinality=config.min_cardinality)
+            train_sets.append(train_q)
+            validation_sets.append(test_q)
+        elif data_config.type == 'test':
+            # TODO: Filter richtig implementeiren
+            test_dataset.append(dataset)
+            test_sets.append(queries[:data_config.num_queries])
+    
 
     train_loader = MultigraphLoader(
-        data=data,
+        data=train_validation_data,
         queries=train_sets,
-        batch_size=batch_size,
+        batch_size=train_batch_size,
+        shuffle=True,
+    )
+    validation_loader = MultigraphLoader(
+        data=train_validation_data,
+        queries=validation_sets,
+        batch_size=1,
         shuffle=True,
     )
     test_loader = MultigraphLoader(
-        data=data,
+        data=test_dataset,
         queries=test_sets,
         batch_size=1,
-        shuffle=False,
+        shuffle=True,
     )
 
     data_component = DataComponents(
-        data=data,
         train_loader=train_loader,
+        validation_loader=validation_loader,
         test_loader=test_loader,
     )
 
 
     return data_component
 
+
+
+def perform_final_test_evaluation(state: TrainingState) -> dict:
+    """
+    Perform final test evaluation on held-out test set after training.
+    
+    Args:
+        state: TrainingState object containing model, data, and context
+        
+    Returns:
+        Dictionary with test metrics and DataFrames
+    """
+    logger.info("\n" + "=" * 60)
+    logger.info("EVALUATING ON FINAL TEST SET")
+    logger.info("=" * 60)
+    
+    # Run evaluation
+    (
+        final_test_loss,
+        final_test_predictions_log,
+        final_test_true_values_log,
+        final_test_per_graph_metrics,
+    ) = evaluate_model(state, mode='test')
+    
+    # Calculate final test metrics in original cardinality space
+    final_test_predictions = np.exp(final_test_predictions_log)
+    final_test_true_values = np.exp(final_test_true_values_log)
+    
+    final_test_mse = metrics.calculate_mse(final_test_predictions, final_test_true_values)
+    final_test_mae = metrics.calculate_mae(final_test_predictions, final_test_true_values)
+    final_test_rmse = np.sqrt(final_test_mse)
+    final_test_q_error = metrics.calculate_q_error(final_test_predictions, final_test_true_values)
+    
+    # Create DataFrames for final test results
+    final_test_metrics_df = pd.DataFrame([{
+        'loss': final_test_loss,
+        'mse': final_test_mse,
+        'mae': final_test_mae,
+        'rmse': final_test_rmse,
+        'q_error': final_test_q_error
+    }])
+    
+    # Create per-graph predictions DataFrame
+    final_test_predictions_per_graph_data = []
+    final_test_metrics_per_graph_data = []
+    
+    for dataset_name, graph_metrics in final_test_per_graph_metrics.items():
+        # Store per-graph metrics
+        final_test_metrics_per_graph_data.append({
+            'dataset_name': dataset_name,
+            'loss': graph_metrics['loss'],
+            'mse': graph_metrics['mse'],
+            'mae': graph_metrics['mae'],
+            'rmse': graph_metrics['rmse'],
+            'q_error': graph_metrics['q_error']
+        })
+        
+        # Store per-graph predictions
+        for i, (pred_log, true_log, pred, true) in enumerate(zip(
+            graph_metrics['predictions_log'],
+            graph_metrics['true_values_log'],
+            graph_metrics['predictions'],
+            graph_metrics['true_values']
+        )):
+            final_test_predictions_per_graph_data.append({
+                'dataset_name': dataset_name,
+                'batch_idx': i,
+                'prediction_log': pred_log,
+                'true_value_log': true_log,
+                'prediction': pred,
+                'true_value': true
+            })
+    
+    final_test_predictions_per_graph_df = pd.DataFrame(final_test_predictions_per_graph_data)
+    final_test_metrics_per_graph_df = pd.DataFrame(final_test_metrics_per_graph_data)
+    
+    # Save final test results to CSV
+    final_test_metrics_csv_path = state.training_context.log_dir / 'final_test_metrics.csv'
+    final_test_predictions_per_graph_csv_path = state.training_context.log_dir / 'final_test_predictions_per_graph.csv'
+    final_test_metrics_per_graph_csv_path = state.training_context.log_dir / 'final_test_metrics_per_graph.csv'
+    
+    final_test_metrics_df.to_csv(final_test_metrics_csv_path, index=False)
+    final_test_predictions_per_graph_df.to_csv(final_test_predictions_per_graph_csv_path, index=False)
+    final_test_metrics_per_graph_df.to_csv(final_test_metrics_per_graph_csv_path, index=False)
+    
+    logger.info(f"Final test results saved to {state.training_context.log_dir}")
+    
+    # Return results dictionary
+    return {
+        'final_test_loss': final_test_loss,
+        'final_test_mse': final_test_mse,
+        'final_test_mae': final_test_mae,
+        'final_test_rmse': final_test_rmse,
+        'final_test_q_error': final_test_q_error,
+        'final_test_metrics_df': final_test_metrics_df,
+        'final_test_predictions_df': final_test_predictions_per_graph_df,
+        'final_test_per_graph_metrics_df': final_test_metrics_per_graph_df,
+    }
 
 
 def print_final_summary(
@@ -989,24 +1115,37 @@ def print_final_summary(
     logger.info("=" * 60)
     logger.info(f"\nTraining Results:")
     logger.info(f"  Total epochs trained: {len(training_results['train_losses'])}")
-    logger.info(f"  Best test loss: {training_results['best_test_loss']:.6f}")
+    logger.info(f"  Best validation loss: {training_results['best_test_loss']:.6f}")
     logger.info(f"  Final train loss: {training_results['train_losses'][-1]:.6f}")
-    logger.info(f"  Final test loss: {training_results['test_losses'][-1]:.6f}")
+    logger.info(f"  Final validation loss: {training_results['test_losses'][-1]:.6f}")
     logger.info(f"  Final train MAE: {training_results['train_mae'][-1]:.6f}")
-    logger.info(f"  Final test MAE: {training_results['test_mae'][-1]:.6f}")
+    logger.info(f"  Final validation MAE: {training_results['test_mae'][-1]:.6f}")
     logger.info(f"  Final train Q-Error: {training_results['train_q_error'][-1]:.6f}")
-    logger.info(f"  Final test Q-Error: {training_results['test_q_error'][-1]:.6f}")
+    logger.info(f"  Final validation Q-Error: {training_results['test_q_error'][-1]:.6f}")
+    
+    # Display final test results if available
+    if training_results.get('final_test_loss') is not None:
+        logger.info(f"\nFinal Test Results (on held-out test set):")
+        logger.info(f"  Final test loss: {training_results['final_test_loss']:.6f}")
+        logger.info(f"  Final test MSE: {training_results['final_test_mse']:.6f}")
+        logger.info(f"  Final test MAE: {training_results['final_test_mae']:.6f}")
+        logger.info(f"  Final test RMSE: {training_results['final_test_rmse']:.6f}")
+        logger.info(f"  Final test Q-Error: {training_results['final_test_q_error']:.6f}")
 
     logger.info(f"\nSaved Artifacts:")
     logger.info(f"  Run directory: {run_dir}")
     logger.info(f"  Best model: {checkpoint_dir / 'best_model.pt'}")
     logger.info(f"  Final model: {checkpoint_dir / 'final_model.pt'}")
     logger.info(f"  Training metrics CSV: {log_dir / TRAIN_METRICS_FILE_NAME}")
-    logger.info(f"  Test metrics CSV: {log_dir / TEST_METRICS_FILE_NAME}")
+    logger.info(f"  Validation metrics CSV: {log_dir / TEST_METRICS_FILE_NAME}")
     logger.info(f"  Training predictions per graph CSV: {log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME}")
-    logger.info(f"  Test predictions per graph CSV: {log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME}")
+    logger.info(f"  Validation predictions per graph CSV: {log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME}")
     logger.info(f"  Training metrics per graph CSV: {log_dir / TRAIN_METRICS_PER_GRAPH_FILE_NAME}")
-    logger.info(f"  Test metrics per graph CSV: {log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME}")
+    logger.info(f"  Validation metrics per graph CSV: {log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME}")
+    if training_results.get('final_test_loss') is not None:
+        logger.info(f"  Final test metrics CSV: {log_dir / 'final_test_metrics.csv'}")
+        logger.info(f"  Final test predictions per graph CSV: {log_dir / 'final_test_predictions_per_graph.csv'}")
+        logger.info(f"  Final test metrics per graph CSV: {log_dir / 'final_test_metrics_per_graph.csv'}")
     logger.info(f"  Log files: {log_dir}")
 
     logger.info("\n" + "=" * 60)
@@ -1181,6 +1320,10 @@ def main():
     # Train the model
     training_results = train_model(state)
 
+    # Perform final test evaluation
+    final_test_results = perform_final_test_evaluation(state)
+    training_results.update(final_test_results)
+
     # Print final summary
     print_final_summary(
         training_results, 
@@ -1197,13 +1340,36 @@ def main():
         # Log final metrics summary
         final_metrics = {
             "final_train_loss": training_results['train_losses'][-1],
-            "final_test_loss": training_results['test_losses'][-1],
+            "final_validation_loss": training_results['test_losses'][-1],
             "final_train_mae": training_results['train_mae'][-1],
-            "final_test_mae": training_results['test_mae'][-1],
+            "final_validation_mae": training_results['test_mae'][-1],
             "final_train_q_error": training_results['train_q_error'][-1],
-            "final_test_q_error": training_results['test_q_error'][-1],
+            "final_validation_q_error": training_results['test_q_error'][-1],
             "total_epochs": len(training_results['train_losses'])
         }
+        
+        # Add final test metrics if available
+        if training_results.get('final_test_loss') is not None:
+            final_metrics.update({
+                "final_test_loss": training_results['final_test_loss'],
+                "final_test_mse": training_results['final_test_mse'],
+                "final_test_mae": training_results['final_test_mae'],
+                "final_test_rmse": training_results['final_test_rmse'],
+                "final_test_q_error": training_results['final_test_q_error'],
+            })
+            
+            # Log per-graph final test metrics
+            if training_results['final_test_per_graph_metrics_df'] is not None:
+                for _, row in training_results['final_test_per_graph_metrics_df'].iterrows():
+                    dataset_name = row['dataset_name']
+                    final_metrics.update({
+                        f"final_test_loss_{dataset_name}": row['loss'],
+                        f"final_test_mse_{dataset_name}": row['mse'],
+                        f"final_test_mae_{dataset_name}": row['mae'],
+                        f"final_test_rmse_{dataset_name}": row['rmse'],
+                        f"final_test_q_error_{dataset_name}": row['q_error'],
+                    })
+        
         wandb.log(final_metrics)
         
         # Save training data
@@ -1220,6 +1386,15 @@ def main():
             artifact.add_file(str(state.training_context.log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME))
         if (state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME).exists():
             artifact.add_file(str(state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME))
+        
+        # Add final test results to artifact if available
+        if (state.training_context.log_dir / 'final_test_metrics.csv').exists():
+            artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics.csv'))
+        if (state.training_context.log_dir / 'final_test_predictions_per_graph.csv').exists():
+            artifact.add_file(str(state.training_context.log_dir / 'final_test_predictions_per_graph.csv'))
+        if (state.training_context.log_dir / 'final_test_metrics_per_graph.csv').exists():
+            artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_graph.csv'))
+        
         wandb.log_artifact(artifact)
         
         
