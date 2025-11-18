@@ -420,8 +420,8 @@ def train_epoch(state: TrainingState):
 
     # Log predictions to wandb for overall training data
     log_predictions_to_wandb(
-        predictions=epoch_train_predictions,
-        true_values=epoch_train_true_values,
+        predictions=epoch_train_predictions_log,
+        true_values=epoch_train_true_values_log,
         epoch=state.training_context.current_epoch,
         split_name="train",
         dataset_name="overall",
@@ -431,8 +431,8 @@ def train_epoch(state: TrainingState):
     # Log predictions to wandb for each graph
     for dataset_name, graph_metrics in per_graph_metrics.items():
         log_predictions_to_wandb(
-            predictions=graph_metrics['predictions'],
-            true_values=graph_metrics['true_values'],
+            predictions=graph_metrics['predictions_log'],
+            true_values=graph_metrics['true_values_log'],
             epoch=state.training_context.current_epoch,
             split_name="train",
             dataset_name=dataset_name,
@@ -586,8 +586,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     epoch_test_predictions = np.exp(epoch_test_predictions_log)
     epoch_test_true_values = np.exp(epoch_test_true_values_log)
     log_predictions_to_wandb(
-        predictions=epoch_test_predictions,
-        true_values=epoch_test_true_values,
+        predictions=epoch_test_predictions_log,
+        true_values=epoch_test_true_values_log,
         epoch=state.training_context.current_epoch,
         split_name="test",
         dataset_name="overall",
@@ -597,8 +597,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     # Log predictions to wandb for each graph
     for dataset_name, graph_metrics in per_graph_metrics.items():
         log_predictions_to_wandb(
-            predictions=graph_metrics['predictions'],
-            true_values=graph_metrics['true_values'],
+            predictions=graph_metrics['predictions_log'],
+            true_values=graph_metrics['true_values_log'],
             epoch=state.training_context.current_epoch,
             split_name="test",
             dataset_name=dataset_name,
