@@ -9,6 +9,7 @@ data:
     queries: "LUBMQueries"
     batch_size: 4
     num_queries: 10000
+    type: "test"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
