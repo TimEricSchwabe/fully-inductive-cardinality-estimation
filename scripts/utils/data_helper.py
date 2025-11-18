@@ -19,6 +19,11 @@ DATASET_REGISTRY = {
     "LUBM": datasets.LUBM,
     "SWDF": datasets.SWDF,
     "Wikidata": datasets.Wikidata,
+    "fb237_v4": datasets.fb237_v4,
+    "fb237_v4_ind": datasets.fb237_v4_ind,
+    "wn18rr_v4": datasets.WN18RR_v4,
+    "wn18rr_v4_ind": datasets.WN18RR_v4_ind,
+    "dbpedia100k": datasets.DBpedia100k,
 }
 
 # Query mapping: config name -> query class
@@ -26,6 +31,7 @@ QUERY_REGISTRY = {
     "LUBMQueries": datasets.LUBMQueries,
     "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
     "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
+    "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
 }
 
 

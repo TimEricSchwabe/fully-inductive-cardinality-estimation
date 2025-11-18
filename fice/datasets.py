@@ -217,6 +217,57 @@ class SWDF(NTDatasets):
             **kwargs
         )
 
+
+class fb237_v4(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59621618?private_link=a931a2f5f4c8c39cfb22",
+            dataset_name="fb237_v4",
+            **kwargs
+        )
+
+class fb237_v4_ind(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59621825?private_link=364494eb331e3973ecb3",
+            dataset_name="fb237_v4_ind",
+            **kwargs
+        )
+
+class WN18RR_v4(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59622641?private_link=e97f83a035f7e24bb37c",
+            dataset_name="wn18rr_v4",
+            **kwargs
+        )
+
+class WN18RR_v4_ind(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59622656?private_link=49ad78ce6e253240223f",
+            dataset_name="wn18rr_v4_ind",
+            **kwargs
+        )
+
+class DBpedia100k(NTDatasets):
+    def __init__(
+        self, **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59622674?private_link=f9b1fb2716ce2814515e",
+            dataset_name="dbpedia100k",
+            **kwargs
+        )
+
 class Wikidata(NTDatasets):
     def __init__(
         self, **kwargs
@@ -463,6 +514,26 @@ class WIKIDATA_Star_Queries(NTQueries):
         super().__init__(
             url="https://figshare.com/ndownloader/files/59320583",
             dataset_name="wikidata_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+
+class fb237_v4_star_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59651327?private_link=780ccfbe4856b223d7b5",
+            dataset_name="fb237_v4_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
