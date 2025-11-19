@@ -34,6 +34,7 @@ QUERY_REGISTRY = {
     "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
     "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
     "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
+    "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
 }
 
 

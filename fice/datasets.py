@@ -541,6 +541,25 @@ class fb237_v4_star_queries(NTQueries):
             **kwargs
         )
 
+class dbpedia100k_star_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59687708?private_link=1e23a3388a4b6b6161d1",
+            dataset_name="dbpedia100k_star_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
 if __name__ == "__main__":
     dataset = LUBM()
     proc = pathlib.Path(dataset.processed_dir)
