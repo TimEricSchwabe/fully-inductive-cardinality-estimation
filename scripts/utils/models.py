@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import List
 from .config import Config
 from utils.neighborhood_sampler import MultigraphNeighborSampler
+from .logging_helper import MetricLogger
 
 @dataclass
 class TrainingContext:
@@ -40,10 +41,7 @@ class DataComponents:
 class TrainingState:
     """Container for training state information."""
     best_test_loss: float
-    train_metrics: pd.DataFrame
-    test_metrics: pd.DataFrame
-    train_predictions: pd.DataFrame
-    test_predictions: pd.DataFrame
+    metric_logger: MetricLogger
 
     training_context: TrainingContext 
     model_components: ModelComponents 

@@ -6,7 +6,7 @@ import random
 import subprocess
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Tuple, Union, Literal
+from typing import Dict, List, Literal, Tuple, Union
 
 # Third-party imports
 import matplotlib
@@ -16,11 +16,18 @@ import pandas as pd
 import torch
 import torch.nn.functional as F
 import wandb
-from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.data import Data
-from utils.multigraph import MultigraphLoader
-from utils.neighborhood_sampler import MultigraphNeighborSampler
+from torch_geometric.loader import DataLoader, NeighborLoader
+from torch_geometric.utils import subgraph
 from tqdm import tqdm
+
+# Try to import the low-level NeighborSampler (newer API)
+try:
+    from torch_geometric.sampler import NeighborSampler as PYGNeighborSampler
+    from torch_geometric.sampler import NodeSamplerInput
+    HAS_PYG_SAMPLER = True
+except Exception:
+    HAS_PYG_SAMPLER = False
 
 # Configure matplotlib for server environments
 matplotlib.use('Agg')
@@ -29,85 +36,30 @@ matplotlib.use('Agg')
 import utils.metrics as metrics
 from fice.models import FICE, FiceBinary
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
-from utils.config import DataConfig, load_config_yaml, Config
+from utils.config import Config, DataConfig, load_config_yaml
 from utils.data_helper import prepare_data
-from utils.helper import get_device, initialize_wandb, parse_arguments, process_seed, set_random_seeds, setup_logging
-from utils.models import TrainingContext, ModelComponents, DataComponents, TrainingState
-from torch_geometric.utils import subgraph
-
-# Try to import the low-level NeighborSampler (newer API). If unavailable, we'll fallback.
-try:
-    from torch_geometric.sampler import NeighborSampler as PYGNeighborSampler  # type: ignore
-    from torch_geometric.sampler import NodeSamplerInput  # type: ignore
-    HAS_PYG_SAMPLER = True
-except Exception:
-    HAS_PYG_SAMPLER = False
+from utils.helper import (
+    get_device,
+    initialize_wandb,
+    parse_arguments,
+    process_seed,
+    set_random_seeds,
+    setup_logging,
+)
+from utils.logging_helper import (
+    TRAIN_METRICS_FILE_NAME,
+    TEST_METRICS_FILE_NAME,
+    TRAIN_METRICS_PER_GRAPH_FILE_NAME,
+    TEST_METRICS_PER_GRAPH_FILE_NAME,
+    TRAIN_VALUES_PER_GRAPH_FILE_NAME,
+    TEST_VALUES_PER_GRAPH_FILE_NAME,
+    MetricLogger,
+)
+from utils.models import DataComponents, ModelComponents, TrainingContext, TrainingState
+from utils.multigraph import MultigraphLoader
+from utils.neighborhood_sampler import MultigraphNeighborSampler
 
 logger = logging.getLogger(__name__)
-
-
-TRAIN_METRICS_FILE_NAME = "train_training_metrics.csv"
-TEST_METRICS_FILE_NAME = "test_training_metrics.csv"
-TRAIN_METRICS_PER_GRAPH_FILE_NAME = "train_metrics_per_graph.csv"
-TEST_METRICS_PER_GRAPH_FILE_NAME = "test_metrics_per_graph.csv"
-TRAIN_VALUES_PER_GRAPH_FILE_NAME = "train_values_per_graph.csv"
-TEST_VALUES_PER_GRAPH_FILE_NAME = "test_values_per_graph.csv"
-
-sampler_per_graph: Dict[str, PYGNeighborSampler] = {}
-
-def create_reusable_sampler(data_graph, num_neighbors):
-    """Create a reusable sampler if the low-level sampler API is available.
-
-    Returns sampler or None.
-    """
-    if not HAS_PYG_SAMPLER:
-        return None
-    # Newer API takes a Data object / graph store
-    sampler = PYGNeighborSampler(
-        data_graph,
-        num_neighbors=num_neighbors,
-        replace=False,
-    )
-    return sampler
-
-
-def sample_with_sampler(sampler, data_graph, seeds: torch.Tensor):
-    # 1) Sample neighborhood
-    # Wrap seeds in NodeSamplerInput
-    inputs = NodeSamplerInput(input_id=None, node=seeds)
-    # get output with fields
-    # node: sampled node ids (global ids)
-    # row: row indices of the sampled edges (local indices)
-    # col: column indices of the sampled edges (local indices)
-    # edge: edge indices of the sampled edges (original edge ids from full graph)
-    out = sampler.sample_from_nodes(inputs)
-
-    # 2) Get sampled global node IDs
-    n_id = getattr(out, 'node', None)
-    if n_id is None:
-        n_id = getattr(out, 'n_id', None)
-    if n_id is None:
-        raise RuntimeError("Sampler output missing node ids (node / n_id)")
-
-    # 3) Local edge_index from sampler (row/col are local indices)
-    edge_index_local = torch.stack([out.row, out.col], dim=0)
-
-    # 4) Build subgraph Data directly
-    sub_data = Data()
-    sub_data.edge_index = edge_index_local
-    sub_data.num_nodes = n_id.numel()
-
-    # carry edge types via original edge IDs
-    # we put this as optional but should always be there
-    if hasattr(data_graph, 'edge_type') and hasattr(out, 'edge'):
-        sub_data.edge_type = data_graph.edge_type[out.edge]
-
-    # 5) Global->local mapping (global ID -> local [0..N-1])
-    # i.e. which id do all the global ids from the full graph have (if they dont have one, they map to -1)
-    global_to_local = torch.full((data_graph.num_nodes,), -1, dtype=torch.long, device=n_id.device)
-    global_to_local[n_id] = torch.arange(n_id.numel(), device=n_id.device)
-
-    return sub_data, global_to_local.detach().cpu()
 
 
 def setup_directories(config):
@@ -191,68 +143,12 @@ def log_gpu_memory_usage(step_name: str):
         logger.debug(f"CPU-only mode at {step_name}")
 
 
-def log_predictions_to_wandb(predictions, true_values, epoch, split_name, dataset_name, use_wandb, max_points=1000):
-    """
-    Log predictions and true values as raw data to wandb for scatter plot visualization.
-    
-    Args:
-        predictions: List or array of predicted values (in original cardinality space)
-        true_values: List or array of true values (in original cardinality space)
-        epoch: Current epoch number
-        split_name: 'train' or 'test'
-        dataset_name: Name of the dataset (use 'overall' for combined data)
-        use_wandb: Whether wandb logging is enabled
-        max_points: Maximum number of points to log (default 1000)
-    """
-    if not use_wandb or len(predictions) == 0:
-        return
-    
-    try:
-        # Convert to numpy arrays and clean data
-        predictions = np.array(predictions)
-        true_values = np.array(true_values)
-        
-        # Remove infinite values and NaNs
-        valid_mask = np.isfinite(predictions) & np.isfinite(true_values)
-        predictions_clean = predictions[valid_mask]
-        true_values_clean = true_values[valid_mask]
-        
-        if len(predictions_clean) == 0:
-            logger.warning(f"No valid predictions for {split_name}/{dataset_name} at epoch {epoch}")
-            return
-        
-        # Sample data if too many points
-        if len(predictions_clean) > max_points:
-            indices = np.random.choice(len(predictions_clean), max_points, replace=False)
-            predictions_sampled = predictions_clean[indices]
-            true_values_sampled = true_values_clean[indices]
-        else:
-            predictions_sampled = predictions_clean
-            true_values_sampled = true_values_clean
-        
-        # Create a WandB table for scatter plot
-        data = [[float(pred), float(true)] for pred, true in zip(predictions_sampled, true_values_sampled)]
-        table = wandb.Table(data=data, columns=["prediction", "true_value"])
-        
-        # Log the table with a descriptive key and create a scatter plot
-        table_key = f"{split_name}_predictions_{dataset_name}_epoch_{epoch}"
-        
-        # Create scatter plot directly
-        wandb.log({
-            table_key: table,
-            "epoch": epoch
-        })
-        
-        logger.debug(f"Successfully logged {len(predictions_sampled)} predictions for {split_name}/{dataset_name} at epoch {epoch}")
-        
-    except Exception as e:
-        logger.error(f"Error logging predictions to wandb for {split_name}/{dataset_name} at epoch {epoch}: {e}")
-
-
 def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     # Extract components for easier access
     state.model_components.model.train()
+    state.metric_logger.start_epoch()
+    
     epoch_train_loss = 0.0
     num_train_batches = 0
     device = state.training_context.device
@@ -261,30 +157,18 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
-    epoch_train_predictions_log = []    
-    epoch_train_true_values_log = []
-    
-    # Per-graph data collection
-    per_graph_data = {}  # {dataset_name: {'predictions_log': [], 'true_values_log': [], 'loss_sum': 0.0, 'batch_count': 0}}
-
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
     )
 
     # Prepare reusable sampler once per epoch if enabled
     num_neighbors_cfg = state.training_context.config.EntityGNNNeighborhood
-    # sampler = None
-    # sampler_per_graph: Dict[str, PYGNeighborSampler] = {}
+
     neighbor_sampler = state.data_components.neighbor_sampler
 
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
-            # sampler = sampler_per_graph.get(full_graph.dataset_name, None)
-            # if sampler is None:
-            #     sampler = create_reusable_sampler(full_graph, num_neighbors_cfg)
-            #     sampler_per_graph[full_graph.dataset_name] = sampler
-
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
@@ -337,23 +221,13 @@ def train_epoch(state: TrainingState):
             loss.backward()
             state.model_components.optimizer.step()
 
-            # Move predictions to CPU for logging to save GPU memory
-            epoch_train_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
-            epoch_train_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
-            
-            # Collect per-graph data
-            dataset_name = full_graph.dataset_name
-            if dataset_name not in per_graph_data:
-                per_graph_data[dataset_name] = {
-                    'predictions_log': [],
-                    'true_values_log': [],
-                    'loss_sum': 0.0,
-                    'batch_count': 0
-                }
-            per_graph_data[dataset_name]['predictions_log'].extend(tensor_to_numpy(log_cardinality_pred))
-            per_graph_data[dataset_name]['true_values_log'].extend(tensor_to_numpy(log_true_cardinality))
-            per_graph_data[dataset_name]['loss_sum'] += loss.item()
-            per_graph_data[dataset_name]['batch_count'] += 1
+            # Log batch
+            state.metric_logger.log_batch(
+                predictions_log=log_cardinality_pred,
+                true_values_log=log_true_cardinality,
+                loss=loss,
+                dataset_name=full_graph.dataset_name
+            )
 
             epoch_train_loss += loss.item()
             num_train_batches += 1
@@ -384,68 +258,6 @@ def train_epoch(state: TrainingState):
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
-    epoch_avg_train_loss = epoch_train_loss / num_train_batches
-    
-    # Convert overall predictions to original cardinality space for logging
-    epoch_train_predictions = np.exp(epoch_train_predictions_log)
-    epoch_train_true_values = np.exp(epoch_train_true_values_log)
-    
-    # Calculate per-graph metrics
-    per_graph_metrics = {}
-    for dataset_name, data in per_graph_data.items():
-        predictions_log = np.array(data['predictions_log'])
-        true_values_log = np.array(data['true_values_log'])
-        
-        # Convert to original cardinality space for metrics
-        predictions = np.exp(predictions_log)
-        true_values = np.exp(true_values_log)
-        
-        avg_loss = data['loss_sum'] / data['batch_count']
-        mse = metrics.calculate_mse(predictions, true_values)
-        mae = metrics.calculate_mae(predictions, true_values)
-        rmse = np.sqrt(mse)
-        q_error = metrics.calculate_q_error(predictions, true_values)
-        
-        per_graph_metrics[dataset_name] = {
-            'loss': avg_loss,
-            'mse': mse,
-            'mae': mae,
-            'rmse': rmse,
-            'q_error': q_error,
-            'predictions_log': predictions_log,
-            'true_values_log': true_values_log,
-            'predictions': predictions,
-            'true_values': true_values
-        }
-
-    # Log predictions to wandb for overall training data
-    log_predictions_to_wandb(
-        predictions=epoch_train_predictions_log,
-        true_values=epoch_train_true_values_log,
-        epoch=state.training_context.current_epoch,
-        split_name="train",
-        dataset_name="overall",
-        use_wandb=state.training_context.use_wandb
-    )
-    
-    # Log predictions to wandb for each graph
-    for dataset_name, graph_metrics in per_graph_metrics.items():
-        log_predictions_to_wandb(
-            predictions=graph_metrics['predictions_log'],
-            true_values=graph_metrics['true_values_log'],
-            epoch=state.training_context.current_epoch,
-            split_name="train",
-            dataset_name=dataset_name,
-            use_wandb=state.training_context.use_wandb
-        )
-
-    return (
-        epoch_avg_train_loss,
-        epoch_train_predictions_log,
-        epoch_train_true_values_log,
-        per_graph_metrics,
-    )
-
 
 def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = 'validation'):   
     """Evaluate the model on test data."""
@@ -454,14 +266,10 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     use_wandb = state.training_context.use_wandb
 
     state.model_components.model.eval()
+    state.metric_logger.start_epoch()
 
     epoch_test_loss = 0.0
-    epoch_test_predictions_log = []
-    epoch_test_true_values_log = []
     
-    # Per-graph data collection
-    per_graph_data = {}  # {dataset_name: {'predictions_log': [], 'true_values_log': [], 'loss_sum': 0.0, 'batch_count': 0}}
-
     loader = state.data_components.validation_loader if mode == 'validation' else state.data_components.test_loader 
     total_batches = len(loader)
 
@@ -514,23 +322,13 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             # Compute loss
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
             
-            # Move to CPU immediately for logging to save GPU memory
-            epoch_test_predictions_log.extend(tensor_to_numpy(log_cardinality_pred))
-            epoch_test_true_values_log.extend(tensor_to_numpy(log_true_cardinality))
-            
-            # Collect per-graph data
-            dataset_name = full_graph.dataset_name
-            if dataset_name not in per_graph_data:
-                per_graph_data[dataset_name] = {
-                    'predictions_log': [],
-                    'true_values_log': [],
-                    'loss_sum': 0.0,
-                    'batch_count': 0
-                }
-            per_graph_data[dataset_name]['predictions_log'].extend(tensor_to_numpy(log_cardinality_pred))
-            per_graph_data[dataset_name]['true_values_log'].extend(tensor_to_numpy(log_true_cardinality))
-            per_graph_data[dataset_name]['loss_sum'] += loss.item()
-            per_graph_data[dataset_name]['batch_count'] += 1
+            # Log batch
+            state.metric_logger.log_batch(
+                predictions_log=log_cardinality_pred,
+                true_values_log=log_true_cardinality,
+                loss=loss,
+                dataset_name=full_graph.dataset_name
+            )
 
             epoch_test_loss += loss.item()
 
@@ -546,71 +344,13 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             if graph is not None:
                 del graph
 
-
-
     # Clear GPU cache after evaluation
     if torch.cuda.is_available():
         torch.cuda.empty_cache()
 
     avg_test_loss = epoch_test_loss / total_batches
     
-    # Calculate per-graph metrics
-    per_graph_metrics = {}
-    for dataset_name, data in per_graph_data.items():
-        predictions_log = np.array(data['predictions_log'])
-        true_values_log = np.array(data['true_values_log'])
-        
-        # Convert to original cardinality space for metrics
-        predictions = np.exp(predictions_log)
-        true_values = np.exp(true_values_log)
-        
-        avg_loss = data['loss_sum'] / data['batch_count']
-        mse = metrics.calculate_mse(predictions, true_values)
-        mae = metrics.calculate_mae(predictions, true_values)
-        rmse = np.sqrt(mse)
-        q_error = metrics.calculate_q_error(predictions, true_values)
-        
-        per_graph_metrics[dataset_name] = {
-            'loss': avg_loss,
-            'mse': mse,
-            'mae': mae,
-            'rmse': rmse,
-            'q_error': q_error,
-            'predictions_log': predictions_log,
-            'true_values_log': true_values_log,
-            'predictions': predictions,
-            'true_values': true_values
-        }
-
-    # Log predictions to wandb for overall test data
-    epoch_test_predictions = np.exp(epoch_test_predictions_log)
-    epoch_test_true_values = np.exp(epoch_test_true_values_log)
-    log_predictions_to_wandb(
-        predictions=epoch_test_predictions_log,
-        true_values=epoch_test_true_values_log,
-        epoch=state.training_context.current_epoch,
-        split_name="test",
-        dataset_name="overall",
-        use_wandb=use_wandb
-    )
-    
-    # Log predictions to wandb for each graph
-    for dataset_name, graph_metrics in per_graph_metrics.items():
-        log_predictions_to_wandb(
-            predictions=graph_metrics['predictions_log'],
-            true_values=graph_metrics['true_values_log'],
-            epoch=state.training_context.current_epoch,
-            split_name="test",
-            dataset_name=dataset_name,
-            use_wandb=use_wandb
-        )
-
-    return (
-        avg_test_loss,
-        epoch_test_predictions_log,
-        epoch_test_true_values_log,
-        per_graph_metrics,
-    )
+    return avg_test_loss
 
 
 def train_model(
@@ -618,224 +358,33 @@ def train_model(
 ):
     """Main training loop with progress tracking and evaluation."""
 
-    # Initialize lists for efficient data accumulation (avoid repeated DataFrame concatenation)
-    train_metrics_data = []
-    test_metrics_data = []
-    train_metrics_per_graph_data = []
-    test_metrics_per_graph_data = []
-    train_predictions_per_graph_data = []
-    test_predictions_per_graph_data = []
     epochs = state.training_context.config.epochs
-    logger.info("Data accumulation lists initialized for efficient metric tracking!")
     logger.info(f"Starting training for {epochs} epochs...")
 
     device = state.training_context.device
     if torch.cuda.is_available() and device.type != 'cuda':
         logger.warning(f"Using GPU: {torch.cuda.get_device_name(device)} even though cuda is available. (torch.cuda.is_available() = {torch.cuda.is_available()}).")
 
-
-
     # Training loop
     for epoch in range(max(state.training_context.current_epoch, 1), epochs + 1):
         state.training_context.current_epoch = epoch  # Update current epoch in context
 
         # Training phase
-        (
-            epoch_avg_train_loss,
-            epoch_train_predictions_log,
-            epoch_train_true_values_log,
-            train_per_graph_metrics,
-        ) = train_epoch(state)
-
-        # Calculate training metrics
-        # Use original cardinality space for all metrics
-
-        epoch_train_predictions = np.exp(epoch_train_predictions_log)
-        epoch_train_true_values = np.exp(epoch_train_true_values_log)
-        mse = metrics.calculate_mse(epoch_train_predictions, epoch_train_true_values)
-        mae = metrics.calculate_mae(epoch_train_predictions, epoch_train_true_values)
-        rmse = np.sqrt(mse)
-
-        q_error = metrics.calculate_q_error(
-            epoch_train_predictions, epoch_train_true_values
-        )
-
-        # Append training metrics to list (much more efficient than DataFrame concatenation)
-        train_metrics_data.append({
-            'epoch': state.training_context.current_epoch,
-            'loss': epoch_avg_train_loss,
-            'mse': mse,
-            'mae': mae,
-            'rmse': rmse,
-            'q_error': q_error
-        })
+        train_epoch(state)
         
-        # Store per-graph metrics
-        for dataset_name, graph_metrics in train_per_graph_metrics.items():
-            train_metrics_per_graph_data.append({
-                'epoch': state.training_context.current_epoch,
-                'dataset_name': dataset_name,
-                'loss': graph_metrics['loss'],
-                'mse': graph_metrics['mse'],
-                'mae': graph_metrics['mae'],
-                'rmse': graph_metrics['rmse'],
-                'q_error': graph_metrics['q_error']
-            })
-            
-            # Store per-graph predictions
-            for i, (pred_log, true_log, pred, true) in enumerate(zip(
-                graph_metrics['predictions_log'],
-                graph_metrics['true_values_log'],
-                graph_metrics['predictions'],
-                graph_metrics['true_values']
-            )):
-                train_predictions_per_graph_data.append({
-                    'epoch': state.training_context.current_epoch,
-                    'dataset_name': dataset_name,
-                    'batch_idx': i,
-                    'prediction_log': pred_log,
-                    'true_value_log': true_log,
-                    'prediction': pred,
-                    'true_value': true
-                })
-        
-        # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
-        if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == epochs:
-            train_metrics_df = pd.DataFrame(train_metrics_data)
-            train_predictions_per_graph_df = pd.DataFrame(train_predictions_per_graph_data)
-            train_metrics_per_graph_df = pd.DataFrame(train_metrics_per_graph_data)
-            
-            state.train_predictions = train_predictions_per_graph_df
-            state.train_metrics = train_metrics_df
-            
-            train_metrics_csv_path = state.training_context.log_dir / TRAIN_METRICS_FILE_NAME
-            train_predictions_per_graph_csv_path = state.training_context.log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME
-            train_metrics_per_graph_csv_path = state.training_context.log_dir / TRAIN_METRICS_PER_GRAPH_FILE_NAME
-            
-            train_metrics_df.to_csv(train_metrics_csv_path, index=False)
-            train_predictions_per_graph_df.to_csv(train_predictions_per_graph_csv_path, index=False)
-            train_metrics_per_graph_df.to_csv(train_metrics_per_graph_csv_path, index=False)
-
-        # Log training metrics to wandb
-        if state.training_context.use_wandb:
-            wandb.log({
-                "train_loss": epoch_avg_train_loss,
-                "train_mse": mse,
-                "train_mae": mae,
-                "train_rmse": rmse,
-                "train_q_error": q_error,
-                "epoch": state.training_context.current_epoch
-            })
-            
-            # Log per-graph training metrics
-            for dataset_name, graph_metrics in train_per_graph_metrics.items():
-                wandb.log({
-                    f"train_loss_{dataset_name}": graph_metrics['loss'],
-                    f"train_mse_{dataset_name}": graph_metrics['mse'],
-                    f"train_mae_{dataset_name}": graph_metrics['mae'],
-                    f"train_rmse_{dataset_name}": graph_metrics['rmse'],
-                    f"train_q_error_{dataset_name}": graph_metrics['q_error'],
-                    "epoch": state.training_context.current_epoch
-                })
+        # End training epoch
+        should_save = (epoch % 10 == 0 or epoch == epochs)
+        train_metrics = state.metric_logger.end_epoch(epoch, stage='train', save=should_save)
+        epoch_avg_train_loss = train_metrics['loss']
 
         # Evaluation phase
         if (epoch) % state.training_context.config.eval_every == 0:
-            (
-                avg_test_loss,
-                epoch_test_predictions_log,
-                epoch_test_true_values_log,
-                test_per_graph_metrics,
-            ) = evaluate_model(state)
-            # Use original cardinality space for all metrics
-            epoch_test_predictions = np.exp(epoch_test_predictions_log)
-            epoch_test_true_values = np.exp(epoch_test_true_values_log)
-            # Calculate test metrics
-            # Use original cardinality space for MSE, MAE, RMSE
-            mse = metrics.calculate_mse(epoch_test_predictions, epoch_test_true_values)
-            mae = metrics.calculate_mae(epoch_test_predictions, epoch_test_true_values)
-            rmse = np.sqrt(mse)
+            # TODO start und end epoch entweder beide in evualte_model oder beide hier
+            evaluate_model(state)
             
-            q_error = metrics.calculate_q_error(
-                epoch_test_predictions, epoch_test_true_values
-            )
-
-            # Append test metrics to list (much more efficient than DataFrame concatenation)
-            test_metrics_data.append({
-                'epoch': state.training_context.current_epoch,
-                'loss': avg_test_loss,
-                'mse': mse,
-                'mae': mae,
-                'rmse': rmse,
-                'q_error': q_error
-            })
-            
-            # Store per-graph test metrics
-            for dataset_name, graph_metrics in test_per_graph_metrics.items():
-                test_metrics_per_graph_data.append({
-                    'epoch': state.training_context.current_epoch,
-                    'dataset_name': dataset_name,
-                    'loss': graph_metrics['loss'],
-                    'mse': graph_metrics['mse'],
-                    'mae': graph_metrics['mae'],
-                    'rmse': graph_metrics['rmse'],
-                    'q_error': graph_metrics['q_error']
-                })
-                
-                # Store per-graph test predictions
-                for i, (pred_log, true_log, pred, true) in enumerate(zip(
-                    graph_metrics['predictions_log'],
-                    graph_metrics['true_values_log'],
-                    graph_metrics['predictions'],
-                    graph_metrics['true_values']
-                )):
-                    test_predictions_per_graph_data.append({
-                        'epoch': state.training_context.current_epoch,
-                        'dataset_name': dataset_name,
-                        'batch_idx': i,
-                        'prediction_log': pred_log,
-                        'true_value_log': true_log,
-                        'prediction': pred,
-                        'true_value': true
-                    })
-            
-            # Save DataFrames to CSV periodically (every 10 epochs) to avoid excessive I/O
-            if (state.training_context.current_epoch) % 10 == 0 or (state.training_context.current_epoch) == state.training_context.config.epochs:
-                test_metrics_df = pd.DataFrame(test_metrics_data)
-                test_predictions_per_graph_df = pd.DataFrame(test_predictions_per_graph_data)
-                test_metrics_per_graph_df = pd.DataFrame(test_metrics_per_graph_data)
-                
-                state.test_predictions = test_predictions_per_graph_df
-                state.test_metrics = test_metrics_df
-
-                test_metrics_csv_path = state.training_context.log_dir / TEST_METRICS_FILE_NAME
-                test_predictions_per_graph_csv_path = state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME
-                test_metrics_per_graph_csv_path = state.training_context.log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME
-                
-                test_metrics_df.to_csv(test_metrics_csv_path, index=False)
-                test_predictions_per_graph_df.to_csv(test_predictions_per_graph_csv_path, index=False)
-                test_metrics_per_graph_df.to_csv(test_metrics_per_graph_csv_path, index=False)
-
-            # Log test metrics to wandb
-            if state.training_context.use_wandb:
-                wandb.log({
-                    "test_loss": avg_test_loss,
-                    "test_mse": mse,
-                    "test_mae": mae,
-                    "test_rmse": rmse,
-                    "test_q_error": q_error,
-                    "epoch": state.training_context.current_epoch
-                })
-                
-                # Log per-graph test metrics
-                for dataset_name, graph_metrics in test_per_graph_metrics.items():
-                    wandb.log({
-                        f"test_loss_{dataset_name}": graph_metrics['loss'],
-                        f"test_mse_{dataset_name}": graph_metrics['mse'],
-                        f"test_mae_{dataset_name}": graph_metrics['mae'],
-                        f"test_rmse_{dataset_name}": graph_metrics['rmse'],
-                        f"test_q_error_{dataset_name}": graph_metrics['q_error'],
-                        "epoch": state.training_context.current_epoch
-                    })
+            # End test epoch
+            test_metrics = state.metric_logger.end_epoch(epoch, stage='test', save=should_save)
+            avg_test_loss = test_metrics['loss']
 
             # Log metrics
             logger.info(
@@ -876,67 +425,23 @@ def train_model(
 
         # Save checkpoint periodically
         if (epoch + 1) % state.training_context.config.save_every == 0:
-            # Get latest test loss from test data list
-            latest_test_loss = test_metrics_data[-1]['loss'] if len(test_metrics_data) > 0 else None
-
             checkpoint_path = state.training_context.checkpoint_dir / f"checkpoint_epoch_{state.training_context.current_epoch}.pt"
             save_checkpoint(state, checkpoint_path)
             logger.info(f"Checkpoint saved: {checkpoint_path}")
 
     logger.info("Training completed!")
-
-    # Create final DataFrames from accumulated data
-    final_train_metrics_df = pd.DataFrame(train_metrics_data)
-    final_test_metrics_df = pd.DataFrame(test_metrics_data)
-    final_train_metrics_per_graph_df = pd.DataFrame(train_metrics_per_graph_data)
-    final_test_metrics_per_graph_df = pd.DataFrame(test_metrics_per_graph_data)
-    final_train_predictions_per_graph_df = pd.DataFrame(train_predictions_per_graph_data)
-    final_test_predictions_per_graph_df = pd.DataFrame(test_predictions_per_graph_data)
     
-    # Save final DataFrames to CSV
-    train_metrics_csv_path = state.training_context.log_dir / TRAIN_METRICS_FILE_NAME
-    test_metrics_csv_path = state.training_context.log_dir / TEST_METRICS_FILE_NAME
-    train_metrics_per_graph_csv_path = state.training_context.log_dir / TRAIN_METRICS_PER_GRAPH_FILE_NAME
-    train_predictions_per_graph_csv_path = state.training_context.log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME
-    test_metrics_per_graph_csv_path = state.training_context.log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME
-    test_predictions_per_graph_csv_path = state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME
-
-    final_train_metrics_df.to_csv(train_metrics_csv_path, index=False)
-    final_test_metrics_df.to_csv(test_metrics_csv_path, index=False)
-    final_train_metrics_per_graph_df.to_csv(train_metrics_per_graph_csv_path, index=False)
-    final_train_predictions_per_graph_df.to_csv(train_predictions_per_graph_csv_path, index=False)
-    final_test_metrics_per_graph_df.to_csv(test_metrics_per_graph_csv_path, index=False)
-    final_test_predictions_per_graph_df.to_csv(test_predictions_per_graph_csv_path, index=False)
-
+    history = state.metric_logger.history
+    
     return {
         "best_test_loss": state.best_test_loss,
-        "train_losses": final_train_metrics_df['loss'].tolist() if len(final_train_metrics_df) > 0 else [],
-        "train_mse": final_train_metrics_df['mse'].tolist() if len(final_train_metrics_df) > 0 else [],
-        "train_mae": final_train_metrics_df['mae'].tolist() if len(final_train_metrics_df) > 0 else [],
-        "train_rmse": final_train_metrics_df['rmse'].tolist() if len(final_train_metrics_df) > 0 else [],
-        "train_q_error": final_train_metrics_df['q_error'].tolist() if len(final_train_metrics_df) > 0 else [],
-        "test_losses": final_test_metrics_df['loss'].tolist() if len(final_test_metrics_df) > 0 else [],
-        "test_mse": final_test_metrics_df['mse'].tolist() if len(final_test_metrics_df) > 0 else [],
-        "test_mae": final_test_metrics_df['mae'].tolist() if len(final_test_metrics_df) > 0 else [],
-        "test_rmse": final_test_metrics_df['rmse'].tolist() if len(final_test_metrics_df) > 0 else [],
-        "test_q_error": final_test_metrics_df['q_error'].tolist() if len(final_test_metrics_df) > 0 else [],
-        "train_metrics_df": final_train_metrics_df,
-        "test_metrics_df": final_test_metrics_df,
-        "train_predictions_df": final_train_predictions_per_graph_df,
-        "test_predictions_df": final_test_predictions_per_graph_df,
-        "train_metrics_per_graph_df": final_train_metrics_per_graph_df,
-        "test_metrics_per_graph_df": final_test_metrics_per_graph_df,
-        "train_predictions_per_graph_df": final_train_predictions_per_graph_df,
-        "test_predictions_per_graph_df": final_test_predictions_per_graph_df,
-        # Placeholder for final test metrics (will be populated in main)
+        "train_losses": [m['loss'] for m in history['train_metrics']],
+        "test_losses": [m['loss'] for m in history['test_metrics']],
+        "train_mae": [m['mae'] for m in history['train_metrics']],
+        "test_mae": [m['mae'] for m in history['test_metrics']],
+        "train_q_error": [m['q_error'] for m in history['train_metrics']],
+        "test_q_error": [m['q_error'] for m in history['test_metrics']],
         "final_test_loss": None,
-        "final_test_mse": None,
-        "final_test_mae": None,
-        "final_test_rmse": None,
-        "final_test_q_error": None,
-        "final_test_metrics_df": None,
-        "final_test_predictions_df": None,
-        "final_test_per_graph_metrics_df": None,
     }
 
 
@@ -956,86 +461,27 @@ def perform_final_test_evaluation(state: TrainingState) -> dict:
     logger.info("=" * 60)
     
     # Run evaluation
-    (
-        final_test_loss,
-        final_test_predictions_log,
-        final_test_true_values_log,
-        final_test_per_graph_metrics,
-    ) = evaluate_model(state, mode='test')
+    evaluate_model(state, mode='test')
     
-    # Calculate final test metrics in original cardinality space
-    final_test_predictions = np.exp(final_test_predictions_log)
-    final_test_true_values = np.exp(final_test_true_values_log)
-    
-    final_test_mse = metrics.calculate_mse(final_test_predictions, final_test_true_values)
-    final_test_mae = metrics.calculate_mae(final_test_predictions, final_test_true_values)
-    final_test_rmse = np.sqrt(final_test_mse)
-    final_test_q_error = metrics.calculate_q_error(final_test_predictions, final_test_true_values)
-    
-    # Create DataFrames for final test results
-    final_test_metrics_df = pd.DataFrame([{
-        'loss': final_test_loss,
-        'mse': final_test_mse,
-        'mae': final_test_mae,
-        'rmse': final_test_rmse,
-        'q_error': final_test_q_error
-    }])
-    
-    # Create per-graph predictions DataFrame
-    final_test_predictions_per_graph_data = []
-    final_test_metrics_per_graph_data = []
-    
-    for dataset_name, graph_metrics in final_test_per_graph_metrics.items():
-        # Store per-graph metrics
-        final_test_metrics_per_graph_data.append({
-            'dataset_name': dataset_name,
-            'loss': graph_metrics['loss'],
-            'mse': graph_metrics['mse'],
-            'mae': graph_metrics['mae'],
-            'rmse': graph_metrics['rmse'],
-            'q_error': graph_metrics['q_error']
-        })
-        
-        # Store per-graph predictions
-        for i, (pred_log, true_log, pred, true) in enumerate(zip(
-            graph_metrics['predictions_log'],
-            graph_metrics['true_values_log'],
-            graph_metrics['predictions'],
-            graph_metrics['true_values']
-        )):
-            final_test_predictions_per_graph_data.append({
-                'dataset_name': dataset_name,
-                'batch_idx': i,
-                'prediction_log': pred_log,
-                'true_value_log': true_log,
-                'prediction': pred,
-                'true_value': true
-            })
-    
-    final_test_predictions_per_graph_df = pd.DataFrame(final_test_predictions_per_graph_data)
-    final_test_metrics_per_graph_df = pd.DataFrame(final_test_metrics_per_graph_data)
-    
-    # Save final test results to CSV
-    final_test_metrics_csv_path = state.training_context.log_dir / 'final_test_metrics.csv'
-    final_test_predictions_per_graph_csv_path = state.training_context.log_dir / 'final_test_predictions_per_graph.csv'
-    final_test_metrics_per_graph_csv_path = state.training_context.log_dir / 'final_test_metrics_per_graph.csv'
-    
-    final_test_metrics_df.to_csv(final_test_metrics_csv_path, index=False)
-    final_test_predictions_per_graph_df.to_csv(final_test_predictions_per_graph_csv_path, index=False)
-    final_test_metrics_per_graph_df.to_csv(final_test_metrics_per_graph_csv_path, index=False)
+    # Process and save results
+    final_test_metrics = state.metric_logger.end_epoch(
+        epoch=state.training_context.current_epoch, 
+        stage='final_test', 
+        save=True
+    )
     
     logger.info(f"Final test results saved to {state.training_context.log_dir}")
     
     # Return results dictionary
     return {
-        'final_test_loss': final_test_loss,
-        'final_test_mse': final_test_mse,
-        'final_test_mae': final_test_mae,
-        'final_test_rmse': final_test_rmse,
-        'final_test_q_error': final_test_q_error,
-        'final_test_metrics_df': final_test_metrics_df,
-        'final_test_predictions_df': final_test_predictions_per_graph_df,
-        'final_test_per_graph_metrics_df': final_test_metrics_per_graph_df,
+        'final_test_loss': final_test_metrics['loss'],
+        'final_test_mse': final_test_metrics['mse'],
+        'final_test_mae': final_test_metrics['mae'],
+        'final_test_rmse': final_test_metrics['rmse'],
+        'final_test_q_error': final_test_metrics['q_error'],
+        'final_test_metrics_df': None,
+        'final_test_predictions_df': None,
+        'final_test_per_graph_metrics_df': None,
     }
 
 
@@ -1171,6 +617,9 @@ def main():
         checkpoint_dir=checkpoint_dir,
         use_wandb=use_wandb,
     )
+    
+    # Initialize MetricLogger
+    metric_logger = MetricLogger(log_dir=log_dir, use_wandb=use_wandb)
 
     # Load data
     data_component = prepare_data(config)
@@ -1241,10 +690,7 @@ def main():
         
     state = TrainingState(
         best_test_loss=float('inf'),
-        train_metrics = None,
-        test_metrics = None,
-        train_predictions = None,
-        test_predictions = None,
+        metric_logger=metric_logger,
         training_context=context,
         model_components=model_components,
         data_components=data_component,
