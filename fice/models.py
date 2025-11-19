@@ -14,6 +14,7 @@ from fice.ultra.models import RelNBFNet, EntityNBFNet
 class EntityGNN(nn.Module):
     def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, **kwargs):
         super(EntityGNN, self).__init__()
+        self.cache = {}
 
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
@@ -44,33 +45,39 @@ class EntityGNN(nn.Module):
         )
 
 
-    def forward(self, data, batch, relation_representations=None):
-        batch_size = batch.batch_size
-        device = batch.edge_index.device
+    def forward(self, data, relation_representations=None):
+        device = data.edge_index.device
+
+        if data.dataset_name in self.cache:
+            x = self.cache[data.dataset_name]
+            return x
 
         # Preparing node features based on conditioning strategy
         # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
-        if self.conditioning in ["false", "all"]:
-            x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
-        elif self.conditioning == "seed only":
-            x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
-        else:
-            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
+        # if self.conditioning in ["false", "all"]:
+        #     x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+        # elif self.conditioning == "seed only":
+        #     x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
+        # else:
+        #     raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
-        # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
+        # # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
+        # x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
+
+
+        # # Indices of the nodes that appear in the query batch
+        # node_indices = batch.node_embedding_indices 
+        # valid = node_indices != -1
+        # graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
+        # node_pos = node_indices[valid] # gives the global node ids of the bound nodes
+
+        # # Set input of nodes appearing in query based on conditioning (labelling trick)
+        # if self.conditioning != "false":
+        #     rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
+        #     x[rows] = 1.0   
+
+        x = torch.ones(data.num_nodes, self.input_dim, device=device) * 0.1
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
-
-
-        # Indices of the nodes that appear in the query batch
-        node_indices = batch.node_embedding_indices 
-        valid = node_indices != -1
-        graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
-        node_pos = node_indices[valid] # gives the global node ids of the bound nodes
-
-        # Set input of nodes appearing in query based on conditioning (labelling trick)
-        if self.conditioning != "false":
-            rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
-            x[rows] = 1.0   
         
         # Create batched edge_index once: replicate edges for each batch element
         num_nodes = data.num_nodes
@@ -79,20 +86,22 @@ class EntityGNN(nn.Module):
         batch_edge_list = []
         # also replicate the edge types for each batch element
         batched_edge_type_list = []
-        for b in range(batch_size):
-            offset = b * num_nodes
-            batch_edges = edge_index + offset
-            batch_edge_list.append(batch_edges)
-            batched_edge_type_list.append(data.edge_type)
-        batched_edge_index = torch.cat(batch_edge_list, dim=1)
-        batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
+        # for b in range(batch_size):
+        #     offset = b * num_nodes
+        #     batch_edges = edge_index + offset
+        #     batch_edge_list.append(batch_edges)
+        #     batched_edge_type_list.append(data.edge_type)
+        # batched_edge_index = torch.cat(edge_index, dim=1)
+        batched_edge_index = edge_index
+        # batched_edge_type = torch.cat(data.edge_type, dim=0)
+        batched_edge_type = data.edge_type
 
         
         # Shape (batch_size * num_edges) - maps each edge to its batch index
-        all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
+        # all_edges = torch.repeat_interleave(torch.arange(1, device=device), data.edge_index.size(1))
 
         # Since relation embeddings are different for each batch, we now use all_edges to pick the correct batch and batched_edge_type to get the global id of the relation
-        edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
+        edge_attr = relation_representations[batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
         for i, layer in enumerate(self.layers):
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
@@ -102,8 +111,9 @@ class EntityGNN(nn.Module):
                 x = F.gelu(x)
         
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
-        x = x.view(batch_size, num_nodes, -1)
-        
+        # x = x.view(batch_size, num_nodes, -1)
+        x = x.detach()
+        self.cache[data.dataset_name] = x 
         return x
 
 class RelationGNN(nn.Module):
@@ -123,6 +133,8 @@ class RelationGNN(nn.Module):
         layer_norm: bool = False,
     ):
         super().__init__()
+        self.cache = {}
+
         self.num_relation = num_relation
         self.conditioning = conditioning     
 
@@ -147,58 +159,65 @@ class RelationGNN(nn.Module):
         )
         self.act = nn.GELU()
 
-    def forward(self, data, batch):
+    def forward(self, data, dataset_name: str):
         """
         data  : PyG Data of the *relation* graph
         batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
         """
-        bs        = batch.batch_size
         num_nodes = data.num_nodes
         device    = data.edge_index.device
 
+        if dataset_name in self.cache:
+            return self.cache[dataset_name]
 
-        if   self.conditioning == "false":
-            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
-        elif self.conditioning == "seed only":
-            h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
-        else:  # "all"
-            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
 
-        # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
-        if self.conditioning != "false":
-            valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
-            edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
-            graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
-            rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
-            h[graph_idx, rel_idx] = 1.0
+        # if   self.conditioning == "false":
+        #     h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+        # elif self.conditioning == "seed only":
+        #     h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
+        # else:  # "all"
+        #     h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+
+        # # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
+        # if self.conditioning != "false":
+        #     valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
+        #     edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
+        #     graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
+        #     rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
+        #     h[graph_idx, rel_idx] = 1.0
+
+        h = torch.ones(num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
 
         rel_edges  = data.edge_index        # (2, E)
         rel_types  = data.edge_type         # (E,)
-        batch_edge_list  = []
-        batch_type_list  = []
-        # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
-        # to increase the edge index per batch, but leave the edge type the same.
-        for b in range(bs):                 # identical to EntityGNN lines 72-84
-            offset = b * num_nodes
-            batch_edge_list.append(rel_edges + offset)
-            batch_type_list.append(rel_types)
-        edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
-        edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+        # batch_edge_list  = []
+        # batch_type_list  = []
+        # # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
+        # # to increase the edge index per batch, but leave the edge type the same.
+        # for b in range(bs):                 # identical to EntityGNN lines 72-84
+        #     offset = b * num_nodes
+        #     batch_edge_list.append(rel_edges + offset)
+        #     batch_type_list.append(rel_types)
+        # edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+        # edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
 
-        edge_attr  = self.rel_emb(edge_type)    
+        edge_attr  = self.rel_emb(rel_types)    
 
 
-        x = h.view(bs * num_nodes, -1)
+        # x = h.view(bs * num_nodes, -1)
+        x = h
 
         # Message passing
         for i, layer in enumerate(self.layers):
-            x   = layer(x, edge_index, edge_attr)
+            x   = layer(x, rel_edges, edge_attr)
             if self.norms:
                  x = self.norms[i](x)
             x = self.act(x)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
-        out = x.view(bs, num_nodes, -1)
+        # out = x.view(bs, num_nodes, -1)
+        out = x
+        self.cache[dataset_name] = out
         return out
 
 
@@ -281,19 +300,19 @@ class FICE(nn.Module):
 
         # Provide shape [1, K] to seed K relations at once
         # No need to call .to(device) - already on correct device
-        relation_representations = self.relation_model(batch=batch, data=relation_graph) # shape (batch_size, num_relations, embedding_dim)
-        assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
+        with torch.no_grad():
+            relation_representations = self.relation_model(data=relation_graph, dataset_name=data.dataset_name) # shape (batch_size, num_relations, embedding_dim)
 
         if data is not None:
-            node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
-            assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
+            with torch.no_grad():
+                node_representations = self.entity_model(data=data, relation_representations=relation_representations)
 
 
             # If there are no node representations, we cannot map anything, so we keep the original features
             bound_nodes = embedding_indices >= 0
-            graph_indices = batch.batch
+            # graph_indices = batch.batch
             # HACK: not the most efficient
-            node_embeddings = node_representations[graph_indices, embedding_indices]
+            node_embeddings = node_representations[embedding_indices]
 
             # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
             last = torch.where(bound_nodes.unsqueeze(-1),          
@@ -307,8 +326,8 @@ class FICE(nn.Module):
         # Handle edge embeddings similar to node embeddings
         # Get relation representations for edges
         bound_edges = (edge_embedding_indices >= 0)  # bools indicating which edges need relation embeddings
-        edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
-        edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
+        # edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
+        edge_embeddings = relation_representations[edge_embedding_indices]
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
         edge_last = torch.where(bound_edges.unsqueeze(-1),

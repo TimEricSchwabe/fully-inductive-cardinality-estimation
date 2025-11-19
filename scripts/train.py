@@ -176,37 +176,37 @@ def train_epoch(state: TrainingState):
             state.model_components.optimizer.zero_grad()
 
             # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
-            if isinstance(state.model_components.model, FiceBinary):
-                graph = None
-                num_neighbors = False
-            else:
-                num_neighbors = num_neighbors_cfg
-                if num_neighbors is not None:
-                    # Reusable sampler path
-                    node_indices = query_batch.node_embedding_indices
-                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                    if seeds_cpu.numel() > 0:
-                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
-                        # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
-                        query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
-                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
-                        mapped = torch.where(
-                            query_nodes >= 0,
-                            global_to_local[query_nodes],
-                            torch.full_like(query_nodes, -1),
-                        ).to(torch.long)
-                        # Update the graph to the sampled subgraph
-                        graph = graph_sub.to(device)
-                        # Update the node indices to the mapped indices
-                        query_batch.node_embedding_indices = mapped
-                    else:
-                        graph = None
-                else:
-                    graph = full_graph.to(device)
-
-            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
+            # if isinstance(state.model_components.model, FiceBinary):
+            #     graph = None
+            #     num_neighbors = False
+            # else:
+            #     num_neighbors = num_neighbors_cfg
+            #     if num_neighbors is not None:
+            #         # Reusable sampler path
+            #         node_indices = query_batch.node_embedding_indices
+            #         seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+            #         if seeds_cpu.numel() > 0:
+            #             # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+            #             # If a node is not in the subgraph, its mapped to -1
+            #             graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+            #             query_nodes = query_batch.node_embedding_indices.detach().cpu()
+            #             # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+            #             # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+            #             mapped = torch.where(
+            #                 query_nodes >= 0,
+            #                 global_to_local[query_nodes],
+            #                 torch.full_like(query_nodes, -1),
+            #             ).to(torch.long)
+            #             # Update the graph to the sampled subgraph
+            #             graph = graph_sub.to(device)
+            #             # Update the node indices to the mapped indices
+            #             query_batch.node_embedding_indices = mapped
+            #         else:
+            #             graph = None
+            #     else:
+            #         graph = full_graph.to(device)
+            graph = full_graph.to(device)
+            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph.to(device)
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
@@ -282,35 +282,36 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
-            if isinstance(state.model_components.model, FiceBinary):
-                graph = None
-                relation_graph_inp = None
-            else:
-                if num_neighbors_eval is not None:
-                    # Reusable sampler path
-                    node_indices = query_batch.node_embedding_indices
-                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                    if seeds_cpu.numel() > 0:
-                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
-                        # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
-                        query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
-                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
-                        mapped = torch.where(
-                            query_nodes >= 0,
-                            global_to_local[query_nodes],
-                            torch.full_like(query_nodes, -1),
-                        ).to(torch.long)
-                        # Update the graph to the sampled subgraph
-                        graph = graph_sub.to(device)
-                        # Update the node indices to the mapped indices
-                        query_batch.node_embedding_indices = mapped
-                    else:
-                        graph = None
-                else:
-                    graph = full_graph.to(device)
-                relation_graph_inp = relation_graph
+            # if isinstance(state.model_components.model, FiceBinary):
+            #     graph = None
+            #     relation_graph_inp = None
+            # else:
+            #     if num_neighbors_eval is not None:
+            #         # Reusable sampler path
+            #         node_indices = query_batch.node_embedding_indices
+            #         seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+            #         if seeds_cpu.numel() > 0:
+            #             # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+            #             # If a node is not in the subgraph, its mapped to -1
+            #             graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+            #             query_nodes = query_batch.node_embedding_indices.detach().cpu()
+            #             # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+            #             # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+            #             mapped = torch.where(
+            #                 query_nodes >= 0,
+            #                 global_to_local[query_nodes],
+            #                 torch.full_like(query_nodes, -1),
+            #             ).to(torch.long)
+            #             # Update the graph to the sampled subgraph
+            #             graph = graph_sub.to(device)
+            #             # Update the node indices to the mapped indices
+            #             query_batch.node_embedding_indices = mapped
+            #         else:
+            #             graph = None
+            #     else:
+            #         graph = full_graph.to(device)
+            relation_graph_inp = relation_graph
+            graph = full_graph.to(device)
 
             # Forward pass
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
