@@ -233,9 +233,11 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     validation_datasets = []
     validation_sets = [] 
+    validation_batch_size = []
 
     test_dataset = []
     test_sets = []
+    test_batch_size = []
 
     for data_config in data_configs:
         dataset_name = data_config.dataset
@@ -251,15 +253,18 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         elif data_config.type == 'validation':
             validation_datasets.append(dataset)
             validation_sets.append(queries)
+            validation_batch_size.append(data_config.batch_size)
 
         elif data_config.type == 'test':
             test_dataset.append(dataset)
             test_sets.append(queries)
+            test_batch_size.append(data_config.batch_size)
 
         elif data_config.type == 'train-val': 
             train_datasets.append(dataset)
             validation_datasets.append(dataset)
             train_batch_size.append(data_config.batch_size)
+            validation_batch_size.append(data_config.batch_size)
 
             train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
             train_sets.append(train_q)
@@ -275,7 +280,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     validation_loader = MultigraphLoader(
         data=validation_datasets,
         queries=validation_sets,
-        batch_size=1,
+        batch_size=validation_batch_size,
         shuffle=True,
     )
 
@@ -283,11 +288,12 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets
+        test_batch_size = validation_batch_size
 
     test_loader = MultigraphLoader(
         data=test_dataset,
         queries=test_sets,
-        batch_size=1,
+        batch_size=test_batch_size,
         shuffle=True,
     )
 
