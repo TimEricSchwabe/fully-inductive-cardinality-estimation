@@ -7,7 +7,7 @@ from torch_geometric.nn import GATv2Conv, GINEConv
 
 from easydict import EasyDict
 
-from fice.gnce.models import QueryGNN, TripleModel
+from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN
 from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 
@@ -205,7 +205,7 @@ class RelationGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel'):
         super(FICE, self).__init__()
         self.vector_dim = 128
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
@@ -214,6 +214,7 @@ class FICE(nn.Module):
         self.entity_message_func = entity_message_func
         self.relation_message_func = relation_message_func
         self.conditioning = conditioning
+        self.query_gnn_type = query_gnn
 
 
         if relation_message_func in ['rotate', 'distmult', 'transe']:
@@ -260,8 +261,12 @@ class FICE(nn.Module):
             raise ValueError(f"Invalid entity message function: {entity_message_func}")
 
         # Dataset creates node/edge features of size (vector_dim + 3)
-        # self.query_gnn = QueryGNN(feat_dim=self.vector_dim + 3)
-        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+        if self.query_gnn_type == 'QueryCardinalityGNN':
+            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3)
+        elif self.query_gnn_type == 'TripleModel':
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+        else:
+            raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
     def forward(self, data, relation_graph, batch, graph_size):
 
@@ -319,8 +324,40 @@ class FICE(nn.Module):
         batch.edge_attr = edge_features
 
         # TODO:
-
-        log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+        
+        if self.query_gnn_type == 'QueryCardinalityGNN':
+            # update Counts for log:
+            
+            # Process node features (batch.x)
+            unbound_nodes = batch.node_embedding_indices < 0
+            bound_nodes = ~unbound_nodes
+            
+            # For unbound nodes: set first 3 dims to log(graph_size)
+            log_graph_size = torch.log(graph_size.float())
+            batch.x[unbound_nodes, :3] = log_graph_size
+            
+            # For bound nodes: replace 0s with 1s in first 3 dims, then apply log
+            first_3_dims = batch.x[bound_nodes, :3]
+            first_3_dims = torch.where(first_3_dims == 0, torch.ones_like(first_3_dims), first_3_dims)
+            batch.x[bound_nodes, :3] = torch.log(first_3_dims)
+            
+            # Process edge features (batch.edge_attr)
+            unbound_edges = batch.edge_embedding_indices < 0
+            bound_edges = ~unbound_edges
+            
+            # For unbound edges: set first 3 dims to log(graph_size)
+            batch.edge_attr[unbound_edges, :3] = log_graph_size
+            
+            # For bound edges: replace 0s with 1s in first 3 dims, then apply log
+            edge_first_3_dims = batch.edge_attr[bound_edges, :3]
+            edge_first_3_dims = torch.where(edge_first_3_dims == 0, torch.ones_like(edge_first_3_dims), edge_first_3_dims)
+            batch.edge_attr[bound_edges, :3] = torch.log(edge_first_3_dims)
+            
+            log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+        elif self.query_gnn_type == 'TripleModel':
+            log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+        else:
+            raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
         return log_cardinality_pred
 
