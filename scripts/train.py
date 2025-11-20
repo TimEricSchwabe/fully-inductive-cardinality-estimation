@@ -134,6 +134,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
     layer_norm = getattr(config, 'layer_norm', True)
     conditioning = getattr(config, 'Conditioning', 'all')
+    query_gnn = getattr(config, 'QueryGNN', 'TripleModel')
     
     model_type = getattr(config, 'model', 'FICE')
     
@@ -146,7 +147,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             entity_message_func=entity_message_func,
             relation_message_func=relation_message_func,
             conditioning=conditioning,
-            layer_norm=layer_norm
+            layer_norm=layer_norm,
+            query_gnn=query_gnn
         )
     else:
         raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
@@ -1158,7 +1160,7 @@ def main():
 
     # Initialize Weights & Biases
     use_wandb = args.wandb
-    #use_wandb = False # todo
+    use_wandb = True # todo
     if use_wandb:
         initialize_wandb(config, run_dir)
 

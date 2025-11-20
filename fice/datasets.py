@@ -541,6 +541,65 @@ class fb237_v4_star_queries(NTQueries):
             **kwargs
         )
 
+class fb237_v4_ind_star_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59731859?private_link=953281688dbdb230c09d",
+            dataset_name="fb237_v4_ind_star_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+    
+class wn18rr_v4_star_queries(NTQueries):
+
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59731877?private_link=2b8a1c9a43910e6a2189",
+            dataset_name="wn18rr_v4_star_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+class wn18rr_v4_ind_star_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59731889?private_link=ec764d8f68a39b467a60",
+            dataset_name="wn18rr_v4_ind_star_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+
 class dbpedia100k_star_queries(NTQueries):
     def __init__(
         self,
