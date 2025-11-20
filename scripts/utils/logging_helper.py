@@ -43,8 +43,8 @@ def calculate_all_metrics(predictions_log, true_values_log):
     Returns:
         Dictionary containing all calculated metrics
     """
-    predictions = np.expm1(predictions_log)
-    true_values = np.expm1(true_values_log)
+    predictions = np.exp(predictions_log)
+    true_values = np.exp(true_values_log)
     mse = metrics.calculate_mse(predictions, true_values)
     
     return {
