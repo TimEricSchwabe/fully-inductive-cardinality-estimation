@@ -10,6 +10,8 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
+from wandb.errors import AuthenticationError
+import time
 
 import utils.metrics as metrics
 
@@ -192,7 +194,13 @@ class MetricLogger:
         
         # Log to WandB
         if self.use_wandb:
-            self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics)
+            for i in range(1000):
+                try:
+                    self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics)
+                    break
+                except AuthenticationError as e:
+                    logger.error(f"WandB authentication error: {e}")
+                    time.sleep(2)
 
         # Save CSVs
         if save:
