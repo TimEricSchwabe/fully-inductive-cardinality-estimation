@@ -212,7 +212,7 @@ class SWDF(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/s/ab41d70e4644c75a7e29",
+            url="https://figshare.com/ndownloader/files/59320634",
             dataset_name="swdf",
             **kwargs
         )
