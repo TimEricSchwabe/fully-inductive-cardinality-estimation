@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
-from torch_geometric.nn import GATv2Conv, GINEConv
+from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
+from torch_geometric.utils import degree
 
 from easydict import EasyDict
 
@@ -57,6 +58,16 @@ class EntityGNN(nn.Module):
         else:
             raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
+        # --- FIX 1: Symmetry Breaking with Degrees ---
+        # Inject log(degree) into the first dimension of the features to distinguish nodes structurally
+        if data.edge_index.numel() > 0:
+            deg = degree(data.edge_index[0], data.num_nodes, dtype=torch.float)
+            # Normalize/Log degree to keep it in a reasonable range
+            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(batch_size, -1).unsqueeze(-1).to(device)
+            # Add to the first dimension of x (broadcast over batch)
+            x = x.clone()
+            x[:, :, 0] += deg_feature.squeeze(-1)
+
         # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
 
@@ -95,11 +106,15 @@ class EntityGNN(nn.Module):
         edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
         for i, layer in enumerate(self.layers):
+            x_in = x # Save input for residual
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
             if self.norms:
                 x = self.norms[i](x)
             if self.message_func != 'gine':
                 x = F.gelu(x)
+            
+
+            x = x + x_in
         
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -164,6 +179,14 @@ class RelationGNN(nn.Module):
         else:  # "all"
             h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
 
+        # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
+        # Inject log(degree) into the first dimension to distinguish relations structurally
+        if data.edge_index.numel() > 0:
+            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
+            h = h.clone()
+            h[:, :, 0] += deg_feature.squeeze(-1)
+
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
         if self.conditioning != "false":
             valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
@@ -192,10 +215,15 @@ class RelationGNN(nn.Module):
 
         # Message passing
         for i, layer in enumerate(self.layers):
+            x_in = x # Save input for residual
             x   = layer(x, edge_index, edge_attr)
             if self.norms:
                  x = self.norms[i](x)
             x = self.act(x)
+            
+            # --- FIX 2: Residual Connection ---
+            if x.shape == x_in.shape:
+                x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)

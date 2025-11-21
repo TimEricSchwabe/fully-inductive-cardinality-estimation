@@ -428,8 +428,9 @@ class QueryCardinalityGNN(torch.nn.Module):
         c_global = global_sum[:, 0:1]
         e_global = global_sum[:, 1:]
         
-        correction = self.sel_global(e_global)
-        final_est = c_global - correction
+        #correction = self.sel_global(e_global)
+        #final_est = c_global - correction
+        final_est = c_global
         
         return torch.abs(final_est.squeeze(-1))
 
@@ -457,7 +458,7 @@ class IndependentQueryGNN(torch.nn.Module):
         
         
         # --- Step 3: Global Aggregation ---
-        global_sum = global_add_pool(x, batch.batch)
+        global_sum = x[batch.ptr[:-1]]
         
         c_global = global_sum[:, 0:1]
         e_global = global_sum[:, 1:]
@@ -475,7 +476,7 @@ class IndependentNeuralJoin(MessagePassing):
     The model expects log values for all counts ! And log(N) for all variable counts !
     """
     def __init__(self, emb_dim, is_first_layer=False):
-        super().__init__(aggr='add') 
+        super().__init__(aggr='add', flow='target_to_source') 
         self.emb_dim = emb_dim
         self.is_first_layer = is_first_layer
 
