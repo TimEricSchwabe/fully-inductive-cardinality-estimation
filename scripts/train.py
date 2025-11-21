@@ -606,7 +606,6 @@ def main():
 
     # Initialize Weights & Biases
     use_wandb = args.wandb
-    use_wandb = True # todo
     if use_wandb:
         initialize_wandb(config, run_dir)
 
