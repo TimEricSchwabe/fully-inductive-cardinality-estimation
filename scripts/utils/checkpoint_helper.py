@@ -63,6 +63,6 @@ def load_checkpoint(checkpoint_path: Union[str, Path]) -> TrainingState:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    training_state = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
+    training_state = torch.load(checkpoint_path, weights_only=True)
 
     return training_state
