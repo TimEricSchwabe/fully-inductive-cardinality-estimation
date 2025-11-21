@@ -7,7 +7,7 @@ from torch_geometric.nn import GATv2Conv, GINEConv
 
 from easydict import EasyDict
 
-from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN
+from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN, IndependentQueryGNN
 from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 
@@ -440,3 +440,20 @@ class FiceBinary(nn.Module):
 
 
 
+class FiceIndependent(nn.Module):
+    """Ablation model calculates cardinalities based on the independent assumption
+    using only the counts.
+    """
+
+    def __init__(self, vector_dim: int = 128):
+        super().__init__()
+        self.vector_dim = vector_dim
+        self.query_gnn = IndependentQueryGNN(feat_dim=self.vector_dim + 3)
+
+
+    # --- forward ----------------------------------------------------------------
+    def forward(self, data, relation_graph, batch, graph_size):
+
+
+        log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+        return log_cardinality_pred

@@ -34,7 +34,7 @@ matplotlib.use('Agg')
 
 # Project imports
 import utils.metrics as metrics
-from fice.models import FICE, FiceBinary
+from fice.models import FICE, FiceBinary, FiceIndependent
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
 from utils.config import Config, DataConfig, load_config_yaml
 from utils.data_helper import prepare_data
@@ -102,6 +102,9 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             layer_norm=layer_norm,
             query_gnn=query_gnn
         )
+    elif model_type == 'FiceIndependent':
+        logger.info("Initializing FiceIndependent model (independent cardinality estimation)")
+        model = FiceIndependent(vector_dim=128)
     else:
         raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
     
@@ -118,6 +121,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
+    elif model_type == 'FiceIndependent':
+        optimizer = None
     else:
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -175,10 +180,11 @@ def train_epoch(state: TrainingState):
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
 
-            state.model_components.optimizer.zero_grad()
+            if state.model_components.optimizer is not None:
+                state.model_components.optimizer.zero_grad()
 
             # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
-            if isinstance(state.model_components.model, FiceBinary):
+            if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
                 num_neighbors = False
             else:
@@ -208,7 +214,7 @@ def train_epoch(state: TrainingState):
                 else:
                     graph = full_graph.to(device)
 
-            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
+            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
@@ -220,8 +226,9 @@ def train_epoch(state: TrainingState):
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
             # Backward pass
-            loss.backward()
-            state.model_components.optimizer.step()
+            if state.model_components.optimizer is not None:
+                loss.backward()
+                state.model_components.optimizer.step()
 
             # Log batch
             state.metric_logger.log_batch(
@@ -284,7 +291,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
-            if isinstance(state.model_components.model, FiceBinary):
+            if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
                 relation_graph_inp = None
             else:
@@ -400,13 +407,14 @@ def train_model(
                 state.best_test_loss = avg_test_loss
                 best_model_path = state.training_context.checkpoint_dir / "best_model.pt"
 
-                save_checkpoint(state, best_model_path)
-                logger.info(
-                    f"New best model saved with test loss: {state.best_test_loss:.6f}"
-                )
+                if state.model_components.optimizer is not None:
+                    save_checkpoint(state, best_model_path)
+                    logger.info(
+                        f"New best model saved with test loss: {state.best_test_loss:.6f}"
+                    )
                 
                 # Log best model as wandb artifact
-                if state.training_context.use_wandb:
+                if state.training_context.use_wandb and state.model_components.optimizer is not None:
                     artifact = wandb.Artifact(
                         name="best_model",
                         type="model",
@@ -605,8 +613,7 @@ def main():
     logger.info(f"Using device: {device}")
 
     # Initialize Weights & Biases
-    use_wandb = args.wandb
-    use_wandb = True # todo
+    use_wandb = config.wandb
     if use_wandb:
         initialize_wandb(config, run_dir)
 
@@ -670,12 +677,15 @@ def main():
     logger.info(f"{model_components.model}")
     logger.info(f"Total parameters: {total_params:,}")
     logger.info(f"Trainable parameters: {trainable_params:,}")
-    logger.info(f"Model device: {next(model_components.model.parameters()).device}")
+    if model_components.optimizer is not None:
+        logger.info(f"Model device: {next(model_components.model.parameters()).device}")
 
-    logger.info(f"Optimizer: {model_components.optimizer.__class__.__name__}")
-
-    logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
-    logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
+    if model_components.optimizer is not None:
+        logger.info(f"Optimizer: {model_components.optimizer.__class__.__name__}")
+        logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
+        logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
+    else:
+        logger.info("No optimizer found")
 
     if use_wandb:
         wandb.watch(model_components.model, log="all", log_freq=100)

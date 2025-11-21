@@ -291,7 +291,7 @@ class NeuralJoin(MessagePassing):
     The model expects log values for all counts ! And log(N) for all variable counts !
     """
     def __init__(self, emb_dim, is_first_layer=False):
-        super().__init__(aggr='add') 
+        super().__init__(aggr='add', flow='target_to_source') 
         self.emb_dim = emb_dim
         self.is_first_layer = is_first_layer
 
@@ -418,7 +418,12 @@ class QueryCardinalityGNN(torch.nn.Module):
         #x = self.layer2(x, edge_index, edge_attr, log_N)
         
         # --- Step 3: Global Aggregation ---
-        global_sum = global_add_pool(x, batch.batch)
+        #global_sum = global_add_pool(x, batch.batch)
+
+
+        # Pick the first node of each graph in the batch (which corresponds to the -1 node)
+        # batch.ptr[:-1] gives the start index of every graph in the batch
+        global_sum = x[batch.ptr[:-1]]
         
         c_global = global_sum[:, 0:1]
         e_global = global_sum[:, 1:]
@@ -427,3 +432,112 @@ class QueryCardinalityGNN(torch.nn.Module):
         final_est = c_global - correction
         
         return torch.abs(final_est.squeeze(-1))
+
+
+class IndependentQueryGNN(torch.nn.Module):
+    def __init__(self, feat_dim):
+        super().__init__()
+        # feat_dim is the total width of input vector (3 counts + embedding)
+        self.emb_dim = feat_dim - 3 
+        
+        # Layer 1: Handles 3-count input
+        self.layer1 = IndependentNeuralJoin(self.emb_dim, is_first_layer=True)
+        
+        
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+        log_N = torch.log(torch.tensor(N))
+        
+        
+        # Layer 1
+        # Output x becomes [Nodes, 1 + D]
+        x = self.layer1(x, edge_index, edge_attr, log_N)
+        
+        
+        # --- Step 3: Global Aggregation ---
+        global_sum = global_add_pool(x, batch.batch)
+        
+        c_global = global_sum[:, 0:1]
+        e_global = global_sum[:, 1:]
+        
+        final_est = c_global
+        
+        return torch.abs(final_est.squeeze(-1))
+
+
+class IndependentNeuralJoin(MessagePassing):
+    """
+    Implements the Generalized Neural Cardinality Operator (Psi).
+    Handles specific slicing for the first layer where inputs have 3 count dimensions.
+
+    The model expects log values for all counts ! And log(N) for all variable counts !
+    """
+    def __init__(self, emb_dim, is_first_layer=False):
+        super().__init__(aggr='add') 
+        self.emb_dim = emb_dim
+        self.is_first_layer = is_first_layer
+
+
+
+    def forward(self, x_curr, edge_index, edge_attr, log_N):
+        self.log_N = log_N
+        # Propagate generates the messages (m_j->i) and sums them.
+        aggr_out = self.propagate(edge_index, x=x_curr, edge_attr=edge_attr)
+        
+
+        # Split Aggregated Message in cardinality estimate and semantic embeddings
+        c_agg = aggr_out[:, 0:1]
+        e_agg = aggr_out[:, 1:]
+        
+        # 1. Independence Assumption (Sum of logs)
+        c_base = c_agg
+        
+        # 2. Selectivity Correction
+        e_combined = e_agg
+        
+        c_new = c_base
+        
+        # 3. Update Embedding
+        e_new = e_combined
+        
+        return torch.cat([c_new, e_new], dim=1)
+
+    def message(self, x_i, x_j, edge_attr):
+        # --- Case Distinction for Message (Source Node j) ---
+        
+        # Handle x_j (Source)
+        if self.is_first_layer:
+            # Layer 1: x_j has shape [N, 3 + D]
+            c_j = x_j[:, 0:1] #x_j is the sender, i.e. we pick the subject counts
+            c_i = x_i[:, 2:3] #x_i is the receiver, i.e. we pick the object counts
+            e_j = x_j[:, 3:]
+            e_i = x_i[:, 3:]
+        else:
+            # Layer >1: x_j has shape [N, 1 + D]
+            c_j = x_j[:, 0:1]
+            c_i = x_i[:, 0:1]
+            e_j = x_j[:, 1:]
+            e_i = x_i[:, 1:]
+            
+        # Handle edge_attr (Predicate)
+        # We assume edge_attr ALWAYS has shape [E, 3 + D] (raw stats as they are not transformed by message-passing)
+        # We always pick Index 1 (Count as Predicate)
+        c_edge = edge_attr[:, 1:2]
+        e_edge = edge_attr[:, 3:]
+        
+        # 1. Independence Assumption (Triple Pattern)
+        c_base = c_i + c_j + c_edge - 2*self.log_N
+        
+        # Calculating Embedding of triple pattern
+        e_combined = e_i + e_j + e_edge
+
+        
+        # Complete Cardinality Estimate
+        c_msg = c_base
+        
+        # 3. Update Embedding for message
+        e_msg = e_combined
+        
+        return torch.cat([c_msg, e_msg], dim=1)
