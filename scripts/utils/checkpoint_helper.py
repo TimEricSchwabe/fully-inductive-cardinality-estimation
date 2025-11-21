@@ -8,6 +8,18 @@ import logging
 from utils.data_helper import *
 
 def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
+    def to_cpu(obj):
+        if isinstance(obj, torch.Tensor):
+            return obj.cpu()
+        elif isinstance(obj, dict):
+            return {k: to_cpu(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [to_cpu(v) for v in obj]
+        elif isinstance(obj, tuple):
+            return tuple(to_cpu(v) for v in obj)
+        else:
+            return obj
+
     if not isinstance(checkpoint_path, Path):
         checkpoint_path = Path(checkpoint_path)
      
@@ -24,8 +36,8 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
         counter += 1
     
     training_state = {
-        'model_state_dict': state.model_components.model.state_dict(),
-        'optimizer_state_dict': state.model_components.optimizer.state_dict(),
+        'model_state_dict': to_cpu(state.model_components.model.state_dict()),
+        'optimizer_state_dict': to_cpu(state.model_components.optimizer.state_dict()),
         'config': state.training_context.config,
     }
 
@@ -51,6 +63,6 @@ def load_checkpoint(checkpoint_path: Union[str, Path]) -> TrainingState:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    training_state = torch.load(checkpoint_path, weights_only=True)
+    training_state = torch.load(checkpoint_path, weights_only=False, map_location=torch.device('cpu'))
 
     return training_state
