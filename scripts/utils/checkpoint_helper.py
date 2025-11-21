@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import Union
 from pathlib import Path
 
@@ -6,6 +7,7 @@ from utils.models import *
 import torch
 import logging
 from utils.data_helper import *
+from utils.config import Config
 
 def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
     def to_cpu(obj):
@@ -34,11 +36,13 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
         suffix = original_path.suffix
         checkpoint_path = original_path.parent / f"{stem}_{counter}{suffix}"
         counter += 1
-    
+
+    model_state_dict = state.model_components.model.state_dict()
+    optimizer_state_dict = state.model_components.optimizer.state_dict()
     training_state = {
-        'model_state_dict': to_cpu(state.model_components.model.state_dict()),
-        'optimizer_state_dict': to_cpu(state.model_components.optimizer.state_dict()),
-        'config': state.training_context.config,
+        'model_state_dict': model_state_dict,
+        'optimizer_state_dict': optimizer_state_dict,
+        'config': state.training_context.config.model_dump(),
     }
 
 
@@ -63,6 +67,6 @@ def load_checkpoint(checkpoint_path: Union[str, Path]) -> TrainingState:
     if not checkpoint_path.exists():
         raise FileNotFoundError(f"Checkpoint file not found: {checkpoint_path}")
 
-    training_state = torch.load(checkpoint_path, weights_only=True)
+    training_state = torch.load(checkpoint_path, weights_only=True, map_location=torch.device('cpu'))
 
     return training_state
