@@ -291,7 +291,7 @@ class NeuralJoin(MessagePassing):
     The model expects log values for all counts ! And log(N) for all variable counts !
     """
     def __init__(self, emb_dim, is_first_layer=False):
-        super().__init__(aggr='add', flow='target_to_source') 
+        super().__init__(aggr='mean', flow='target_to_source') 
         self.emb_dim = emb_dim
         self.is_first_layer = is_first_layer
 
@@ -362,11 +362,16 @@ class NeuralJoin(MessagePassing):
         c_edge = edge_attr[:, 1:2]
         e_edge = edge_attr[:, 3:]
         
+        # L2 Normalize the embedding inputs
+        e_i = F.normalize(e_i, p=2, dim=1)
+        e_j = F.normalize(e_j, p=2, dim=1)
+        e_edge = F.normalize(e_edge, p=2, dim=1)
+
         # 1. Independence Assumption (Triple Pattern)
         c_base = c_i + c_j + c_edge - 2*self.log_N
         
         # Calculating Embedding of triple pattern
-        e_combined = e_i + e_j + e_edge
+        e_combined = (e_i + e_j + e_edge) / 3 # mean now
 
         # 2. Selectivity Correction
         tp_sel = self.sel_triple(e_combined)
@@ -375,7 +380,7 @@ class NeuralJoin(MessagePassing):
         c_msg = c_base - tp_sel
         
         # 3. Update Embedding for message
-        e_msg = F.relu(self.emb_update_triple(e_combined))
+        e_msg = F.normalize(self.emb_update_triple(e_combined), p=2, dim=1)
         
         return torch.cat([c_msg, e_msg], dim=1)
 
@@ -528,6 +533,11 @@ class IndependentNeuralJoin(MessagePassing):
         c_edge = edge_attr[:, 1:2]
         e_edge = edge_attr[:, 3:]
         
+        # L2 Normalize the embedding inputs
+        e_i = F.normalize(e_i, p=2, dim=1)
+        e_j = F.normalize(e_j, p=2, dim=1)
+        e_edge = F.normalize(e_edge, p=2, dim=1)
+
         # 1. Independence Assumption (Triple Pattern)
         c_base = c_i + c_j + c_edge - 2*self.log_N
         
