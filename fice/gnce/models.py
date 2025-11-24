@@ -371,7 +371,7 @@ class NeuralJoin(MessagePassing):
         c_base = c_i + c_j + c_edge - 2*self.log_N
         
         # Calculating Embedding of triple pattern
-        e_combined = (e_i + e_j + e_edge) / 3 # mean now
+        e_combined = e_i + e_j + e_edge
 
         # 2. Selectivity Correction
         tp_sel = self.sel_triple(e_combined)
@@ -380,7 +380,7 @@ class NeuralJoin(MessagePassing):
         c_msg = c_base - tp_sel
         
         # 3. Update Embedding for message
-        e_msg = F.normalize(self.emb_update_triple(e_combined), p=2, dim=1)
+        e_msg = self.emb_update_triple(e_combined)
         
         return torch.cat([c_msg, e_msg], dim=1)
 
