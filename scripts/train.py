@@ -82,13 +82,13 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     device = context.device
     
     # Get message functions from config if available
-    entity_message_func = getattr(config, 'EntityGNNMessageFunc', 'rotate')
-    relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
-    layer_norm = getattr(config, 'layer_norm', True)
-    conditioning = getattr(config, 'Conditioning', 'all')
-    query_gnn = getattr(config, 'QueryGNN', 'TripleModel')
+    entity_message_func = config.EntityGNNMessageFunc
+    relation_message_func = config.RelationGNNMessageFunc
+    layer_norm = config.layer_norm
+    conditioning = config.Conditioning
+    query_gnn = config.QueryGNN
     
-    model_type = getattr(config, 'model', 'FICE')
+    model_type = config.model
     
     if model_type == 'FiceBinary':
         logger.info("Initializing FiceBinary model (binary embedding ablation)")

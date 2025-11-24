@@ -27,8 +27,9 @@ class Config(BaseSettings):
     EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
     RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT'] = "GAT"  # Message function for relation GNN
     Conditioning: Literal['seed only', 'all', 'false'] = "all"  # Conditioning strategy for GNN
+    QueryGNN: Literal['QueryGNN', 'TripleModel'] = 'TripleModel'  # Number of layers in query GNN
     min_cardinality: int | None = None  # Minimum cardinality filter
-    model: str = "FICE"  # Model type to use
+    model: Literal['FICE', 'FiceBinary'] = "FICE"  # Model type to use
     layer_norm: bool = True  # Whether to use layer normalization in GNNs
 
     class Config:
