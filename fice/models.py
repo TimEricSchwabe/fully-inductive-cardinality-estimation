@@ -324,7 +324,6 @@ class FICE(nn.Module):
         batch.edge_attr = edge_features
 
         # TODO:
-        
         if self.query_gnn_type == 'QueryCardinalityGNN':
             # update Counts for log:
             
