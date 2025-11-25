@@ -233,10 +233,12 @@ class RelationGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel', vector_dim=128):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel',
+     vector_dim=128, n_embedding_layers=2):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
-        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
+        # Use n_embedding_layers to create the list of hidden dimensions
+        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
         
         # Store message functions and conditioning for later use
         self.entity_message_func = entity_message_func

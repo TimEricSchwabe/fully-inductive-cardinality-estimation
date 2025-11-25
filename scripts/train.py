@@ -88,8 +88,9 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     conditioning = getattr(config, 'Conditioning', 'all')
     query_gnn = getattr(config, 'QueryGNN', 'TripleModel')
     
-    # Get embedding dimension from config (default to 128 if not present)
+    # Get embedding dimension and number of layers from config
     vector_dim = getattr(config, 'embedding_dim', 128)
+    n_embedding_layers = getattr(config, 'n_embedding_layers', 2)
 
     model_type = getattr(config, 'model', 'FICE')
     
@@ -97,14 +98,15 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
         model = FiceBinary(vector_dim=vector_dim)
     elif model_type == 'FICE':
-        logger.info(f"Initializing FICE model (dim={vector_dim})")
+        logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
             entity_message_func=entity_message_func,
             relation_message_func=relation_message_func,
             conditioning=conditioning,
             layer_norm=layer_norm,
             query_gnn=query_gnn,
-            vector_dim=vector_dim  # Pass the dimension here
+            vector_dim=vector_dim,
+            n_embedding_layers=n_embedding_layers # Pass the new parameter
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
