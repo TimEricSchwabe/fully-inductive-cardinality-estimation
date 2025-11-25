@@ -5,6 +5,8 @@ from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
 from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
 from torch_geometric.utils import degree
+from torch_geometric.transforms import AddRandomWalkPE, AddLaplacianEigenvectorPE
+
 
 from easydict import EasyDict
 
@@ -115,7 +117,7 @@ class EntityGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
-                nn.ReLU(),
+                nn.SiLU(),
                 nn.Linear(out_dim, out_dim),
             )
 
@@ -206,8 +208,7 @@ class EntityGNN(nn.Module):
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
             if self.norms:
                 x = self.norms[i](x)
-            if self.message_func != 'gine':
-                x = F.gelu(x)
+            x = F.silu(x)
             
 
             x = x + x_in
@@ -259,7 +260,12 @@ class RelationGNN(nn.Module):
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
         )
-        self.act = nn.GELU()
+        self.act = nn.SiLU()
+
+
+        #self.walk_length = 8
+        #if self.walk_length > 0:
+        #    self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.walk_length)
 
     def forward(self, data, batch=None):
         """
@@ -289,6 +295,21 @@ class RelationGNN(nn.Module):
             deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
             h = h.clone()
             h[:, :, 0] += deg_feature.squeeze(-1)
+
+        #if self.walk_length > 0:
+        #    data = self.le_pw_transform(data)
+
+
+        # Extract PE: shape (num_nodes, walk_length)
+        #rw_pe = data.laplacian_eigenvector_pe.to(device)
+        
+        # Expand to batch size: (batch_size, num_nodes, walk_length)
+        #rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
+
+        # Add to h, skipping the 0-th dimension used by degree
+        # Ensure we don't exceed embedding dimensions
+        #dim_limit = min(self.walk_length, h.size(-1) - 1)
+        #h[:, :, 1:1+dim_limit] += rw_pe_expanded[:, :, :dim_limit] * 10
 
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
         if self.conditioning != "false":
@@ -331,6 +352,7 @@ class RelationGNN(nn.Module):
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
         return out
+
 
 
 
