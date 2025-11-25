@@ -854,10 +854,10 @@ class CardinalityConv(MessagePassing):
         # --- Learned Triple Correction ---
         # ψ_edge(e_s, e_p, e_o)
         triple_emb = torch.cat([e_s, e_p, e_o], dim=1)
-        edge_correction = self.edge_mlp(triple_emb)
+        triple_selectivity = self.edge_mlp(triple_emb)
         
         # Corrected Edge Estimate
-        log_card_corrected = log_card_ind - edge_correction
+        log_card_corrected = log_card_ind - triple_selectivity
         
         # Pass the combined embedding to the node for aggregation
         # (Simple sum aggregation of embeddings)

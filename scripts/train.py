@@ -45,6 +45,7 @@ from utils.helper import (
     process_seed,
     set_random_seeds,
     setup_logging,
+    analyze_vector_similarity,
 )
 from utils.logging_helper import (
     TRAIN_METRICS_FILE_NAME,
@@ -170,6 +171,8 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
+    plot_embeddings = True
+
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
     )
@@ -185,6 +188,15 @@ def train_epoch(state: TrainingState):
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
+            if plot_embeddings:
+                edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
+                node_embeddings = state.model_components.model.entity_model(data=full_graph, relation_representations=edge_embeddings)
+                edge_embeddings = edge_embeddings.detach().cpu().squeeze()
+                node_embeddings = node_embeddings.detach().cpu().squeeze()
+                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
+                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
+                plot_embeddings = False
+
 
             if state.model_components.optimizer is not None:
                 state.model_components.optimizer.zero_grad()
@@ -194,7 +206,7 @@ def train_epoch(state: TrainingState):
                 graph = None
                 num_neighbors = False
             else:
-                num_neighbors = num_neighbors_cfg
+                num_neighbors = num_neighbors_cfg   
                 if num_neighbors is not None:
                     # Reusable sampler path
                     node_indices = query_batch.node_embedding_indices
@@ -221,7 +233,8 @@ def train_epoch(state: TrainingState):
                     graph = full_graph.to(device)
 
             relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
-            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size, plot_embeddings=plot_embeddings, epoch=state.training_context.current_epoch)
+            plot_embeddings = False
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
             true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
