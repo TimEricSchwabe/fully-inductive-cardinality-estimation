@@ -119,16 +119,17 @@ class EntityGNN(nn.Module):
                 nn.Linear(out_dim, out_dim),
             )
 
-        if message_func == 'gine':
-            self.layers = nn.ModuleList([
-                GINEConv(gine_mlp(input_dim, hidden_dims[0]), edge_dim=input_dim, train_eps=False),
-                GINEConv(gine_mlp(hidden_dims[0], hidden_dims[1]), edge_dim=input_dim, train_eps=False),
-            ])
-        else:
-            self.layers = nn.ModuleList([
-                GATv2Conv(input_dim, hidden_dims[0], heads=1, concat=False, edge_dim=input_dim),
-                GATv2Conv(hidden_dims[0], hidden_dims[1], heads=1, concat=False, edge_dim=input_dim),
-            ])
+        self.layers = nn.ModuleList()
+        dims = (input_dim, *hidden_dims)
+        for i in range(len(dims) - 1):
+            if message_func == 'gine':
+                self.layers.append(
+                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
+            else:
+                self.layers.append(
+                    GATv2Conv(dims[i], dims[i + 1], heads=1, concat=False, edge_dim=input_dim)
+                )
 
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
@@ -166,14 +167,15 @@ class EntityGNN(nn.Module):
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
 
 
-        # Indices of the nodes that appear in the query batch
-        node_indices = batch.node_embedding_indices 
-        valid = node_indices != -1
-        graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
-        node_pos = node_indices[valid] # gives the global node ids of the bound nodes
+
 
         # Set input of nodes appearing in query based on conditioning (labelling trick)
         if self.conditioning != "false":
+        # Indices of the nodes that appear in the query batch
+            node_indices = batch.node_embedding_indices 
+            valid = node_indices != -1
+            graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
+            node_pos = node_indices[valid] # gives the global node ids of the bound nodes
             rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
             x[rows] = 1.0   
         
@@ -231,6 +233,15 @@ class RelationGNN(nn.Module):
         conditioning: str = "all",      
         layer_norm: bool = False,
     ):
+        def gine_mlp(in_dim, out_dim):
+            # The MLP used inside each GINEConv (applied after aggregation)
+            return nn.Sequential(
+                nn.Linear(in_dim, out_dim),
+                nn.SiLU(),
+                nn.Linear(out_dim, out_dim),
+            )
+
+
         super().__init__()
         self.num_relation = num_relation
         self.conditioning = conditioning     
@@ -242,13 +253,7 @@ class RelationGNN(nn.Module):
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
             self.layers.append(
-                GATv2Conv(
-                    in_channels=dims[i],
-                    out_channels=dims[i + 1],
-                    heads=heads,
-                    concat=False,               
-                    edge_dim=input_dim,         # relation embedding as edge_attr
-                )
+                GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
             )
 
         self.norms = nn.ModuleList(
@@ -257,19 +262,17 @@ class RelationGNN(nn.Module):
         self.act = nn.GELU()
 
     def forward(self, data, batch=None):
-
         """
         data  : PyG Data of the *relation* graph
         batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
         """
         if batch is None:
             bs = 1
-            num_nodes = data.num_nodes
             device = data.edge_index.device
         else:
             bs = batch.batch_size
-            num_nodes = data.num_nodes
             device = batch.edge_index.device
+        num_nodes = data.num_nodes
 
 
         if   self.conditioning == "false":
@@ -398,7 +401,7 @@ class FICE(nn.Module):
         else:
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
-    def forward(self, data, relation_graph, batch, graph_size):
+    def forward(self, data, relation_graph, batch, graph_size, plot_embeddings=False, epoch=0):
 
         # All inputs should already be on the correct device
         device = batch.x.device
@@ -457,6 +460,10 @@ class FICE(nn.Module):
         bound_edges = (edge_embedding_indices >= 0)  # bools indicating which edges need relation embeddings
         edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
         edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
+
+        if plot_embeddings:
+            analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(epoch))
+            analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(epoch))
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
         edge_last = torch.where(bound_edges.unsqueeze(-1),

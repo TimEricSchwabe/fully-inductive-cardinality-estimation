@@ -233,8 +233,7 @@ def train_epoch(state: TrainingState):
                     graph = full_graph.to(device)
 
             relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
-            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size, plot_embeddings=plot_embeddings, epoch=state.training_context.current_epoch)
-            plot_embeddings = False
+            log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
             true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
