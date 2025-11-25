@@ -234,10 +234,10 @@ class TripleModel(torch.nn.Module):
         self.ln2 = nn.LayerNorm(200)
 
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
-        #self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
-        #self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
-        self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
+        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
+        # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)
 
