@@ -659,7 +659,7 @@ class QueryCardinalityGNNv2(torch.nn.Module):
         
         return torch.abs(final_est.squeeze(-1))
 
-class SelectivityConv(MessagePassing):
+class SelectivityConvv3(MessagePassing):
     """
     Specialized layer for selectivity learning:
     - message: computes per-edge log-selectivity ψ(tp) >= 0 from (e_s, e_p, e_o)
@@ -729,10 +729,12 @@ class SelectivityConv(MessagePassing):
         msg = aggr[:, 1:]
 
         x_new = x + self.node_update(torch.cat([x, msg], dim=1))
+
+
         return x_new, node_corr
 
 
-class QueryCardinalityGNN(nn.Module):
+class QueryCardinalityGNNv3(nn.Module):
     def __init__(self, feat_dim, hidden_dim=64, num_layers=1):
         super().__init__()
         self.feat_dim = feat_dim
@@ -740,7 +742,7 @@ class QueryCardinalityGNN(nn.Module):
 
         self.base_estimator = BaseCardinalityEstimator()
         self.sel_convs = nn.ModuleList(
-            [SelectivityConv(self.emb_dim, hidden_dim) for _ in range(num_layers)]
+            [SelectivityConvv3(self.emb_dim, hidden_dim) for _ in range(num_layers)]
         )
 
     def forward(self, batch, N):
@@ -765,5 +767,193 @@ class QueryCardinalityGNN(nn.Module):
         final = global_base - global_corr
         return torch.abs(final.squeeze(-1))
 
+
+class CardinalityConv(MessagePassing):
+    """
+    Phase 1:
+    1. Calculates independent log-cardinality for every triple pattern.
+    2. Predicts and subtracts a Triple Correction (ψ_edge) from it.
+    3. Aggregates (sums) these corrected triple estimates at the node.
+    4. Predicts and subtracts a Join Correction (ψ_node) at the node
+    IMPORTANT: This conv should be only appplied ONCE to the initial query graph.
+    """
+    def __init__(self, emb_dim, hidden_dim=128):
+        super().__init__(aggr='mean', flow='target_to_source')
+        self.emb_dim = emb_dim
+        
+        # Triple Pattern Correction
+        # Input: [emb_s, emb_p, emb_o]
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(3 * emb_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1), # Outputs ψ_edge
+            # nn.Softplus() # Optional: enforce positive correction
+        )
+        
+        # Node Join Correction (Node Level)
+        # Input: [aggregated_embedding]
+        self.node_mlp = nn.Sequential(
+            nn.Linear(emb_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1), # Outputs ψ_node
+             # nn.Softplus()
+        )
+        
+        # Embedding Update (to pass to Phase 2)
+        self.emb_update = nn.Sequential(
+            nn.Linear(emb_dim, emb_dim),
+            nn.SiLU(),
+            nn.Linear(emb_dim, emb_dim)
+        )
+        
+        
+    def forward(self, x, edge_index, edge_attr, log_N):
+        self.log_N = log_N
+        
+        # Propagate: Calculates corrected edge messages and sums them
+        # Returns: [log_card_sum, aggregated_embedding]
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        
+        c_sum = out[:, 0:1]
+        e_agg = out[:, 1:]
+        
+        # --- Node Level Correction (Join) ---
+        # The sum of edge logs implies a Cartesian product of all incoming edges.
+        # We need to subtract a correction because they join on this node.
+        join_correction = self.node_mlp(e_agg)
+        
+        c_final = c_sum - join_correction
+        
+        # Update embedding for next phase
+        e_final = self.emb_update(e_agg)
+        
+        return c_final, e_final
+
+    def message(self, x_i, x_j, edge_attr):
+        # x_j: Source (Subject), x_i: Target (Object)
+        
+        # 1. Counts (Log Space)
+        c_s = x_j[:, 0:1]
+        c_o = x_i[:, 2:3]
+        c_p = edge_attr[:, 1:2]
+        
+        # 2. Embeddings
+        e_s = x_j[:, 3:]
+        e_o = x_i[:, 3:]
+        e_p = edge_attr[:, 3:]
+        
+        # Normalize embeddings (so model learns to model similarity via orientation and not magnitude)
+        e_s = F.normalize(e_s, p=2, dim=1)
+        e_o = F.normalize(e_o, p=2, dim=1)
+        e_p = F.normalize(e_p, p=2, dim=1)
+        
+        # --- Independent Cardinality ---
+        # log(|t|) = log(|s|) + log(|p|) + log(|o|) - 2*log(N)
+        log_card_ind = c_s + c_p + c_o - 2 * self.log_N
+        
+        # --- Learned Triple Correction ---
+        # ψ_edge(e_s, e_p, e_o)
+        triple_emb = torch.cat([e_s, e_p, e_o], dim=1)
+        edge_correction = self.edge_mlp(triple_emb)
+        
+        # Corrected Edge Estimate
+        log_card_corrected = log_card_ind - edge_correction
+        
+        # Pass the combined embedding to the node for aggregation
+        # (Simple sum aggregation of embeddings)
+        msg_emb = e_s + e_p + e_o 
+        
+        return torch.cat([log_card_corrected, msg_emb], dim=1)
+
+
+class SelectivityConv(MessagePassing):
+    """
+    Phase 2: Refinement
+    Operates on the graph structure to refine estimates.
+    Does NOT use raw edge counts, only embeddings.
+    """
+    def __init__(self, emb_dim, hidden_dim=128):
+        super().__init__(aggr='add', flow='target_to_source')
+        self.emb_dim = emb_dim
+        
+        self.mlp = nn.Sequential(
+            nn.Linear(2 * emb_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1) # Outputs scalar correction update
+        )
+        
+        self.emb_update = nn.Sequential(
+            nn.Linear(2 * emb_dim, emb_dim),
+            nn.SiLU(),
+            nn.Linear(emb_dim, emb_dim)
+        )
+
+    def forward(self, x_emb, edge_index):
+        # x_emb: Node embeddings from previous step
+        return self.propagate(edge_index, x=x_emb)
+
+    def message(self, x_i, x_j):
+        # Only uses node embeddings (source and target)
+        # No edge features used here as per requirement
+        cat_emb = torch.cat([x_i, x_j], dim=1)
+        
+        correction = self.mlp(cat_emb)
+        new_emb = self.emb_update(cat_emb)
+        
+        return torch.cat([correction, new_emb], dim=1)
+        
+    def update(self, aggr_out, x):
+        # aggr_out has [sum_correction, sum_new_emb]
+        delta_c = aggr_out[:, 0:1]
+        delta_e = aggr_out[:, 1:]
+        
+        # Update embedding residual
+        x_new = x + delta_e
+        
+        # Return both correction delta and updated embedding
+        return delta_c, x_new
+
+
+class QueryCardinalityGNN(torch.nn.Module):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=0):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.emb_dim = feat_dim - 3
+        
+        # Phase 1: Base + Initial Correction
+        self.phase1 = CardinalityConv(self.emb_dim, hidden_dim)
+        
+        # Phase 2: Refinement (No edge features)
+        self.phase2_layers = nn.ModuleList([
+            SelectivityConv(self.emb_dim, hidden_dim) 
+            for _ in range(num_layers)
+        ])
+
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+        log_N = torch.log(torch.tensor(N, device=x.device))
+
+        # --- Phase 1 ---
+        # c_curr: [Nodes, 1] (Log cardinality estimate per node; accounting for tp cardinalitiies and first node joins)
+        # h_curr: [Nodes, D] (Updated semantic embedding)
+        c_curr, h_curr = self.phase1(x, edge_index, edge_attr, log_N)
+        
+        # --- Phase 2 ---
+        # Propagate first node joins to perform all subsequent joins
+        # Here we only calculate selectivities to avoid overcounting issues
+        for conv in self.phase2_layers:
+            delta_c, h_curr = conv(h_curr, edge_index)
+            # Subtract corrections per node and per local neighborhood aggregation
+            c_curr = c_curr - delta_c
+            
+        # --- Global Aggregation ---
+        # Sum the final log-cardinalities from all nodes
+        # They now already represent selectivity corrected cardinalities
+        
+        global_est = global_add_pool(c_curr, batch.batch)
+        
+        return torch.abs(global_est.squeeze(-1))
 
 

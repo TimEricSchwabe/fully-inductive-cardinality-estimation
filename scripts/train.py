@@ -88,23 +88,27 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     conditioning = getattr(config, 'Conditioning', 'all')
     query_gnn = getattr(config, 'QueryGNN', 'TripleModel')
     
+    # Get embedding dimension from config (default to 128 if not present)
+    vector_dim = getattr(config, 'embedding_dim', 128)
+
     model_type = getattr(config, 'model', 'FICE')
     
     if model_type == 'FiceBinary':
-        logger.info("Initializing FiceBinary model (binary embedding ablation)")
-        model = FiceBinary(vector_dim=128)
+        logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
+        model = FiceBinary(vector_dim=vector_dim)
     elif model_type == 'FICE':
-        logger.info("Initializing FICE model")
+        logger.info(f"Initializing FICE model (dim={vector_dim})")
         model = FICE(
             entity_message_func=entity_message_func,
             relation_message_func=relation_message_func,
             conditioning=conditioning,
             layer_norm=layer_norm,
-            query_gnn=query_gnn
+            query_gnn=query_gnn,
+            vector_dim=vector_dim  # Pass the dimension here
         )
     elif model_type == 'FiceIndependent':
-        logger.info("Initializing FiceIndependent model (independent cardinality estimation)")
-        model = FiceIndependent(vector_dim=128)
+        logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
+        model = FiceIndependent(vector_dim=vector_dim)
     else:
         raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
     

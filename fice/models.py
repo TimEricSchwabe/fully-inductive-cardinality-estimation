@@ -233,9 +233,9 @@ class RelationGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel'):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel', vector_dim=128):
         super(FICE, self).__init__()
-        self.vector_dim = 128
+        self.vector_dim = vector_dim
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
         
         # Store message functions and conditioning for later use
@@ -280,7 +280,7 @@ class FICE(nn.Module):
         elif entity_message_func in ['gine', 'GAT']:
             self.entity_model = EntityGNN(
                 input_dim=self.vector_dim,
-                hidden_dims=[self.vector_dim, self.vector_dim],
+                hidden_dims=self.hidden_dims_entitynet,
                 message_func=entity_message_func,
                 conditioning=conditioning,
                 layer_norm=layer_norm
@@ -307,8 +307,21 @@ class FICE(nn.Module):
         assert batch.x.device == device
         assert graph_size.device == device
 
-        query_features = batch.x
-        edge_attr = batch.edge_attr
+        # Recreate query_features with correct vector_dim
+        # Keep the first 3 dimensions (counts) and create new zero placeholders for the embedding part
+        query_counts = batch.x[:, :3]
+        query_features = torch.zeros(batch.x.size(0), self.vector_dim + 3, device=device)
+        query_features[:, :3] = query_counts
+        
+        # Same for edge_attr
+        edge_counts = batch.edge_attr[:, :3]
+        edge_attr = torch.zeros(batch.edge_attr.size(0), self.vector_dim + 3, device=device)
+        edge_attr[:, :3] = edge_counts
+
+        # IMPORTANT: Update the batch object immediately so subsequent code uses correct shapes
+        batch.x = query_features
+        batch.edge_attr = edge_attr
+
         embedding_indices = batch.node_embedding_indices
         edge_embedding_indices = batch.edge_embedding_indices
 
