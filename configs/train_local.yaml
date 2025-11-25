@@ -4,22 +4,22 @@ data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 4
-    num_queries: 20
+    num_queries: 80
     type: "train-val"
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 4
-    num_queries: 20
+    num_queries: 80
     type: "train-val"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 20
+    num_queries: 80
     type: "validation"
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
     batch_size: 4
-    num_queries: 20
+    num_queries: 80
     type: "train-val"
 
 

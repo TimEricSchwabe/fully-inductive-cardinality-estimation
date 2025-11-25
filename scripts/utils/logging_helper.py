@@ -6,6 +6,7 @@ import logging
 from pathlib import Path
 from typing import Dict, List, Optional, Any, Union
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -45,6 +46,11 @@ def calculate_all_metrics(predictions_log, true_values_log):
     true_values = np.exp(true_values_log)
     mse = metrics.calculate_mse(predictions, true_values)
     
+    epsilon = 1e-7
+    p_safe = np.maximum(predictions, epsilon)
+    t_safe = np.maximum(true_values, epsilon)
+    q_errors = np.maximum(p_safe / t_safe, t_safe / p_safe)
+
     return {
         'predictions': predictions,
         'true_values': true_values,
@@ -53,7 +59,11 @@ def calculate_all_metrics(predictions_log, true_values_log):
         'mse': mse,
         'mae': metrics.calculate_mae(predictions, true_values),
         'rmse': np.sqrt(mse),
-        'q_error': metrics.calculate_q_error(predictions, true_values)
+        'q_error': np.mean(q_errors),
+        'median_mse': np.median((predictions - true_values)**2),
+        'median_mae': np.median(np.abs(predictions - true_values)),
+        'median_q_error': np.median(q_errors),
+        'q_errors_array': q_errors
     }
 
 
@@ -208,10 +218,20 @@ class MetricLogger:
             f"{stage}_mae": overall_metrics['mae'],
             f"{stage}_rmse": overall_metrics['rmse'],
             f"{stage}_q_error": overall_metrics['q_error'],
+            f"{stage}_median_mse": overall_metrics['median_mse'],
+            f"{stage}_median_mae": overall_metrics['median_mae'],
+            f"{stage}_median_q_error": overall_metrics['median_q_error'],
             'epoch': epoch
         }
         wandb.log(log_data)
         
+        # Log overall q-error boxplot
+        self._log_q_error_boxplot(
+            overall_metrics['q_errors_array'],
+            overall_metrics['true_values'],
+            epoch, f"{stage}_overall"
+        )
+
         # Log per-graph metrics
         for dataset_name, graph_metrics in per_graph_metrics.items():
             graph_log_data = {
@@ -220,10 +240,20 @@ class MetricLogger:
                 f"{stage}_mae_{dataset_name}": graph_metrics['mae'],
                 f"{stage}_rmse_{dataset_name}": graph_metrics['rmse'],
                 f"{stage}_q_error_{dataset_name}": graph_metrics['q_error'],
+                f"{stage}_median_mse_{dataset_name}": graph_metrics['median_mse'],
+                f"{stage}_median_mae_{dataset_name}": graph_metrics['median_mae'],
+                f"{stage}_median_q_error_{dataset_name}": graph_metrics['median_q_error'],
                 'epoch': epoch
             }
             wandb.log(graph_log_data)
             
+            # Log per-graph q-error boxplot
+            self._log_q_error_boxplot(
+                graph_metrics['q_errors_array'],
+                graph_metrics['true_values'],
+                epoch, f"{stage}_{dataset_name}"
+            )
+
             # Log predictions scatter plot (sampled)
             self._log_predictions_scatter(
                 graph_metrics['predictions_log'], 
@@ -237,6 +267,44 @@ class MetricLogger:
             overall_metrics['true_values_log'],
             epoch, stage, "overall"
         )
+
+    def _log_q_error_boxplot(self, q_errors, true_values, epoch, title_prefix):
+        """Helper to plot Q-Error boxplots by cardinality range."""
+        bins = [
+            ('< 10', (true_values < 10)),
+            ('< 100', (true_values >= 10) & (true_values < 100)),
+            ('< 1000', (true_values >= 100) & (true_values < 1000)),
+            ('< 1M', (true_values >= 1000) & (true_values < 1000000)),
+            ('Other', (true_values >= 1000000))
+        ]
+        
+        data_to_plot = []
+        labels = []
+        
+        for label, mask in bins:
+            if np.any(mask):
+                data_to_plot.append(q_errors[mask])
+                labels.append(f"{label}\n(n={np.sum(mask)})")
+        
+        if not data_to_plot:
+            return
+
+        try:
+            fig, ax = plt.subplots(figsize=(10, 6))
+            ax.boxplot(data_to_plot, labels=labels)
+            ax.set_title(f"Q-Error Distribution by Cardinality - {title_prefix}")
+            ax.set_ylabel("Q-Error")
+            ax.set_xlabel("True Cardinality Range")
+            ax.set_yscale('log')
+            ax.grid(True, linestyle='--', alpha=0.7)
+            
+            wandb.log({
+                f"{title_prefix}_q_error_boxplot": wandb.Image(fig),
+                "epoch": epoch
+            })
+            plt.close(fig)
+        except Exception as e:
+            logger.error(f"Error plotting boxplot: {e}")
 
     def _log_predictions_scatter(self, predictions, true_values, epoch, stage, dataset_name, max_points=1000):
         try:
@@ -261,8 +329,16 @@ class MetricLogger:
             data = [[float(pred), float(true)] for pred, true in zip(predictions_sampled, true_values_sampled)]
             table = wandb.Table(data=data, columns=["prediction", "true_value"])
             
+            # Create a scatter plot from the table
+            scatter_plot = wandb.plot.scatter(
+                table, 
+                "prediction", 
+                "true_value",
+                title=f"{stage} Predictions vs True ({dataset_name}) - Epoch {epoch}"
+            )
+            
             wandb.log({
-                f"{stage}_predictions_{dataset_name}_epoch_{epoch}": table,
+                f"{stage}_predictions_{dataset_name}_epoch_{epoch}": scatter_plot,
                 "epoch": epoch
             })
         except Exception as e:

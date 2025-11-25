@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 import random
+from typing import Union, Optional
 import torch
 import numpy as np
 from datetime import datetime
@@ -8,6 +9,9 @@ import wandb
 import os
 import argparse
 import json
+import matplotlib.pyplot as plt
+from sklearn.decomposition import PCA
+
 
 logger = logging.getLogger(__name__)
 
@@ -67,12 +71,7 @@ def parse_arguments():
         type=str,
         help="Path to the checkpoint to resume training from.",
     )
-    # Weights & Biases flag
-    parser.add_argument(
-        "--wandb",
-        action="store_true",
-        help="Enable Weights & Biases logging.",
-    )
+    
 
     args = parser.parse_args()
     # Enforce --config is required unless --checkpoint is specified
@@ -184,3 +183,96 @@ def get_device(device_arg: str) -> torch.device:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         return torch.device(device_arg)
+
+
+### Helper Functions ###
+def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, output_dir: Optional[Union[Path, str]]=None):
+    """
+    Analyzes pairwise cosine similarity of a set of vectors.
+    
+    Args:
+        embeddings: Tensor of shape [N, D]
+        name: String identifier for plots/logs
+        sample_size: Max number of vectors to use (to avoid OOM on large N*N matrices)
+        output_dir: Optional directory to save plots
+    """
+    if output_dir is not None:
+        if isinstance(output_dir, str):
+            output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    if embeddings.size(0) < 2:
+        print(f"[{name}] Not enough vectors to compute similarity.")
+        return
+
+    # Detach and move to computation device (can stay on GPU for speed)
+    vecs = embeddings.detach()
+    
+    # Optional: Downsample if too many vectors to avoid creating a massive NxN matrix
+    if vecs.size(0) > sample_size:
+        perm = torch.randperm(vecs.size(0))
+        vecs = vecs[perm[:sample_size]]
+    
+    # 1. Normalize vectors to unit length (L2 norm)
+    # cosine_similarity(a, b) = dot(a, b) / (|a| * |b|)
+    # If we normalize first, it becomes just dot(a, b)
+    vecs_norm = torch.nn.functional.normalize(vecs, p=2, dim=1)
+    
+    # 2. Compute Pairwise Similarity Matrix (N x N)
+    similarity_matrix = torch.mm(vecs_norm, vecs_norm.t())
+    
+    # 3. Extract Upper Triangle (off-diagonal)
+    # We only care about unique pairs (i, j) where i < j
+    triu_indices = torch.triu_indices(similarity_matrix.size(0), similarity_matrix.size(1), offset=1)
+    similarities = similarity_matrix[triu_indices[0], triu_indices[1]]
+    
+    # --- Metrics ---
+    avg_sim = similarities.mean().item()
+    std_sim = similarities.std().item()
+    min_sim = similarities.min().item()
+    max_sim = similarities.max().item()
+    
+    print(f"--- {name} Analysis ---")
+    print(f"Avg Cosine Similarity: {avg_sim:.4f} ± {std_sim:.4f}")
+    print(f"Range: [{min_sim:.4f}, {max_sim:.4f}]")
+    
+    # --- Plotting ---
+    # Move to CPU for plotting
+    sim_values = similarities.cpu().numpy()
+    
+    try:
+        plt.figure(figsize=(8, 5))
+        plt.hist(sim_values, bins=50, range=(-1, 1), alpha=0.7, color='skyblue', edgecolor='black')
+        plt.axvline(avg_sim, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {avg_sim:.2f}')
+        plt.title(f'Pairwise Cosine Similarity Distribution: {name}')
+        plt.xlabel('Cosine Similarity (-1 to 1)')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Save figure instead of showing to avoid blocking execution
+        figure_path = output_dir / f'similarity_hist_{name}.png' if output_dir else f'similarity_hist_{name}.png'
+        plt.savefig(figure_path)
+        plt.close()
+        print(f"Saved histogram to {figure_path}")
+    except Exception as e:
+        print(f"Could not plot histogram: {e}")
+
+
+    vecs_np = vecs.cpu().numpy()
+    
+    # Project to 2D
+    pca = PCA(n_components=2)
+    vecs_2d = pca.fit_transform(vecs_np)
+    
+    plt.figure(figsize=(8, 6))
+    plt.scatter(vecs_2d[:, 0], vecs_2d[:, 1], alpha=0.6, s=10, color='teal')
+    plt.title(f'PCA Projection (2D): {name}')
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+    plt.grid(True, alpha=0.3)
+
+    figure_path = output_dir / f'pca_projection_{name}.png' if output_dir else f'pca_projection_{name}.png'
+    plt.savefig(figure_path)
+    plt.close()
+    print(f"Saved PCA plot to {figure_path}")

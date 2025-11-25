@@ -31,6 +31,10 @@ class Config(BaseSettings):
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary'] = "FICE"  # Model type to use
     layer_norm: bool = True  # Whether to use layer normalization in GNNs
+    embedding_dim: int = 128  # Dimension of entity and relation embeddings
+    n_embedding_layers: int = 2  # Number of layers in embedding MLP
+    wandb: bool = False  # Whether to use Weights & Biases for logging
+
 
     class Config:
         extra = "allow"  # Allow extra fields if present

@@ -3,13 +3,104 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
-from torch_geometric.nn import GATv2Conv, GINEConv
+from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
+from torch_geometric.utils import degree
 
 from easydict import EasyDict
 
-from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN
+from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN, IndependentQueryGNN
 from fice.ultra.models import RelNBFNet, EntityNBFNet
 
+import matplotlib.pyplot as plt
+import numpy as np
+
+from sklearn.decomposition import PCA
+
+
+
+### Helper Functions ###
+def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
+    """
+    Analyzes pairwise cosine similarity of a set of vectors.
+    
+    Args:
+        embeddings: Tensor of shape [N, D]
+        name: String identifier for plots/logs
+        sample_size: Max number of vectors to use (to avoid OOM on large N*N matrices)
+    """
+    if embeddings.size(0) < 2:
+        print(f"[{name}] Not enough vectors to compute similarity.")
+        return
+
+    # Detach and move to computation device (can stay on GPU for speed)
+    vecs = embeddings.detach()
+    
+    # Optional: Downsample if too many vectors to avoid creating a massive NxN matrix
+    if vecs.size(0) > sample_size:
+        perm = torch.randperm(vecs.size(0))
+        vecs = vecs[perm[:sample_size]]
+    
+    # 1. Normalize vectors to unit length (L2 norm)
+    # cosine_similarity(a, b) = dot(a, b) / (|a| * |b|)
+    # If we normalize first, it becomes just dot(a, b)
+    vecs_norm = torch.nn.functional.normalize(vecs, p=2, dim=1)
+    
+    # 2. Compute Pairwise Similarity Matrix (N x N)
+    similarity_matrix = torch.mm(vecs_norm, vecs_norm.t())
+    
+    # 3. Extract Upper Triangle (off-diagonal)
+    # We only care about unique pairs (i, j) where i < j
+    triu_indices = torch.triu_indices(similarity_matrix.size(0), similarity_matrix.size(1), offset=1)
+    similarities = similarity_matrix[triu_indices[0], triu_indices[1]]
+    
+    # --- Metrics ---
+    avg_sim = similarities.mean().item()
+    std_sim = similarities.std().item()
+    min_sim = similarities.min().item()
+    max_sim = similarities.max().item()
+    
+    print(f"--- {name} Analysis ---")
+    print(f"Avg Cosine Similarity: {avg_sim:.4f} ± {std_sim:.4f}")
+    print(f"Range: [{min_sim:.4f}, {max_sim:.4f}]")
+    
+    # --- Plotting ---
+    # Move to CPU for plotting
+    sim_values = similarities.cpu().numpy()
+    
+    try:
+        plt.figure(figsize=(8, 5))
+        plt.hist(sim_values, bins=50, range=(-1, 1), alpha=0.7, color='skyblue', edgecolor='black')
+        plt.axvline(avg_sim, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {avg_sim:.2f}')
+        plt.title(f'Pairwise Cosine Similarity Distribution: {name}')
+        plt.xlabel('Cosine Similarity (-1 to 1)')
+        plt.ylabel('Frequency')
+        plt.legend()
+        plt.grid(True, alpha=0.3)
+        
+        # Save figure instead of showing to avoid blocking execution
+        plt.savefig(f'similarity_hist_{name}.png')
+        plt.close()
+        print(f"Saved histogram to similarity_hist_{name}.png")
+    except Exception as e:
+        print(f"Could not plot histogram: {e}")
+
+
+    vecs_np = vecs.cpu().numpy()
+    
+    # Project to 2D
+    pca = PCA(n_components=2)
+    vecs_2d = pca.fit_transform(vecs_np)
+    
+    plt.figure(figsize=(8, 6))
+    plt.scatter(vecs_2d[:, 0], vecs_2d[:, 1], alpha=0.6, s=10, color='teal')
+    plt.title(f'PCA Projection (2D): {name}')
+    plt.xlabel('PC1')
+    plt.ylabel('PC2')
+    plt.grid(True, alpha=0.3)
+    
+    plt.savefig(f'pca_projection_{name}.png')
+    plt.close()
+    print(f"Saved PCA plot to pca_projection_{name}.png")
 
 class EntityGNN(nn.Module):
     def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, **kwargs):
@@ -28,25 +119,30 @@ class EntityGNN(nn.Module):
                 nn.Linear(out_dim, out_dim),
             )
 
-        if message_func == 'gine':
-            self.layers = nn.ModuleList([
-                GINEConv(gine_mlp(input_dim, hidden_dims[0]), edge_dim=input_dim, train_eps=False),
-                GINEConv(gine_mlp(hidden_dims[0], hidden_dims[1]), edge_dim=input_dim, train_eps=False),
-            ])
-        else:
-            self.layers = nn.ModuleList([
-                GATv2Conv(input_dim, hidden_dims[0], heads=1, concat=False, edge_dim=input_dim),
-                GATv2Conv(hidden_dims[0], hidden_dims[1], heads=1, concat=False, edge_dim=input_dim),
-            ])
+        self.layers = nn.ModuleList()
+        dims = (input_dim, *hidden_dims)
+        for i in range(len(dims) - 1):
+            if message_func == 'gine':
+                self.layers.append(
+                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
+            else:
+                self.layers.append(
+                    GATv2Conv(dims[i], dims[i + 1], heads=1, concat=False, edge_dim=input_dim)
+                )
 
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
         )
 
 
-    def forward(self, data, batch, relation_representations=None):
-        batch_size = batch.batch_size
-        device = batch.edge_index.device
+    def forward(self, data, batch=None, relation_representations=None):
+        if batch is None:
+            batch_size = 1
+            device = data.edge_index.device
+        else:
+            batch_size = batch.batch_size
+            device = batch.edge_index.device
 
         # Preparing node features based on conditioning strategy
         # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
@@ -57,18 +153,29 @@ class EntityGNN(nn.Module):
         else:
             raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
+        # --- FIX 1: Symmetry Breaking with Degrees ---
+        # Inject log(degree) into the first dimension of the features to distinguish nodes structurally
+        if data.edge_index.numel() > 0:
+            deg = degree(data.edge_index[0], data.num_nodes, dtype=torch.float)
+            # Normalize/Log degree to keep it in a reasonable range
+            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(batch_size, -1).unsqueeze(-1).to(device)
+            # Add to the first dimension of x (broadcast over batch)
+            x = x.clone()
+            x[:, :, 0] += deg_feature.squeeze(-1)
+
         # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
 
 
-        # Indices of the nodes that appear in the query batch
-        node_indices = batch.node_embedding_indices 
-        valid = node_indices != -1
-        graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
-        node_pos = node_indices[valid] # gives the global node ids of the bound nodes
+
 
         # Set input of nodes appearing in query based on conditioning (labelling trick)
-        if self.conditioning != "false":
+        if self.conditioning != "false" and batch is not None:
+        # Indices of the nodes that appear in the query batch
+            node_indices = batch.node_embedding_indices 
+            valid = node_indices != -1
+            graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
+            node_pos = node_indices[valid] # gives the global node ids of the bound nodes
             rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
             x[rows] = 1.0   
         
@@ -95,11 +202,15 @@ class EntityGNN(nn.Module):
         edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
         for i, layer in enumerate(self.layers):
+            x_in = x # Save input for residual
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
             if self.norms:
                 x = self.norms[i](x)
             if self.message_func != 'gine':
                 x = F.gelu(x)
+            
+
+            x = x + x_in
         
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -122,6 +233,15 @@ class RelationGNN(nn.Module):
         conditioning: str = "all",      
         layer_norm: bool = False,
     ):
+        def gine_mlp(in_dim, out_dim):
+            # The MLP used inside each GINEConv (applied after aggregation)
+            return nn.Sequential(
+                nn.Linear(in_dim, out_dim),
+                nn.SiLU(),
+                nn.Linear(out_dim, out_dim),
+            )
+
+
         super().__init__()
         self.num_relation = num_relation
         self.conditioning = conditioning     
@@ -133,13 +253,7 @@ class RelationGNN(nn.Module):
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
             self.layers.append(
-                GATv2Conv(
-                    in_channels=dims[i],
-                    out_channels=dims[i + 1],
-                    heads=heads,
-                    concat=False,               
-                    edge_dim=input_dim,         # relation embedding as edge_attr
-                )
+                GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
             )
 
         self.norms = nn.ModuleList(
@@ -147,14 +261,18 @@ class RelationGNN(nn.Module):
         )
         self.act = nn.GELU()
 
-    def forward(self, data, batch):
+    def forward(self, data, batch=None):
         """
         data  : PyG Data of the *relation* graph
         batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
         """
-        bs        = batch.batch_size
+        if batch is None:
+            bs = 1
+            device = data.edge_index.device
+        else:
+            bs = batch.batch_size
+            device = batch.edge_index.device
         num_nodes = data.num_nodes
-        device    = data.edge_index.device
 
 
         if   self.conditioning == "false":
@@ -164,8 +282,16 @@ class RelationGNN(nn.Module):
         else:  # "all"
             h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
 
+        # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
+        # Inject log(degree) into the first dimension to distinguish relations structurally
+        if data.edge_index.numel() > 0:
+            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
+            h = h.clone()
+            h[:, :, 0] += deg_feature.squeeze(-1)
+
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
-        if self.conditioning != "false":
+        if self.conditioning != "false" and batch is not None:
             valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
             edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
             graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
@@ -192,10 +318,15 @@ class RelationGNN(nn.Module):
 
         # Message passing
         for i, layer in enumerate(self.layers):
+            x_in = x # Save input for residual
             x   = layer(x, edge_index, edge_attr)
             if self.norms:
                  x = self.norms[i](x)
             x = self.act(x)
+            
+            # --- FIX 2: Residual Connection ---
+            if x.shape == x_in.shape:
+                x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
@@ -205,10 +336,12 @@ class RelationGNN(nn.Module):
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel'):
+    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel',
+     vector_dim=128, n_embedding_layers=2):
         super(FICE, self).__init__()
-        self.vector_dim = 128
-        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * 2 # n layers with 64 hidden units each
+        self.vector_dim = vector_dim
+        # Use n_embedding_layers to create the list of hidden dimensions
+        self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
         
         # Store message functions and conditioning for later use
         self.entity_message_func = entity_message_func
@@ -252,7 +385,7 @@ class FICE(nn.Module):
         elif entity_message_func in ['gine', 'GAT']:
             self.entity_model = EntityGNN(
                 input_dim=self.vector_dim,
-                hidden_dims=[self.vector_dim, self.vector_dim],
+                hidden_dims=self.hidden_dims_entitynet,
                 message_func=entity_message_func,
                 conditioning=conditioning,
                 layer_norm=layer_norm
@@ -268,7 +401,7 @@ class FICE(nn.Module):
         else:
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
-    def forward(self, data, relation_graph, batch, graph_size):
+    def forward(self, data, relation_graph, batch, graph_size, plot_embeddings=False, epoch=0):
 
         # All inputs should already be on the correct device
         device = batch.x.device
@@ -279,8 +412,21 @@ class FICE(nn.Module):
         assert batch.x.device == device
         assert graph_size.device == device
 
-        query_features = batch.x
-        edge_attr = batch.edge_attr
+        # Recreate query_features with correct vector_dim
+        # Keep the first 3 dimensions (counts) and create new zero placeholders for the embedding part
+        query_counts = batch.x[:, :3]
+        query_features = torch.zeros(batch.x.size(0), self.vector_dim + 3, device=device)
+        query_features[:, :3] = query_counts
+        
+        # Same for edge_attr
+        edge_counts = batch.edge_attr[:, :3]
+        edge_attr = torch.zeros(batch.edge_attr.size(0), self.vector_dim + 3, device=device)
+        edge_attr[:, :3] = edge_counts
+
+        # IMPORTANT: Update the batch object immediately so subsequent code uses correct shapes
+        batch.x = query_features
+        batch.edge_attr = edge_attr
+
         embedding_indices = batch.node_embedding_indices
         edge_embedding_indices = batch.edge_embedding_indices
 
@@ -314,6 +460,10 @@ class FICE(nn.Module):
         bound_edges = (edge_embedding_indices >= 0)  # bools indicating which edges need relation embeddings
         edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
         edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
+
+        if plot_embeddings:
+            analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(epoch))
+            analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(epoch))
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
         edge_last = torch.where(bound_edges.unsqueeze(-1),
@@ -439,3 +589,20 @@ class FiceBinary(nn.Module):
 
 
 
+class FiceIndependent(nn.Module):
+    """Ablation model calculates cardinalities based on the independent assumption
+    using only the counts.
+    """
+
+    def __init__(self, vector_dim: int = 128):
+        super().__init__()
+        self.vector_dim = vector_dim
+        self.query_gnn = IndependentQueryGNN(feat_dim=self.vector_dim + 3)
+
+
+    # --- forward ----------------------------------------------------------------
+    def forward(self, data, relation_graph, batch, graph_size):
+
+
+        log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+        return log_cardinality_pred

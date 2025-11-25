@@ -34,7 +34,7 @@ matplotlib.use('Agg')
 
 # Project imports
 import utils.metrics as metrics
-from fice.models import FICE, FiceBinary
+from fice.models import FICE, FiceBinary, FiceIndependent
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
 from utils.config import Config, DataConfig, load_config_yaml
 from utils.data_helper import prepare_data
@@ -45,6 +45,7 @@ from utils.helper import (
     process_seed,
     set_random_seeds,
     setup_logging,
+    analyze_vector_similarity,
 )
 from utils.logging_helper import (
     TRAIN_METRICS_FILE_NAME,
@@ -89,19 +90,27 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     query_gnn = config.QueryGNN
     
     model_type = config.model
+    # Get embedding dimension and number of layers from config
+    vector_dim = config.embedding_dim
+    n_embedding_layers = config.n_embedding_layers
     
     if model_type == 'FiceBinary':
-        logger.info("Initializing FiceBinary model (binary embedding ablation)")
-        model = FiceBinary(vector_dim=128)
+        logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
+        model = FiceBinary(vector_dim=vector_dim)
     elif model_type == 'FICE':
-        logger.info("Initializing FICE model")
+        logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
             entity_message_func=entity_message_func,
             relation_message_func=relation_message_func,
             conditioning=conditioning,
             layer_norm=layer_norm,
-            query_gnn=query_gnn
+            query_gnn=query_gnn,
+            vector_dim=vector_dim,
+            n_embedding_layers=n_embedding_layers # Pass the new parameter
         )
+    elif model_type == 'FiceIndependent':
+        logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
+        model = FiceIndependent(vector_dim=vector_dim)
     else:
         raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
     
@@ -118,6 +127,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             lr=config.learning_rate,
             weight_decay=config.weight_decay,
         )
+    elif model_type == 'FiceIndependent':
+        optimizer = None
     else:
         optimizer = torch.optim.AdamW(
             model.parameters(),
@@ -159,6 +170,8 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
+    plot_embeddings = True
+
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
     )
@@ -174,15 +187,28 @@ def train_epoch(state: TrainingState):
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
+            if plot_embeddings:
+                edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
+                node_embeddings = state.model_components.model.entity_model(data=full_graph, relation_representations=edge_embeddings)
+                edge_embeddings = edge_embeddings.detach().cpu().squeeze()
+                node_embeddings = node_embeddings.detach().cpu().squeeze()
+                output_dir = state.training_context.log_dir / "figures"
+                output_dir.mkdir(parents=True, exist_ok=True)
 
-            state.model_components.optimizer.zero_grad()
+                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=output_dir)
+                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=output_dir)
+                plot_embeddings = False
+
+
+            if state.model_components.optimizer is not None:
+                state.model_components.optimizer.zero_grad()
 
             # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
-            if isinstance(state.model_components.model, FiceBinary):
+            if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
                 num_neighbors = False
             else:
-                num_neighbors = num_neighbors_cfg
+                num_neighbors = num_neighbors_cfg   
                 if num_neighbors is not None:
                     # Reusable sampler path
                     node_indices = query_batch.node_embedding_indices
@@ -208,7 +234,7 @@ def train_epoch(state: TrainingState):
                 else:
                     graph = full_graph.to(device)
 
-            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) else relation_graph
+            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
@@ -220,8 +246,9 @@ def train_epoch(state: TrainingState):
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
             # Backward pass
-            loss.backward()
-            state.model_components.optimizer.step()
+            if state.model_components.optimizer is not None:
+                loss.backward()
+                state.model_components.optimizer.step()
 
             # Log batch
             state.metric_logger.log_batch(
@@ -284,7 +311,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             relation_graph = full_graph.relation_graph.to(device)
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
-            if isinstance(state.model_components.model, FiceBinary):
+            if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
                 relation_graph_inp = None
             else:
@@ -400,13 +427,14 @@ def train_model(
                 state.best_test_loss = avg_test_loss
                 best_model_path = state.training_context.checkpoint_dir / "best_model.pt"
 
-                save_checkpoint(state, best_model_path)
-                logger.info(
-                    f"New best model saved with test loss: {state.best_test_loss:.6f}"
-                )
+                if state.model_components.optimizer is not None:
+                    save_checkpoint(state, best_model_path)
+                    logger.info(
+                        f"New best model saved with test loss: {state.best_test_loss:.6f}"
+                    )
                 
                 # Log best model as wandb artifact
-                if state.training_context.use_wandb:
+                if state.training_context.use_wandb and state.model_components.optimizer is not None:
                     artifact = wandb.Artifact(
                         name="best_model",
                         type="model",
@@ -605,7 +633,8 @@ def main():
     logger.info(f"Using device: {device}")
 
     # Initialize Weights & Biases
-    use_wandb = args.wandb
+    # TODO: fix
+    use_wandb = config.wandb
     if use_wandb:
         initialize_wandb(config, run_dir)
 
@@ -669,12 +698,15 @@ def main():
     logger.info(f"{model_components.model}")
     logger.info(f"Total parameters: {total_params:,}")
     logger.info(f"Trainable parameters: {trainable_params:,}")
-    logger.info(f"Model device: {next(model_components.model.parameters()).device}")
+    if model_components.optimizer is not None:
+        logger.info(f"Model device: {next(model_components.model.parameters()).device}")
 
-    logger.info(f"Optimizer: {model_components.optimizer.__class__.__name__}")
-
-    logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
-    logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
+    if model_components.optimizer is not None:
+        logger.info(f"Optimizer: {model_components.optimizer.__class__.__name__}")
+        logger.info(f"Learning rate: {model_components.optimizer.param_groups[0]['lr']}")
+        logger.info(f"Weight decay: {model_components.optimizer.param_groups[0]['weight_decay']}")
+    else:
+        logger.info("No optimizer found")
 
     if use_wandb:
         wandb.watch(model_components.model, log="all", log_freq=100)
