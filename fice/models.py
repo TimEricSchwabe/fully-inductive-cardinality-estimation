@@ -20,6 +20,7 @@ from sklearn.decomposition import PCA
 
 
 
+
 ### Helper Functions ###
 def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     """
@@ -137,6 +138,10 @@ class EntityGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
         )
 
+        self.laplacian_k = 0
+        if self.laplacian_k > 0:
+            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
+
 
     def forward(self, data, batch=None, relation_representations=None):
         if batch is None:
@@ -149,7 +154,8 @@ class EntityGNN(nn.Module):
         # Preparing node features based on conditioning strategy
         # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
         if self.conditioning in ["false", "all"]:
-            x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+            x = torch.randn(batch_size, data.num_nodes, self.input_dim, device=device) # todo !!
+            #x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
         elif self.conditioning == "seed only":
             x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
         else:
@@ -165,7 +171,24 @@ class EntityGNN(nn.Module):
             x = x.clone()
             x[:, :, 0] += deg_feature.squeeze(-1)
 
-        # Reshape once at the beginning: (batch_size, num_nodes, input_dim) -> (batch_size * num_nodes, input_dim)
+        if self.laplacian_k > 0:
+            try:
+                data = self.le_pw_transform(data)
+                # Extract PE: shape (num_nodes, walk_length)
+                rw_pe = data.laplacian_eigenvector_pe.to(device)
+                
+                # Expand to batch size: (batch_size, num_nodes, walk_length)
+                rw_pe_expanded = rw_pe.unsqueeze(0).expand(batch_size, -1, -1)
+                
+                # Add to x, skipping the 0-th dimension used by degree
+                # Ensure we don't exceed embedding dimensions
+                dim_limit = min(self.laplacian_k, x.size(-1) - 1)
+                x[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
+            except Exception as e:
+                print(f"Laplacian Eigenvector PE computation failed")
+                pass # Fallback to random features if Eigendecomposition fails
+
+
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
 
 
@@ -208,7 +231,9 @@ class EntityGNN(nn.Module):
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
             if self.norms:
                 x = self.norms[i](x)
-            x = F.silu(x)
+            
+            if i < len(self.layers) - 1:
+                x = F.silu(x)
             
 
             x = x + x_in
@@ -217,6 +242,7 @@ class EntityGNN(nn.Module):
         x = x.view(batch_size, num_nodes, -1)
         
         return x
+        #return h
 
 class RelationGNN(nn.Module):
     """
@@ -263,9 +289,9 @@ class RelationGNN(nn.Module):
         self.act = nn.SiLU()
 
 
-        #self.walk_length = 8
-        #if self.walk_length > 0:
-        #    self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.walk_length)
+        self.laplacian_k = 30
+        if self.laplacian_k > 0:
+            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
     def forward(self, data, batch=None):
         """
@@ -282,7 +308,9 @@ class RelationGNN(nn.Module):
 
 
         if   self.conditioning == "false":
-            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+            # random features 
+            h = torch.randn(bs, num_nodes, self.rel_emb.embedding_dim, device=device) # todo !!
+            #h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
         elif self.conditioning == "seed only":
             h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
         else:  # "all"
@@ -296,20 +324,21 @@ class RelationGNN(nn.Module):
             h = h.clone()
             h[:, :, 0] += deg_feature.squeeze(-1)
 
-        #if self.walk_length > 0:
-        #    data = self.le_pw_transform(data)
+        if self.laplacian_k > 0:
+            try:
+                data = self.le_pw_transform(data)
+                # Extract PE: shape (num_nodes, walk_length)
+                rw_pe = data.laplacian_eigenvector_pe.to(device)
+                
+                # Expand to batch size: (batch_size, num_nodes, walk_length)
+                rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
 
-
-        # Extract PE: shape (num_nodes, walk_length)
-        #rw_pe = data.laplacian_eigenvector_pe.to(device)
-        
-        # Expand to batch size: (batch_size, num_nodes, walk_length)
-        #rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
-
-        # Add to h, skipping the 0-th dimension used by degree
-        # Ensure we don't exceed embedding dimensions
-        #dim_limit = min(self.walk_length, h.size(-1) - 1)
-        #h[:, :, 1:1+dim_limit] += rw_pe_expanded[:, :, :dim_limit] * 10
+                # Add to h, skipping the 0-th dimension used by degree
+                # Ensure we don't exceed embedding dimensions
+                dim_limit = min(self.laplacian_k, h.size(-1) - 1)
+                h[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
+            except Exception as e:
+                pass # Fallback to random features if Eigendecomposition fails
 
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
         if self.conditioning != "false":
@@ -343,7 +372,8 @@ class RelationGNN(nn.Module):
             x   = layer(x, edge_index, edge_attr)
             if self.norms:
                  x = self.norms[i](x)
-            x = self.act(x)
+            if i < len(self.layers) - 1:
+                x = self.act(x)
             
             # --- FIX 2: Residual Connection ---
             if x.shape == x_in.shape:
@@ -352,6 +382,7 @@ class RelationGNN(nn.Module):
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
         return out
+        #return h
 
 
 

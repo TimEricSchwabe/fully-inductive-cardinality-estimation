@@ -10,6 +10,7 @@ import argparse
 import json
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 
 logger = logging.getLogger(__name__)
@@ -272,3 +273,25 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     plt.savefig(f'pca_projection_{name}.png')
     plt.close()
     print(f"Saved PCA plot to pca_projection_{name}.png")
+
+    # t-SNE Projection
+    try:
+        # Use a smaller perplexity if n_samples is small, typically between 5 and 50
+        n_samples = vecs_np.shape[0]
+        perplexity = min(30, n_samples - 1) if n_samples > 1 else 1
+        
+        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+        vecs_tsne = tsne.fit_transform(vecs_np)
+        
+        plt.figure(figsize=(8, 6))
+        plt.scatter(vecs_tsne[:, 0], vecs_tsne[:, 1], alpha=0.6, s=10, color='purple')
+        plt.title(f't-SNE Projection (2D): {name}')
+        plt.xlabel('Dim 1')
+        plt.ylabel('Dim 2')
+        plt.grid(True, alpha=0.3)
+        
+        plt.savefig(f'tsne_projection_{name}.png')
+        plt.close()
+        print(f"Saved t-SNE plot to tsne_projection_{name}.png")
+    except Exception as e:
+        print(f"Could not compute/plot t-SNE: {e}")

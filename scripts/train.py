@@ -36,6 +36,7 @@ except Exception:
 matplotlib.use('Agg')
 
 # Project imports
+from utils.plotting import compute_and_plot_laplacian_pe
 import utils.metrics as metrics
 from fice.models import FICE, FiceBinary, FiceIndependent
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
@@ -62,8 +63,40 @@ from utils.logging_helper import (
 from utils.models import DataComponents, ModelComponents, TrainingContext, TrainingState
 from utils.multigraph import MultigraphLoader
 from utils.neighborhood_sampler import MultigraphNeighborSampler
-
+from torch_geometric.utils import k_hop_subgraph, subgraph
 logger = logging.getLogger(__name__)
+
+def sample_connected_subgraph(data, num_hops=3, max_nodes=500):
+    """
+    Extracts a connected patch of the graph to visualize structure.
+    """
+    g = torch.Generator()
+    g.seed()
+
+    # 1. Pick a random start node
+    start_node = torch.randint(0, data.num_nodes, (1,), generator=g).item()
+    
+    # 2. Get k-hop neighbors (BFS expansion)
+    # Increase num_hops until we have enough nodes
+    subset, sub_edge_index, mapping, _ = k_hop_subgraph(
+        node_idx=start_node, 
+        num_hops=num_hops, 
+        edge_index=data.edge_index, 
+        relabel_nodes=True
+    )
+    
+    # Safety: If too huge, trim it (though k-hop is usually safe)
+    if subset.size(0) > max_nodes:
+        # If too big, just take a smaller random subset of the valid connected subset
+        # and induce the subgraph again to keep connections
+        perm = torch.randperm(subset.size(0))[:max_nodes]
+        subset = subset[perm]
+        sub_edge_index, _ = subgraph(subset, data.edge_index, relabel_nodes=True)
+
+    print(f"Sampled subgraph: {subset.size(0)} nodes.")
+    
+    # Create new Data object for the visualization function
+    return Data(edge_index=sub_edge_index, num_nodes=subset.size(0))
 
 
 def setup_directories(config):
@@ -189,17 +222,22 @@ def train_epoch(state: TrainingState):
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
             relation_graph = full_graph.relation_graph.to(device)
+            #small_data = sample_connected_subgraph(full_graph, num_hops=3, max_nodes=1000)
+            #compute_and_plot_laplacian_pe(small_data, k_vectors=20, num_eigenvalues_to_plot=20)
+            #exit()
+
+
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
             if plot_embeddings:
                 edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
-                node_embeddings = state.model_components.model.entity_model(data=full_graph, relation_representations=edge_embeddings)
+                node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
                 edge_embeddings = edge_embeddings.detach().cpu().squeeze()
                 node_embeddings = node_embeddings.detach().cpu().squeeze()
                 state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
                 state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
-                #analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
-                #analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
+                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
+                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
                 plot_embeddings = False
 
 
