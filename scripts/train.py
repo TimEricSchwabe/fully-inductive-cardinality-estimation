@@ -170,7 +170,7 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
-    plot_embeddings = True
+    plot_embeddings = False
 
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
@@ -184,7 +184,24 @@ def train_epoch(state: TrainingState):
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
-            relation_graph = full_graph.relation_graph.to(device)
+            relation_graph = full_graph.bipartite_graph.to(device)
+            offset = full_graph.num_nodes
+            seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
+            seeds = seeds[seeds >= 0].unique().detach().cpu()
+            if seeds.numel() > 0:
+                relation_graph, global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
+                edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
+
+                edge_embedding_indices_detached = torch.where(
+                    edge_embedding_indices_detached >= 0,
+                    global_to_local[edge_embedding_indices_detached + offset],
+                    torch.full_like(edge_embedding_indices_detached, -1),
+                ).to(torch.long)
+                query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
+                relation_graph = relation_graph.to(device)
+            else:
+                relation_graph = None
+
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
             if plot_embeddings:

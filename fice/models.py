@@ -245,6 +245,7 @@ class RelationGNN(nn.Module):
         super().__init__()
         self.num_relation = num_relation
         self.conditioning = conditioning     
+        self.input_dim = input_dim  
 
         # 4 trainable relation embeddings
         self.rel_emb = nn.Embedding(num_relation, input_dim)
@@ -266,6 +267,8 @@ class RelationGNN(nn.Module):
         data  : PyG Data of the *relation* graph
         batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
         """
+        assert len(data.edge_index) % 2 == 0, "Bipartit graph must have even number of edges (directed pairs)."
+
         if batch is None:
             bs = 1
             device = data.edge_index.device
@@ -299,27 +302,32 @@ class RelationGNN(nn.Module):
             h[graph_idx, rel_idx] = 1.0
 
         rel_edges  = data.edge_index        # (2, E)
-        rel_types  = data.edge_type         # (E,)
+        # rel_types  = data.edge_type         # (E,)
         batch_edge_list  = []
-        batch_type_list  = []
+        # batch_type_list  = []
         # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
         # to increase the edge index per batch, but leave the edge type the same.
         for b in range(bs):                 # identical to EntityGNN lines 72-84
             offset = b * num_nodes
             batch_edge_list.append(rel_edges + offset)
-            batch_type_list.append(rel_types)
+            # batch_type_list.append(rel_types)
         edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
-        edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+        # edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
 
-        edge_attr  = self.rel_emb(edge_type)    
-
+        # edge_attr  = self.rel_emb(edge_type)    
+        # rel_emb = nn.Embedding(len(data.original_edge_type), self.input_dim)
+        # split = len(data.original_edge_type)
+        # head_half_edge_types = rel_emb(data.edge_index[1, split:])
+        # tail_half_edge_types = rel_emb(data.edge_index[0, :split])
+        # edge_attr = torch.cat((head_half_edge_types, tail_half_edge_types), dim=0)
+        edge_attr = torch.ones((edge_index.size(1), self.input_dim), device=device)
 
         x = h.view(bs * num_nodes, -1)
 
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x   = layer(x, edge_index, edge_attr)
+            x   = layer(x, edge_index, edge_attr)  # edge_attr is not used in GINEConv if not provided
             if self.norms:
                  x = self.norms[i](x)
             x = self.act(x)
@@ -360,7 +368,7 @@ class FICE(nn.Module):
                 layer_norm=True,
                 conditioning=conditioning
             )
-        elif relation_message_func == 'GAT':
+        elif relation_message_func in ['GAT', 'gine']:
             self.relation_model = RelationGNN(
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,

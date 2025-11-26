@@ -1,32 +1,32 @@
-# E# Example YAML config for local training (updated to new Config/DataConfig schema)
-
+# Example YAML config for local training (updated to new Config/DataConfig schema)data:
 data:
-  - dataset: "SWDF"
-    queries: "SWDF_Star_Queries"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_star_queries"
     batch_size: 4
-    num_queries: 80
+    num_queries: 100
     type: "train-val"
-  - dataset: "LUBM"
-    queries: "LUBMQueries"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_star_queries"
     batch_size: 4
-    num_queries: 80
-    type: "train-val"
-  - dataset: "Wikidata"
-    queries: "WIKIDATA_Star_Queries"
-    batch_size: 4
-    num_queries: 80
+    num_queries: 100
     type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
     batch_size: 4
-    num_queries: 80
+    num_queries: 100
     type: "train-val"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_star_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
 
-
-
-
-
-epochs: 10
+epochs: 20
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -34,11 +34,15 @@ save_every: 5
 eval_every: 1
 seed: 42
 device: "auto"
-EntityGNNNeighborhood: [100, 100]
-EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
-RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
+EntityGNNNeighborhood: [100, 100, 100]
+EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN
+RelationGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "GAT", 'gine'
 Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary"
-layer_norm: True # True or False, whether to use layer normalization in the GNNs
+layer_norm: False # True or False, whether to use layer normalization in the GNNs
+QueryGNN: "TripleModel"
+wandb: True
+embedding_dim: 256
+n_embedding_layers: 3
 # weight_decay: 0.01  # Uncomment to use weight decay

@@ -217,6 +217,28 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
     
     return processed_data
 
+def make_bipartit_graph(data):
+    # Convert a homogeneous graph to a bipartite graph representation
+    edge_index = data.edge_index
+    edge_type = data.edge_type 
+    edge_type = edge_type + data.num_nodes # Offset relation types 
+    num_nodes = data.num_nodes
+
+    edge_index_head = torch.vstack((edge_index[0] , edge_type))
+    edge_index_tail = torch.vstack((edge_type , edge_index[1]))
+    bipartite_edge_index = torch.hstack((edge_index_head , edge_index_tail))
+    
+    # Create new data object for bipartite graph
+    bipartite_data = Data(
+        edge_index=bipartite_edge_index,
+        num_nodes=num_nodes * 2,  # Total nodes in bipartite graph
+        dataset_name=f"{data.dataset_name}_bipartite",
+        original_edge_index=data.edge_index,
+        original_edge_type=data.edge_type,
+    )
+
+    return bipartite_data
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -247,6 +269,10 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+
+        bipartit_graph = make_bipartit_graph(dataset)
+        dataset.bipartite_graph = bipartit_graph
+
 
         if data_config.type == 'train':
             train_datasets.append(dataset)

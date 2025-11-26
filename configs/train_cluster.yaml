@@ -41,7 +41,7 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary"
 layer_norm: True # True or False, whether to use layer normalization in the GNNs
-QueryGNN: "QueryCardinalityGNN"
+QueryGNN: "TripleModel"
 wandb: True
 embedding_dim: 256
 n_embedding_layers: 3

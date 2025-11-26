@@ -25,7 +25,7 @@ class Config(BaseSettings):
     weight_decay: float | None = None  # Optional weight decay for optimizer
     EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
     EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
-    RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT'] = "GAT"  # Message function for relation GNN
+    RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT', 'gine'] = "GAT"  # Message function for relation GNN
     Conditioning: Literal['seed only', 'all', 'false'] = "all"  # Conditioning strategy for GNN
     QueryGNN: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel'] = 'TripleModel' 
     min_cardinality: int | None = None  # Minimum cardinality filter
