@@ -236,8 +236,8 @@ def train_epoch(state: TrainingState):
                 node_embeddings = node_embeddings.detach().cpu().squeeze()
                 state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
                 state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
-                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
-                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
+                #analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
+                #analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
                 plot_embeddings = False
 
 

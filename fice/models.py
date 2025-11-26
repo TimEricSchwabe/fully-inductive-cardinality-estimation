@@ -289,7 +289,7 @@ class RelationGNN(nn.Module):
         self.act = nn.SiLU()
 
 
-        self.laplacian_k = 30
+        self.laplacian_k = 0
         if self.laplacian_k > 0:
             self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
