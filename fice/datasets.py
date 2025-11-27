@@ -623,6 +623,101 @@ class dbpedia100k_star_queries(NTQueries):
             **kwargs
         )
 
+class wn18rr_v4_ind_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59898623?private_link=87c951797ea81f7c43f0",
+            dataset_name="wn18rr_v4_ind_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+class wn18rr_v4_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59898641?private_link=6a9649f116fe9d8803db",
+            dataset_name="wn18rr_v4_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+class dbpedia100k_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59898644?private_link=d6411dc19831edc2f780",
+            dataset_name="dbpedia100k_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+class fb237_v4_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59900678?private_link=69c356b2701ace402cf9",
+            dataset_name="fb237_v4_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
+class fb237_v4_ind_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/59900708?private_link=103743702bc11e9b4672",
+            dataset_name="fb237_v4_ind_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            **kwargs
+        )
+
 if __name__ == "__main__":
     dataset = LUBM()
     proc = pathlib.Path(dataset.processed_dir)

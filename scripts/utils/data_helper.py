@@ -38,6 +38,11 @@ QUERY_REGISTRY = {
     "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
     "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
     "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
+    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
+    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
+    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
 }
 
 
