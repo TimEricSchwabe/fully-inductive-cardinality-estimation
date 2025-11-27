@@ -112,6 +112,7 @@ class NTDatasets(InMemoryDataset):
                 # split into three last whitespace-separated tokens (s, p, o.)
                 parts = line.strip().split(" ")[:3]
                 if len(parts) != 3:
+                    raise ValueError(f"Malformed line: {line}")
                     # skip malformed/empty lines
                     continue
                 s, p, o = tuple(parts)
@@ -150,9 +151,12 @@ class NTDatasets(InMemoryDataset):
         for key, counts in occurrences.items():
             if key in entity_to_id:
                 occurrences_entity[key] = counts
-            elif key in relation_to_id:
+            if key in relation_to_id:
                 occurrences_relations[key] = counts
-            else:
+            
+            # Check if key was not found in either (error case)
+            if key not in entity_to_id and key not in relation_to_id:
+                raise ValueError(f"Key {key} not found in entity_to_id or relation_to_id")
                 # should not happen, but be robust
                 continue
 
@@ -212,7 +216,7 @@ class SWDF(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/s/ab41d70e4644c75a7e29",
+            url="https://figshare.com/ndownloader/files/59320634",
             dataset_name="swdf",
             **kwargs
         )
