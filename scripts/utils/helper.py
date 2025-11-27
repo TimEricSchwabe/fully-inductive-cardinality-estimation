@@ -11,6 +11,7 @@ import argparse
 import json
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
+from sklearn.manifold import TSNE
 
 
 logger = logging.getLogger(__name__)
@@ -183,10 +184,8 @@ def get_device(device_arg: str) -> torch.device:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         return torch.device(device_arg)
-
-
 ### Helper Functions ###
-def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, output_dir: Optional[Union[Path, str]]=None):
+def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     """
     Analyzes pairwise cosine similarity of a set of vectors.
     
@@ -194,13 +193,7 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
         embeddings: Tensor of shape [N, D]
         name: String identifier for plots/logs
         sample_size: Max number of vectors to use (to avoid OOM on large N*N matrices)
-        output_dir: Optional directory to save plots
     """
-    if output_dir is not None:
-        if isinstance(output_dir, str):
-            output_dir = Path(output_dir)
-        output_dir.mkdir(parents=True, exist_ok=True)
-
     if embeddings.size(0) < 2:
         print(f"[{name}] Not enough vectors to compute similarity.")
         return
@@ -251,10 +244,9 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
         plt.grid(True, alpha=0.3)
         
         # Save figure instead of showing to avoid blocking execution
-        figure_path = output_dir / f'similarity_hist_{name}.png' if output_dir else f'similarity_hist_{name}.png'
-        plt.savefig(figure_path)
+        plt.savefig(f'similarity_hist_{name}.png')
         plt.close()
-        print(f"Saved histogram to {figure_path}")
+        print(f"Saved histogram to similarity_hist_{name}.png")
     except Exception as e:
         print(f"Could not plot histogram: {e}")
 
@@ -271,8 +263,29 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
     plt.xlabel('PC1')
     plt.ylabel('PC2')
     plt.grid(True, alpha=0.3)
-
-    figure_path = output_dir / f'pca_projection_{name}.png' if output_dir else f'pca_projection_{name}.png'
-    plt.savefig(figure_path)
+    
+    plt.savefig(f'pca_projection_{name}.png')
     plt.close()
-    print(f"Saved PCA plot to {figure_path}")
+    print(f"Saved PCA plot to pca_projection_{name}.png")
+
+    # t-SNE Projection
+    try:
+        # Use a smaller perplexity if n_samples is small, typically between 5 and 50
+        n_samples = vecs_np.shape[0]
+        perplexity = min(30, n_samples - 1) if n_samples > 1 else 1
+        
+        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+        vecs_tsne = tsne.fit_transform(vecs_np)
+        
+        plt.figure(figsize=(8, 6))
+        plt.scatter(vecs_tsne[:, 0], vecs_tsne[:, 1], alpha=0.6, s=10, color='purple')
+        plt.title(f't-SNE Projection (2D): {name}')
+        plt.xlabel('Dim 1')
+        plt.ylabel('Dim 2')
+        plt.grid(True, alpha=0.3)
+        
+        plt.savefig(f'tsne_projection_{name}.png')
+        plt.close()
+        print(f"Saved t-SNE plot to tsne_projection_{name}.png")
+    except Exception as e:
+        print(f"Could not compute/plot t-SNE: {e}")

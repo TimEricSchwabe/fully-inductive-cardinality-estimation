@@ -170,7 +170,7 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
-    plot_embeddings = False
+    plot_embeddings = True
 
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches
@@ -206,16 +206,14 @@ def train_epoch(state: TrainingState):
 
             if plot_embeddings:
                 edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
-                node_embeddings = state.model_components.model.entity_model(data=full_graph, relation_representations=edge_embeddings)
+                node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
                 edge_embeddings = edge_embeddings.detach().cpu().squeeze()
                 node_embeddings = node_embeddings.detach().cpu().squeeze()
-                output_dir = state.training_context.log_dir / "figures"
-                output_dir.mkdir(parents=True, exist_ok=True)
-
-                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=output_dir)
-                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=output_dir)
+                # state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
+                # state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
+                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
+                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
                 plot_embeddings = False
-
 
             if state.model_components.optimizer is not None:
                 state.model_components.optimizer.zero_grad()
