@@ -577,6 +577,41 @@ class QueryCardinalityGNN(torch.nn.Module):
         return global_est.squeeze(-1)
 
 
+class SimpleSumConv(MessagePassing):
+    def __init__(self):
+        super().__init__(aggr='add')
+
+    def forward(self, x, edge_index, edge_attr):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_i, x_j, edge_attr):
+        return x_i + x_j + edge_attr
+
+
+class SimpleSumGNN(torch.nn.Module):
+    def __init__(self, feat_dim=None, hidden_dim=128, **kwargs):
+        super().__init__()
+        self.conv = SimpleSumConv()
+        
+        # Input dimension is feat_dim - 3 due to slicing
+        input_dim = feat_dim - 3
+        if hidden_dim is None:
+            hidden_dim = 128
+            
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, batch, N=None):
+        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+        x = x[:, 3:]
+        edge_attr = edge_attr[:, 3:]
+        out = self.conv(x, edge_index, edge_attr)
+        out = global_add_pool(out, batch.batch)
+        return self.mlp(out).squeeze(-1)
+
 
 ############ QueryTransformer ############
 
