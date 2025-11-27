@@ -11,6 +11,8 @@ import numpy as np
 import pandas as pd
 import torch
 import wandb
+from wandb.errors import AuthenticationError
+import time
 
 import utils.metrics as metrics
 
@@ -209,6 +211,15 @@ class MetricLogger:
             self.save_csvs()
             
         return overall_metrics
+    
+    def _wandb_log_retry(self, data):
+        for _ in range(200):
+            try:
+                wandb.log(data)
+                return
+            except Exception as e:
+                logger.error(f"Error logging to wandb: {e}. Retrying...")
+                time.sleep(1)
 
     def _log_to_wandb(self, epoch, stage, overall_metrics, per_graph_metrics):
         # Log overall metrics
@@ -223,7 +234,7 @@ class MetricLogger:
             f"{stage}_median_q_error": overall_metrics['median_q_error'],
             'epoch': epoch
         }
-        wandb.log(log_data)
+        self._wandb_log_retry(log_data)
         
         # Log overall q-error boxplot
         self._log_q_error_boxplot(
@@ -245,7 +256,7 @@ class MetricLogger:
                 f"{stage}_median_q_error_{dataset_name}": graph_metrics['median_q_error'],
                 'epoch': epoch
             }
-            wandb.log(graph_log_data)
+            self._wandb_log_retry(graph_log_data)
             
             # Log per-graph q-error boxplot
             self._log_q_error_boxplot(
@@ -298,7 +309,7 @@ class MetricLogger:
             ax.set_yscale('log')
             ax.grid(True, linestyle='--', alpha=0.7)
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{title_prefix}_q_error_boxplot": wandb.Image(fig),
                 "epoch": epoch
             })
@@ -337,7 +348,7 @@ class MetricLogger:
                 title=f"{stage} Predictions vs True ({dataset_name}) - Epoch {epoch}"
             )
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{stage}_predictions_{dataset_name}_epoch_{epoch}": scatter_plot,
                 "epoch": epoch
             })
