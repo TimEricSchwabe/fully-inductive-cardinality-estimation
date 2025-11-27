@@ -954,6 +954,6 @@ class QueryCardinalityGNN(torch.nn.Module):
         
         global_est = global_add_pool(c_curr, batch.batch)
         
-        return torch.abs(global_est.squeeze(-1))
+        return global_est.squeeze(-1)
 
 

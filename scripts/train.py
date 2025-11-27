@@ -430,6 +430,9 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
+            # Apply ReLU during evaluation (inference logic)
+            log_cardinality_pred = torch.relu(log_cardinality_pred)
+
             true_cardinality = query_batch.y.to(torch.float32).to(device)
             log_true_cardinality = torch.log(true_cardinality)
             
