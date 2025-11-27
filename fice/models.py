@@ -10,7 +10,7 @@ from torch_geometric.transforms import AddRandomWalkPE, AddLaplacianEigenvectorP
 
 from easydict import EasyDict
 
-from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN, IndependentQueryGNN
+from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer
 from fice.ultra.models import RelNBFNet, EntityNBFNet
 
 import matplotlib.pyplot as plt
@@ -451,6 +451,8 @@ class FICE(nn.Module):
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'TripleModel':
             self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+        elif self.query_gnn_type == 'QueryTransformer':
+            self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         else:
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
@@ -559,6 +561,8 @@ class FICE(nn.Module):
             log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
         elif self.query_gnn_type == 'TripleModel':
             log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+        elif self.query_gnn_type == 'QueryTransformer':
+            log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
         else:
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
