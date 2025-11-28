@@ -42,7 +42,7 @@ min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
 QueryGNN: "TripleModel"
-wandb: False
+wandb: True
 embedding_dim: 256
 n_embedding_layers: 3
 # weight_decay: 0.01  # Uncomment to use weight decay

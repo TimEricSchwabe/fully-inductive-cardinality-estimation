@@ -4,7 +4,7 @@ Helper functions for logging metrics, saving CSVs, and managing training data.
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any, Union, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,6 +27,10 @@ TRAIN_METRICS_PER_GRAPH_FILE_NAME = "train_metrics_per_graph.csv"
 TEST_METRICS_PER_GRAPH_FILE_NAME = "test_metrics_per_graph.csv"
 TRAIN_VALUES_PER_GRAPH_FILE_NAME = "train_values_per_graph.csv"
 TEST_VALUES_PER_GRAPH_FILE_NAME = "test_values_per_graph.csv"
+TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME = "train_metrics_per_query_type.csv"
+TEST_METRICS_PER_QUERY_TYPE_FILE_NAME = "test_metrics_per_query_type.csv"
+TRAIN_VALUES_PER_QUERY_TYPE_FILE_NAME = "train_values_per_query_type.csv"
+TEST_VALUES_PER_QUERY_TYPE_FILE_NAME = "test_values_per_query_type.csv"
 
 
 # ============================================================================
@@ -82,20 +86,28 @@ class MetricLogger:
             'test_per_graph_metrics': [],
             'train_predictions': [],
             'test_predictions': [],
+            'train_per_query_type_metrics': [],
+            'test_per_query_type_metrics': [],
+            'train_per_query_type_predictions': [],
+            'test_per_query_type_predictions': [],
 
             'final_test_metrics': [],
             'final_test_per_graph_metrics': [],
-            'final_test_predictions': []
+            'final_test_predictions': [],
+            'final_test_per_query_type_metrics': [],
+            'final_test_per_query_type_predictions': []
         }
         
         # Current epoch buffers
         self.current_epoch_data = {}
+        self.current_epoch_query_type_data = {}
 
     def start_epoch(self):
         """Resets internal buffers for a new epoch."""
         self.current_epoch_data = {}
+        self.current_epoch_query_type_data = {}
 
-    def log_batch(self, predictions_log, true_values_log, loss, dataset_name: str):
+    def log_batch(self, predictions_log, true_values_log, loss, dataset_name: str, query_type: Literal["star", "path"] = None):
         """Accumulates batch data."""
         # Convert tensors to numpy
         if torch.is_tensor(predictions_log):
@@ -114,7 +126,16 @@ class MetricLogger:
         # Convert to list for storage
         predictions_log = predictions_log.tolist()
         true_values_log = true_values_log.tolist()
-            
+        
+        # Handle query_type if it's a list/array (batched data)
+        if query_type is not None:
+            if isinstance(query_type, (list, tuple, np.ndarray)):
+                # Assume all items in batch have same type, take first element
+                query_type = query_type[0] if len(query_type) > 0 else None
+            elif torch.is_tensor(query_type):
+                query_type = query_type[0].item() if query_type.numel() > 0 else None
+        
+        # Store in regular per-graph data (regardless of query_type)
         if dataset_name not in self.current_epoch_data:
             self.current_epoch_data[dataset_name] = {
                 'predictions_log': [],
@@ -128,12 +149,30 @@ class MetricLogger:
         data['true_values_log'].extend(true_values_log)
         data['loss_sum'] += loss
         data['batch_count'] += 1
+        
+        # Store in per-query-type data (only if query_type is not None)
+        if query_type is not None:
+            key = (dataset_name, query_type)
+            if key not in self.current_epoch_query_type_data:
+                self.current_epoch_query_type_data[key] = {
+                    'predictions_log': [],
+                    'true_values_log': [],
+                    'loss_sum': 0.0,
+                    'batch_count': 0
+                }
+            
+            qt_data = self.current_epoch_query_type_data[key]
+            qt_data['predictions_log'].extend(predictions_log)
+            qt_data['true_values_log'].extend(true_values_log)
+            qt_data['loss_sum'] += loss
+            qt_data['batch_count'] += 1
 
     def end_epoch(self, epoch: int, stage: str = 'train', save: bool = False) -> Dict[str, Any]:
         """
         Processes accumulated data, calculates metrics, logs to wandb, and updates history.
         """
         per_graph_metrics = {}
+        per_query_type_metrics = {}
         all_predictions_log = []
         all_true_values_log = []
         total_loss_sum = 0
@@ -186,6 +225,50 @@ class MetricLogger:
                     'prediction': pred,
                     'true_value': true
                 })
+        
+        # Process per-query-type data
+        for (dataset_name, query_type), data in self.current_epoch_query_type_data.items():
+            predictions_log = np.array(data['predictions_log'])
+            true_values_log = np.array(data['true_values_log'])
+            
+            # Calculate metrics for this dataset-query_type combination
+            qt_metrics_results = calculate_all_metrics(predictions_log, true_values_log)
+            avg_loss = data['loss_sum'] / data['batch_count']
+            
+            per_query_type_metrics[(dataset_name, query_type)] = {
+                'loss': avg_loss,
+                **qt_metrics_results
+            }
+            
+            # Store per-query-type metrics in history
+            self.history[f'{stage}_per_query_type_metrics'].append({
+                'epoch': epoch,
+                'dataset_name': dataset_name,
+                'query_type': query_type,
+                'loss': avg_loss,
+                'mse': qt_metrics_results['mse'],
+                'mae': qt_metrics_results['mae'],
+                'rmse': qt_metrics_results['rmse'],
+                'q_error': qt_metrics_results['q_error']
+            })
+            
+            # Store per-query-type predictions in history
+            for i, (pred_log, true_log, pred, true) in enumerate(zip(
+                qt_metrics_results['predictions_log'],
+                qt_metrics_results['true_values_log'],
+                qt_metrics_results['predictions'],
+                qt_metrics_results['true_values']
+            )):
+                self.history[f'{stage}_per_query_type_predictions'].append({
+                    'epoch': epoch,
+                    'dataset_name': dataset_name,
+                    'query_type': query_type,
+                    'batch_idx': i,
+                    'prediction_log': pred_log,
+                    'true_value_log': true_log,
+                    'prediction': pred,
+                    'true_value': true
+                })
 
         # Calculate overall metrics
         overall_metrics = calculate_all_metrics(all_predictions_log, all_true_values_log)
@@ -204,7 +287,7 @@ class MetricLogger:
         
         # Log to WandB
         if self.use_wandb:
-            self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics)
+            self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics, per_query_type_metrics)
 
         # Save CSVs
         if save:
@@ -221,7 +304,7 @@ class MetricLogger:
                 logger.error(f"Error logging to wandb: {e}. Retrying...")
                 time.sleep(1)
 
-    def _log_to_wandb(self, epoch, stage, overall_metrics, per_graph_metrics):
+    def _log_to_wandb(self, epoch, stage, overall_metrics, per_graph_metrics, per_query_type_metrics):
         # Log overall metrics
         log_data = {
             f"{stage}_loss": overall_metrics['loss'],
@@ -270,6 +353,35 @@ class MetricLogger:
                 graph_metrics['predictions_log'], 
                 graph_metrics['true_values_log'], 
                 epoch, stage, dataset_name
+            )
+        
+        # Log per-query-type metrics
+        for (dataset_name, query_type), qt_metrics in per_query_type_metrics.items():
+            qt_log_data = {
+                f"{stage}_loss_{dataset_name}_{query_type}": qt_metrics['loss'],
+                f"{stage}_mse_{dataset_name}_{query_type}": qt_metrics['mse'],
+                f"{stage}_mae_{dataset_name}_{query_type}": qt_metrics['mae'],
+                f"{stage}_rmse_{dataset_name}_{query_type}": qt_metrics['rmse'],
+                f"{stage}_q_error_{dataset_name}_{query_type}": qt_metrics['q_error'],
+                f"{stage}_median_mse_{dataset_name}_{query_type}": qt_metrics['median_mse'],
+                f"{stage}_median_mae_{dataset_name}_{query_type}": qt_metrics['median_mae'],
+                f"{stage}_median_q_error_{dataset_name}_{query_type}": qt_metrics['median_q_error'],
+                'epoch': epoch
+            }
+            self._wandb_log_retry(qt_log_data)
+            
+            # Log per-query-type q-error boxplot
+            self._log_q_error_boxplot(
+                qt_metrics['q_errors_array'],
+                qt_metrics['true_values'],
+                epoch, f"{stage}_{dataset_name}_{query_type}"
+            )
+            
+            # Log per-query-type predictions scatter plot
+            self._log_predictions_scatter(
+                qt_metrics['predictions_log'],
+                qt_metrics['true_values_log'],
+                epoch, stage, f"{dataset_name}_{query_type}"
             )
             
         # Log overall predictions scatter plot
@@ -366,7 +478,13 @@ class MetricLogger:
             'final_test_per_graph_metrics': 'final_test_metrics_per_graph.csv',
             'train_predictions': TRAIN_VALUES_PER_GRAPH_FILE_NAME,
             'test_predictions': TEST_VALUES_PER_GRAPH_FILE_NAME,
-            'final_test_predictions': 'final_test_predictions_per_graph.csv'
+            'final_test_predictions': 'final_test_predictions_per_graph.csv',
+            'train_per_query_type_metrics': TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME,
+            'test_per_query_type_metrics': TEST_METRICS_PER_QUERY_TYPE_FILE_NAME,
+            'final_test_per_query_type_metrics': 'final_test_metrics_per_query_type.csv',
+            'train_per_query_type_predictions': TRAIN_VALUES_PER_QUERY_TYPE_FILE_NAME,
+            'test_per_query_type_predictions': TEST_VALUES_PER_QUERY_TYPE_FILE_NAME,
+            'final_test_per_query_type_predictions': 'final_test_predictions_per_query_type.csv'
         }
         
         for key, filename in files_map.items():

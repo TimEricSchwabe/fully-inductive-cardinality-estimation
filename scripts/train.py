@@ -271,7 +271,8 @@ def train_epoch(state: TrainingState):
                 predictions_log=log_cardinality_pred,
                 true_values_log=log_true_cardinality,
                 loss=loss,
-                dataset_name=full_graph.dataset_name
+                dataset_name=full_graph.dataset_name,
+                query_type=query_batch.type
             )
 
             epoch_train_loss += loss.item()
@@ -372,7 +373,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                 predictions_log=log_cardinality_pred,
                 true_values_log=log_true_cardinality,
                 loss=loss,
-                dataset_name=full_graph.dataset_name
+                dataset_name=full_graph.dataset_name,
+                query_type=query_batch.type
             )
 
             epoch_test_loss += loss.item()

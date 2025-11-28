@@ -3,7 +3,7 @@ from pathlib import Path
 import torch
 import json
 from torch_geometric.data import Data, InMemoryDataset
-from typing import Optional, Dict, List, Tuple, Union
+from typing import Optional, Dict, List, Tuple, Union, Literal
 import requests
 from tqdm import tqdm as _tqdm
 
@@ -280,9 +280,11 @@ class NTQueries(InMemoryDataset):
         transform=None,
         pre_transform=None,
         dim: int = 128,
+        type: Literal["star", "path"] = "star",
     ):
         self.url = url
         self.dim = dim
+        self.query_type = type
         if entity_occurrences is None:
             entity_occurrences = {}
         if relation_occurrences is None:
@@ -436,6 +438,7 @@ class NTQueries(InMemoryDataset):
 
             node_embedding_indices=embedding_indices,
             edge_embedding_indices=edge_embedding_indices,
+            type=self.query_type
         )
 
     def process(self):
