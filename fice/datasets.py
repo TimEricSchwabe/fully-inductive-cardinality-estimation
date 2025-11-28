@@ -102,7 +102,9 @@ class NTDatasets(InMemoryDataset):
         # Create id mapping and count occurrences
         entity_to_id: Dict[str, int] = {}
         relation_to_id: Dict[str, int] = {}
-        occurrences: Dict[str, List[int]] = {}
+        occurrences_relations: Dict[str, List[int]] = {}
+        occurrences_entity: Dict[str, List[int]] = {}
+
         mapped_triplets: List[Tuple[int, int, int]] = []
 
         # Stream the NT file line-by-line and parse robustly
@@ -118,9 +120,9 @@ class NTDatasets(InMemoryDataset):
                 s, p, o = tuple(parts)
 
                 # count occurrences: [head_count, relation_count, tail_count]
-                occurrences.setdefault(s, [0, 0, 0])[0] += 1
-                occurrences.setdefault(p, [0, 0, 0])[1] += 1
-                occurrences.setdefault(o, [0, 0, 0])[2] += 1
+                occurrences_entity.setdefault(s, [0, 0, 0])[0] += 1
+                occurrences_relations.setdefault(p, [0, 0, 0])[1] += 1
+                occurrences_entity.setdefault(o, [0, 0, 0])[2] += 1
 
                 if s not in entity_to_id:
                     entity_to_id[s] = len(entity_to_id)
@@ -144,21 +146,6 @@ class NTDatasets(InMemoryDataset):
             json.dump(entity_to_id, f, indent=2, sort_keys=True)
         with relation_to_id_path.open("w", encoding="utf-8") as f:
             json.dump(relation_to_id, f, indent=2, sort_keys=True)
-
-        # split occurrences by kind (keep original string keys for readability)
-        occurrences_relations: Dict[str, List[int]] = {}
-        occurrences_entity: Dict[str, List[int]] = {}
-        for key, counts in occurrences.items():
-            if key in entity_to_id:
-                occurrences_entity[key] = counts
-            if key in relation_to_id:
-                occurrences_relations[key] = counts
-            
-            # Check if key was not found in either (error case)
-            if key not in entity_to_id and key not in relation_to_id:
-                raise ValueError(f"Key {key} not found in entity_to_id or relation_to_id")
-                # should not happen, but be robust
-                continue
 
         entity_occurrences_path = pathlib.Path(self.processed_dir) / "entity_occurrences.json"
         relation_occurrences_path = pathlib.Path(self.processed_dir) / "relation_occurrences.json"

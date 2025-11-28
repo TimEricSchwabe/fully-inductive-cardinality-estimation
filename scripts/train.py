@@ -119,17 +119,16 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     device = context.device
     
     # Get message functions from config if available
-    entity_message_func = getattr(config, 'EntityGNNMessageFunc', 'rotate')
-    relation_message_func = getattr(config, 'RelationGNNMessageFunc', 'rotate')
-    layer_norm = getattr(config, 'layer_norm', True)
-    conditioning = getattr(config, 'Conditioning', 'all')
-    query_gnn = getattr(config, 'QueryGNN', 'TripleModel')
+    entity_message_func = config.EntityGNNMessageFunc
+    relation_message_func = config.RelationGNNMessageFunc
+    layer_norm = config.layer_norm
+    conditioning = config.Conditioning
+    query_gnn = config.QueryGNN
     
+    model_type = config.model
     # Get embedding dimension and number of layers from config
-    vector_dim = getattr(config, 'embedding_dim', 128)
-    n_embedding_layers = getattr(config, 'n_embedding_layers', 2)
-
-    model_type = getattr(config, 'model', 'FICE')
+    vector_dim = config.embedding_dim
+    n_embedding_layers = config.n_embedding_layers
     
     if model_type == 'FiceBinary':
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
@@ -221,11 +220,23 @@ def train_epoch(state: TrainingState):
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
-            relation_graph = full_graph.relation_graph.to(device)
-            #small_data = sample_connected_subgraph(full_graph, num_hops=3, max_nodes=1000)
-            #compute_and_plot_laplacian_pe(small_data, k_vectors=20, num_eigenvalues_to_plot=20)
-            #exit()
+            relation_graph = full_graph.bipartite_graph.to(device)
+            offset = full_graph.num_nodes
+            seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
+            seeds = seeds[seeds >= 0].unique().detach().cpu()
+            if seeds.numel() > 0:
+                relation_graph, global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
+                edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
 
+                edge_embedding_indices_detached = torch.where(
+                    edge_embedding_indices_detached >= 0,
+                    global_to_local[edge_embedding_indices_detached + offset],
+                    torch.full_like(edge_embedding_indices_detached, -1),
+                ).to(torch.long)
+                query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
+                relation_graph = relation_graph.to(device)
+            else:
+                relation_graph = None
 
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
@@ -721,6 +732,7 @@ def main():
     logger.info(f"Using device: {device}")
 
     # Initialize Weights & Biases
+    # TODO: fix
     use_wandb = config.wandb
     if use_wandb:
         initialize_wandb(config, run_dir)

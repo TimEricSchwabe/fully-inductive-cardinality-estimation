@@ -222,6 +222,28 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
     
     return processed_data
 
+def make_bipartit_graph(data):
+    # Convert a homogeneous graph to a bipartite graph representation
+    edge_index = data.edge_index
+    edge_type = data.edge_type 
+    edge_type = edge_type + data.num_nodes # Offset relation types 
+    num_nodes = data.num_nodes
+
+    edge_index_head = torch.vstack((edge_index[0] , edge_type))
+    edge_index_tail = torch.vstack((edge_type , edge_index[1]))
+    bipartite_edge_index = torch.hstack((edge_index_head , edge_index_tail))
+    
+    # Create new data object for bipartite graph
+    bipartite_data = Data(
+        edge_index=bipartite_edge_index,
+        num_nodes=num_nodes * 2,  # Total nodes in bipartite graph
+        dataset_name=f"{data.dataset_name}_bipartite",
+        original_edge_index=data.edge_index,
+        original_edge_type=data.edge_type,
+    )
+
+    return bipartite_data
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -241,15 +263,21 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     validation_datasets = []
     validation_sets = [] 
+    validation_batch_size = []
 
     test_dataset = []
     test_sets = []
+    test_batch_size = []
 
     for data_config in data_configs:
         dataset_name = data_config.dataset
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+
+        bipartit_graph = make_bipartit_graph(dataset)
+        dataset.bipartite_graph = bipartit_graph
+
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
@@ -259,15 +287,18 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         elif data_config.type == 'validation':
             validation_datasets.append(dataset)
             validation_sets.append(queries)
+            validation_batch_size.append(data_config.batch_size)
 
         elif data_config.type == 'test':
             test_dataset.append(dataset)
             test_sets.append(queries)
+            test_batch_size.append(data_config.batch_size)
 
         elif data_config.type == 'train-val': 
             train_datasets.append(dataset)
             validation_datasets.append(dataset)
             train_batch_size.append(data_config.batch_size)
+            validation_batch_size.append(data_config.batch_size)
 
             train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
             train_sets.append(train_q)
@@ -283,7 +314,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     validation_loader = MultigraphLoader(
         data=validation_datasets,
         queries=validation_sets,
-        batch_size=1,
+        batch_size=validation_batch_size,
         shuffle=True,
     )
 
@@ -291,11 +322,12 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets
+        test_batch_size = validation_batch_size
 
     test_loader = MultigraphLoader(
         data=test_dataset,
         queries=test_sets,
-        batch_size=1,
+        batch_size=test_batch_size,
         shuffle=True,
     )
 

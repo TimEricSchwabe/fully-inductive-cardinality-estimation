@@ -1,15 +1,15 @@
-# E# Example YAML config for local training (updated to new Config/DataConfig schema)
-
+# Example YAML config for local training (updated to new Config/DataConfig schema)data:
 data:
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 4
     num_queries: 10000
     type: "train-val"
-
-
-
-
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_star_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
 epochs: 200
 wandb: True
 learning_rate: 1e-4

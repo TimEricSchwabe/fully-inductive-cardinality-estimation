@@ -239,10 +239,10 @@ class TripleModel(torch.nn.Module):
         self.ln2 = nn.LayerNorm(200)
 
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
-        #self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
-        #self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
-        self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
+        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
+        # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)
 
@@ -553,7 +553,7 @@ class QueryCardinalityGNN(torch.nn.Module):
         x = batch.x # [Nodes, 3 + D]
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log(torch.tensor(N, device=x.device))
+        log_N = torch.log(N).to(x.device) # TODO: muss so? vorher war da torch.log(torch.tensor(N, device=x.device))
 
         # --- Phase 1 ---
         # c_curr: [Nodes, 1] (Log cardinality estimate per node; accounting for tp cardinalitiies and first node joins)

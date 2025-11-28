@@ -1,6 +1,7 @@
 from pathlib import Path
 import logging
 import random
+from typing import Union, Optional
 import torch
 import numpy as np
 from datetime import datetime
@@ -71,12 +72,7 @@ def parse_arguments():
         type=str,
         help="Path to the checkpoint to resume training from.",
     )
-    # Weights & Biases flag
-    parser.add_argument(
-        "--wandb",
-        action="store_true",
-        help="Enable Weights & Biases logging.",
-    )
+    
 
     args = parser.parse_args()
     # Enforce --config is required unless --checkpoint is specified
@@ -188,8 +184,6 @@ def get_device(device_arg: str) -> torch.device:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         return torch.device(device_arg)
-
-
 ### Helper Functions ###
 def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     """
