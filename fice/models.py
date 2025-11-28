@@ -18,90 +18,6 @@ from sklearn.decomposition import PCA
 
 
 
-### Helper Functions ###
-def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
-    """
-    Analyzes pairwise cosine similarity of a set of vectors.
-    
-    Args:
-        embeddings: Tensor of shape [N, D]
-        name: String identifier for plots/logs
-        sample_size: Max number of vectors to use (to avoid OOM on large N*N matrices)
-    """
-    if embeddings.size(0) < 2:
-        print(f"[{name}] Not enough vectors to compute similarity.")
-        return
-
-    # Detach and move to computation device (can stay on GPU for speed)
-    vecs = embeddings.detach()
-    
-    # Optional: Downsample if too many vectors to avoid creating a massive NxN matrix
-    if vecs.size(0) > sample_size:
-        perm = torch.randperm(vecs.size(0))
-        vecs = vecs[perm[:sample_size]]
-    
-    # 1. Normalize vectors to unit length (L2 norm)
-    # cosine_similarity(a, b) = dot(a, b) / (|a| * |b|)
-    # If we normalize first, it becomes just dot(a, b)
-    vecs_norm = torch.nn.functional.normalize(vecs, p=2, dim=1)
-    
-    # 2. Compute Pairwise Similarity Matrix (N x N)
-    similarity_matrix = torch.mm(vecs_norm, vecs_norm.t())
-    
-    # 3. Extract Upper Triangle (off-diagonal)
-    # We only care about unique pairs (i, j) where i < j
-    triu_indices = torch.triu_indices(similarity_matrix.size(0), similarity_matrix.size(1), offset=1)
-    similarities = similarity_matrix[triu_indices[0], triu_indices[1]]
-    
-    # --- Metrics ---
-    avg_sim = similarities.mean().item()
-    std_sim = similarities.std().item()
-    min_sim = similarities.min().item()
-    max_sim = similarities.max().item()
-    
-    print(f"--- {name} Analysis ---")
-    print(f"Avg Cosine Similarity: {avg_sim:.4f} ± {std_sim:.4f}")
-    print(f"Range: [{min_sim:.4f}, {max_sim:.4f}]")
-    
-    # --- Plotting ---
-    # Move to CPU for plotting
-    sim_values = similarities.cpu().numpy()
-    
-    try:
-        plt.figure(figsize=(8, 5))
-        plt.hist(sim_values, bins=50, range=(-1, 1), alpha=0.7, color='skyblue', edgecolor='black')
-        plt.axvline(avg_sim, color='red', linestyle='dashed', linewidth=1, label=f'Mean: {avg_sim:.2f}')
-        plt.title(f'Pairwise Cosine Similarity Distribution: {name}')
-        plt.xlabel('Cosine Similarity (-1 to 1)')
-        plt.ylabel('Frequency')
-        plt.legend()
-        plt.grid(True, alpha=0.3)
-        
-        # Save figure instead of showing to avoid blocking execution
-        plt.savefig(f'similarity_hist_{name}.png')
-        plt.close()
-        print(f"Saved histogram to similarity_hist_{name}.png")
-    except Exception as e:
-        print(f"Could not plot histogram: {e}")
-
-
-    vecs_np = vecs.cpu().numpy()
-    
-    # Project to 2D
-    pca = PCA(n_components=2)
-    vecs_2d = pca.fit_transform(vecs_np)
-    
-    plt.figure(figsize=(8, 6))
-    plt.scatter(vecs_2d[:, 0], vecs_2d[:, 1], alpha=0.6, s=10, color='teal')
-    plt.title(f'PCA Projection (2D): {name}')
-    plt.xlabel('PC1')
-    plt.ylabel('PC2')
-    plt.grid(True, alpha=0.3)
-    
-    plt.savefig(f'pca_projection_{name}.png')
-    plt.close()
-    print(f"Saved PCA plot to pca_projection_{name}.png")
-
 class EntityGNN(nn.Module):
     def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, **kwargs):
         super(EntityGNN, self).__init__()
@@ -468,10 +384,6 @@ class FICE(nn.Module):
         bound_edges = (edge_embedding_indices >= 0)  # bools indicating which edges need relation embeddings
         edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
         edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
-
-        if plot_embeddings:
-            analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(epoch))
-            analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(epoch))
 
         # Selectively replace last 64 dims for edges with actual relations and keeping first 3 dims for all
         edge_last = torch.where(bound_edges.unsqueeze(-1),
