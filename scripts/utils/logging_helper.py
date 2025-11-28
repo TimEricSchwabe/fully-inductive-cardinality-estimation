@@ -14,8 +14,9 @@ import wandb
 from sklearn.decomposition import PCA
 from wandb.errors import AuthenticationError
 import time
-
+from sklearn.manifold import TSNE
 import utils.metrics as metrics
+
 
 
 logger = logging.getLogger(__name__)
@@ -310,6 +311,30 @@ class MetricLogger:
                 "epoch": epoch
             })
             plt.close(fig_pca)
+
+            # t-SNE Projection
+            try:
+                # Use a smaller perplexity if n_samples is small, typically between 5 and 50
+                n_samples = vecs_np.shape[0]
+                perplexity = min(30, n_samples - 1) if n_samples > 1 else 1
+                
+                tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+                vecs_tsne = tsne.fit_transform(vecs_np)
+                
+                fig_tsne, ax_tsne = plt.subplots(figsize=(8, 6))
+                ax_tsne.scatter(vecs_tsne[:, 0], vecs_tsne[:, 1], alpha=0.6, s=10, color='purple')
+                ax_tsne.set_title(f't-SNE Projection (2D): {name}')
+                ax_tsne.set_xlabel('Dim 1')
+                ax_tsne.set_ylabel('Dim 2')
+                ax_tsne.grid(True, alpha=0.3)
+                
+                wandb.log({
+                    f"{name}_tsne_projection": wandb.Image(fig_tsne),
+                    "epoch": epoch
+                })
+                plt.close(fig_tsne)
+            except Exception as e:
+                logger.error(f"Could not compute/plot t-SNE: {e}")
             
         except Exception as e:
             logger.error(f"Error logging embedding similarity for {name}: {e}")

@@ -34,6 +34,9 @@ class Config(BaseSettings):
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
     wandb: bool = False  # Whether to use Weights & Biases for logging
+    
+    entity_graph: Literal['bipartite', 'KG'] = "KG"
+    relation_graph: Literal['bipartite', 'RelationGraph'] = "bipartite"
 
 
     class Config:
