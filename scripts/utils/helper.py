@@ -185,7 +185,7 @@ def get_device(device_arg: str) -> torch.device:
     else:
         return torch.device(device_arg)
 ### Helper Functions ###
-def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
+def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, output_dir: Union[Path, str]=None):
     """
     Analyzes pairwise cosine similarity of a set of vectors.
     
@@ -193,7 +193,15 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
         embeddings: Tensor of shape [N, D]
         name: String identifier for plots/logs
         sample_size: Max number of vectors to use (to avoid OOM on large N*N matrices)
+        output_dir: Directory to save plots (optional)
     """
+
+    if isinstance(output_dir, str):
+        output_dir = Path(output_dir)
+
+    if output_dir:
+        output_dir.mkdir(parents=True, exist_ok=True)
+
     if embeddings.size(0) < 2:
         print(f"[{name}] Not enough vectors to compute similarity.")
         return
@@ -244,9 +252,13 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
         plt.grid(True, alpha=0.3)
         
         # Save figure instead of showing to avoid blocking execution
-        plt.savefig(f'similarity_hist_{name}.png')
+        if output_dir:
+            output_path = output_dir / f'similarity_hist_{name}.png'
+        else:
+            output_path = f'similarity_hist_{name}.png'
+        plt.savefig(output_path)
         plt.close()
-        print(f"Saved histogram to similarity_hist_{name}.png")
+        print(f"Saved histogram to {output_path}")
     except Exception as e:
         print(f"Could not plot histogram: {e}")
 
@@ -264,9 +276,13 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     plt.ylabel('PC2')
     plt.grid(True, alpha=0.3)
     
-    plt.savefig(f'pca_projection_{name}.png')
+    if output_dir:
+        output_path = output_dir / f'pca_projection_{name}.png'
+    else:
+        output_path = f'pca_projection_{name}.png'
+    plt.savefig(output_path)
     plt.close()
-    print(f"Saved PCA plot to pca_projection_{name}.png")
+    print(f"Saved PCA plot to {output_path}")
 
     # t-SNE Projection
     try:
@@ -284,8 +300,12 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
         plt.ylabel('Dim 2')
         plt.grid(True, alpha=0.3)
         
-        plt.savefig(f'tsne_projection_{name}.png')
+        if output_dir:
+            output_path = output_dir / f'tsne_projection_{name}.png'
+        else:
+            output_path = f'tsne_projection_{name}.png'
+        plt.savefig(output_path)
         plt.close()
-        print(f"Saved t-SNE plot to tsne_projection_{name}.png")
+        print(f"Saved t-SNE plot to {output_path}")
     except Exception as e:
         print(f"Could not compute/plot t-SNE: {e}")
