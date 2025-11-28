@@ -291,6 +291,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets
+        test_batch_size = validation_batch_size
 
     test_loader = MultigraphLoader(
         data=test_dataset,
