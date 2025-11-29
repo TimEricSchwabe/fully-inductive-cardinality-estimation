@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import nn
 from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
-from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
+from torch_geometric.nn import GATv2Conv, GINEConv, GINConv, GPSConv
 from torch_geometric.utils import degree
 from torch_geometric.transforms import AddRandomWalkPE, AddLaplacianEigenvectorPE
 
@@ -400,6 +400,172 @@ class EmbeddingGNN(nn.Module):
 
     def __init__(
         self,
+        input_dim: int = 512,          # Increased default
+        hidden_dims: tuple = (512, 512, 512, 512, 512, 512), # Deeper default
+        num_relation: int = 4,
+        heads: int = 4,                # For Transformer attention
+        conditioning: str = "all",
+        layer_norm: bool = True,
+        output_dim: int = 256,         # Compress for fast QueryGNN
+    ):
+        super().__init__()
+        self.conditioning = conditioning
+        self.input_dim = input_dim
+        
+        # Encoder for edge attributes
+        self.edge_encoder = nn.Linear(2, input_dim)
+        
+        # Initial node feature projection (if inputs aren't already input_dim)
+        # Assuming initial random features are created with size input_dim
+        
+        self.layers = nn.ModuleList()
+        
+        # Create a deep stack of GPS Layers
+        # dims[i] is usually constant in Transformer architectures
+        for _ in range(len(hidden_dims)):
+            # GPSConv combines a local GNN (GINE) with a global Transformer
+            nn_local = nn.Sequential(
+                nn.Linear(input_dim, input_dim),
+                nn.ReLU(),
+                nn.Linear(input_dim, input_dim),
+            )
+            local_gnn = GINEConv(nn_local, edge_dim=input_dim)
+            
+            # GPSConv(channels, conv, heads, ...)
+            self.layers.append(
+                GPSConv(input_dim, local_gnn, heads=heads, attn_type='multihead')
+            )
+
+        self.norms = nn.ModuleList(
+            [nn.LayerNorm(input_dim) for _ in hidden_dims]
+        )
+        
+        # Final bottleneck projection
+        self.final_proj = nn.Linear(input_dim, output_dim)
+        self.act = nn.SiLU()
+
+        self.laplacian_k = 0
+        if self.laplacian_k > 0:
+            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
+
+    def forward(self, data, batch=None):
+        """
+        data  : PyG Data (sample) of the bipartite graph of the KG
+        batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
+        """
+        assert len(data.edge_index) % 2 == 0, "Bipartit graph must have even number of edges (directed pairs)."
+
+        if batch is None:
+            bs = 1
+            device = data.edge_index.device
+        else:
+            bs = batch.batch_size
+            device = batch.edge_index.device
+        num_nodes = data.num_nodes
+
+
+        if   self.conditioning == "false":
+            # random features 
+            h = torch.randn(bs, num_nodes, self.input_dim, device=device) # todo !!
+            #h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
+        elif self.conditioning == "seed only":
+            h = torch.zeros(bs, num_nodes, self.input_dim, device=device)
+        else:  # "all"
+            h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
+
+        # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
+        # Inject log(degree) into the first dimension to distinguish relations structurally
+        if data.edge_index.numel() > 0:
+            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
+            h = h.clone()
+            h[:, :, 0] += deg_feature.squeeze(-1)
+
+        if self.laplacian_k > 0:
+            try:
+                data = self.le_pw_transform(data)
+                # Extract PE: shape (num_nodes, walk_length)
+                rw_pe = data.laplacian_eigenvector_pe.to(device)
+                
+                # Expand to batch size: (batch_size, num_nodes, walk_length)
+                rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
+
+                # Add to h, skipping the 0-th dimension used by degree
+                # Ensure we don't exceed embedding dimensions
+                dim_limit = min(self.laplacian_k, h.size(-1) - 1)
+                h[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
+            except Exception as e:
+                pass # Fallback to random features if Eigendecomposition fails
+
+        # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
+        if self.conditioning != "false" and batch is not None:
+            valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
+            edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
+            graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
+            rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
+            h[graph_idx, rel_idx] = 1.0
+
+        rel_edges  = data.edge_index        # (2, E)
+        # rel_types  = data.edge_type         # (E,)
+        batch_edge_list  = []
+        # batch_type_list  = []
+        # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
+        # to increase the edge index per batch, but leave the edge type the same.
+        for b in range(bs):                 # identical to EntityGNN lines 72-84
+            offset = b * num_nodes
+            batch_edge_list.append(rel_edges + offset)
+            # batch_type_list.append(rel_types)
+        edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+        # edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+
+        # Encode edge attributes (Count, Direction)
+        # 1. Replicate edge attributes for batch
+        rel_edge_attr = data.edge_attr.to(torch.float32) # Shape [E, 2]
+        batch_edge_attr_list = []
+        for b in range(bs):
+            batch_edge_attr_list.append(rel_edge_attr)
+        edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
+        
+        # 2. Project to embedding dimension
+        edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]
+
+        x = h.view(bs * num_nodes, -1)
+
+        # Create batch vector for GPSConv (maps nodes to their graph instance)
+        # This is required for the global attention mechanism in GPS
+        batch_idx = torch.arange(bs, device=device).repeat_interleave(num_nodes)
+
+        # Message passing
+        for i, layer in enumerate(self.layers):
+            x_in = x # Save input for residual
+            
+            # FIX: Pass batch as 3rd argument, and edge_attr as keyword argument
+            x = layer(x, edge_index, batch=batch_idx, edge_attr=edge_attr)
+            
+            if self.norms:
+                 x = self.norms[i](x)
+            if i < len(self.layers) - 1:
+                x = self.act(x)
+            
+            # --- FIX 2: Residual Connection ---
+            if x.shape == x_in.shape:
+                x = x + x_in
+
+        # Final Projection
+        x = self.final_proj(x) # Down to 256
+
+        out = x.view(bs, num_nodes, -1)
+        return out
+        #return h
+
+class EmbeddingGNNv1(nn.Module):
+    """
+        A unified embedding model that produces embeddings for both entities and relations
+        on the bipartite graph of the KG.
+    """
+
+    def __init__(
+        self,
         input_dim: int = 128,
         hidden_dims: tuple = (128, 128),
         num_relation: int = 4,
@@ -570,7 +736,8 @@ class FICE(nn.Module):
                 num_relation=4,
                 heads=4,
                 layer_norm=layer_norm,
-                conditioning=conditioning
+                conditioning=conditioning,
+                output_dim=self.vector_dim
             )
 
         else:
