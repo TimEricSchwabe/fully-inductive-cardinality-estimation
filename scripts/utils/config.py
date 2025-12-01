@@ -23,6 +23,7 @@ class Config(BaseSettings):
     seed: int = 42  # Random seed for reproducibility
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: float | None = None  # Optional weight decay for optimizer
+    n_embedding_layers: int = 2  # Number of layers in embedding MLP
     EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
     EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
     RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT', 'gine'] = "GAT"  # Message function for relation GNN
@@ -32,8 +33,10 @@ class Config(BaseSettings):
     model: Literal['FICE', 'FiceBinary'] = "FICE"  # Model type to use
     layer_norm: bool = True  # Whether to use layer normalization in GNNs
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
-    n_embedding_layers: int = 2  # Number of layers in embedding MLP
     wandb: bool = False  # Whether to use Weights & Biases for logging
+    
+    entity_graph: Literal['bipartite', 'KG'] = "KG"
+    relation_graph: Literal['bipartite', 'RelationGraph'] = "bipartite"
 
 
     class Config:

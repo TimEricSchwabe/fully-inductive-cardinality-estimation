@@ -13,6 +13,8 @@ import numpy as np
 # Import project modules
 from fice import datasets
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
+from torch_geometric.utils import coalesce
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +40,11 @@ QUERY_REGISTRY = {
     "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
     "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
     "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
+    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
+    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
+    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
 }
 
 
@@ -221,17 +228,61 @@ def make_bipartit_graph(data):
     # Convert a homogeneous graph to a bipartite graph representation
     edge_index = data.edge_index
     edge_type = data.edge_type 
-    edge_type = edge_type + data.num_nodes # Offset relation types 
-    num_nodes = data.num_nodes
-
-    edge_index_head = torch.vstack((edge_index[0] , edge_type))
-    edge_index_tail = torch.vstack((edge_type , edge_index[1]))
-    bipartite_edge_index = torch.hstack((edge_index_head , edge_index_tail))
     
-    # Create new data object for bipartite graph
+    # Calculate actual number of relation types
+    num_relations = edge_type.max().item() + 1
+    
+    # Offset relation types to create their node IDs
+    relation_nodes = edge_type + data.num_nodes
+    
+    # 1. Create Directed Bipartite Edges (s -> p and p -> o)
+    # Head part: Source -> RelationNode
+    edge_index_head = torch.vstack((edge_index[0], relation_nodes))
+    
+    # Tail part: RelationNode -> Target
+    edge_index_tail = torch.vstack((relation_nodes, edge_index[1]))
+    
+    # Combine them
+    bipartite_edge_index = torch.hstack((edge_index_head, edge_index_tail))
+    
+    # Correct total number of nodes
+    total_num_nodes = data.num_nodes + num_relations
+
+    # Create initial weights of 1 (counts)
+    edge_weight = torch.ones(bipartite_edge_index.size(1), device=bipartite_edge_index.device)
+
+    # Collapse duplicate edges to get counts
+    # unique_edges shape: [2, num_unique_edges]
+    # counts shape: [num_unique_edges]
+    unique_edges, counts = coalesce(
+        bipartite_edge_index, 
+        edge_weight, 
+        num_nodes=total_num_nodes,
+        reduce='add'
+    )
+
+    # 2. Make Undirected (Add Reverse Edges) with Direction Attribute
+    # Forward direction: 1
+    # Reverse direction: -1
+    
+    # Prepare attributes for forward edges: [Count, 1]
+    # Shape: [num_unique_edges, 2]
+    forward_attr = torch.stack([counts, torch.ones_like(counts)], dim=1)
+    
+    # Prepare reverse edges: swap rows 0 and 1
+    reverse_edges = torch.stack([unique_edges[1], unique_edges[0]], dim=0)
+    
+    # Prepare attributes for reverse edges: [Count, -1]
+    reverse_attr = torch.stack([counts, -torch.ones_like(counts)], dim=1)
+    
+    # Concatenate everything
+    final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
+    final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
+    
     bipartite_data = Data(
-        edge_index=bipartite_edge_index,
-        num_nodes=num_nodes * 2,  # Total nodes in bipartite graph
+        edge_index=final_edge_index,
+        edge_attr=final_edge_attr,  # Shape: [2*E_unique, 2] -> (Count, Direction)
+        num_nodes=total_num_nodes, 
         dataset_name=f"{data.dataset_name}_bipartite",
         original_edge_index=data.edge_index,
         original_edge_type=data.edge_type,
@@ -270,8 +321,8 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
-        bipartit_graph = make_bipartit_graph(dataset)
-        dataset.bipartite_graph = bipartit_graph
+        bipartite_graph = make_bipartit_graph(dataset)
+        dataset.bipartite_graph = bipartite_graph
 
 
         if data_config.type == 'train':

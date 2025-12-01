@@ -59,8 +59,12 @@ class MultigraphNeighborSampler():
 
         # carry edge types via original edge IDs
         # we put this as optional but should always be there
-        if hasattr(data_graph, 'edge_type') and hasattr(out, 'edge'):
-            sub_data.edge_type = data_graph.edge_type[out.edge]
+        if hasattr(out, 'edge'):
+            if hasattr(data_graph, 'edge_type'):
+                sub_data.edge_type = data_graph.edge_type[out.edge]
+            
+            if hasattr(data_graph, 'edge_attr') and data_graph.edge_attr is not None:
+                sub_data.edge_attr = data_graph.edge_attr[out.edge]
 
         # 5) Global->local mapping (global ID -> local [0..N-1])
         # i.e. which id do all the global ids from the full graph have (if they dont have one, they map to -1)

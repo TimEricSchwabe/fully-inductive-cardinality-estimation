@@ -1,13 +1,18 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv
+from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv
 from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
 from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from typing import Callable, Optional, Union
 from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch import Tensor
 from torch_geometric.nn.inits import reset
 import torch.nn as nn
+
+
+
+############ Baseline Query GNN ############
 
 class QueryGNN(torch.nn.Module):
 
@@ -79,7 +84,7 @@ class QueryGNN(torch.nn.Module):
         return torch.abs(out.squeeze(-1))           # [batch_size]
 
 
-
+############ Oroginal GNCE model ############
 
 class TripleConv(MessagePassing):
     r"""
@@ -263,182 +268,8 @@ class TripleModel(torch.nn.Module):
         x = self.lin2(x)
         return torch.abs(x.squeeze(-1))
 
-
-
-class NeuralSelectivity(nn.Module):
-    """
-    Implements S_theta: Maps aggregated embeddings to a scalar log-selectivity.
-    """
-    def __init__(self, input_dim, hidden_dim=64):
-        super().__init__()
-        self.net = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.SiLU(), 
-            nn.Linear(hidden_dim, 1), 
-        )
-
-    def forward(self, x):
-        return self.net(x)
-
-
-
-class CardinalityConv(MessagePassing):
-    """
-    Implements the Generalized Neural Cardinality Operator (Psi).
-    Handles specific slicing for the first layer where inputs have 3 count dimensions.
-
-    The model expects log values for all counts ! And log(N) for all variable counts !
-    """
-    def __init__(self, emb_dim, is_first_layer=False):
-        super().__init__(aggr='mean', flow='target_to_source') 
-        self.emb_dim = emb_dim
-        self.is_first_layer = is_first_layer
-
-        # S_theta for Triple Pattern Join (Message)
-        self.sel_triple = NeuralSelectivity(emb_dim) 
-        
-        self.emb_update_triple = torch.nn.Sequential(
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-            torch.nn.SiLU(), 
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-            # torch.nn.Dropout(p=0.2)
-        )
-        #self.emb_update_triple = nn.Linear(emb_dim, emb_dim)
-
-        # S_theta for Node Join (Update)
-        self.sel_node = NeuralSelectivity(emb_dim)
-        self.emb_update_node = torch.nn.Sequential(
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-            torch.nn.SiLU(), 
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-        )
-        #self.emb_update_node = nn.Linear(emb_dim, emb_dim)
-
-    def forward(self, x_curr, edge_index, edge_attr, log_N):
-        self.log_N = log_N
-        # Propagate generates the messages (m_j->i) and sums them.
-        aggr_out = self.propagate(edge_index, x=x_curr, edge_attr=edge_attr)
-        
-
-        # Split Aggregated Message in cardinality estimate and semantic embeddings
-        c_agg = aggr_out[:, 0:1]
-        e_agg = aggr_out[:, 1:]
-        
-        # 1. Independence Assumption (Sum of logs)
-        c_base = c_agg
-        
-        # 2. Selectivity Correction
-        e_combined = e_agg
-        correction = self.sel_node(e_combined)
-        
-        c_new = c_base - correction
-        
-        # 3. Update Embedding
-        e_new = self.emb_update_node(e_combined)
-        
-        return torch.cat([c_new, e_new], dim=1)
-
-    def message(self, x_i, x_j, edge_attr):
-        # --- Case Distinction for Message (Source Node j) ---
-        
-        # Handle x_j (Source)
-        if self.is_first_layer:
-            # Layer 1: x_j has shape [N, 3 + D]
-            c_j = x_j[:, 0:1] #x_j is the sender, i.e. we pick the subject counts
-            c_i = x_i[:, 2:3] #x_i is the receiver, i.e. we pick the object counts
-            e_j = x_j[:, 3:]
-            e_i = x_i[:, 3:]
-        else:
-            # Layer >1: x_j has shape [N, 1 + D]
-            c_j = x_j[:, 0:1]
-            c_i = x_i[:, 0:1]
-            e_j = x_j[:, 1:]
-            e_i = x_i[:, 1:]
-            
-        # Handle edge_attr (Predicate)
-        # We assume edge_attr ALWAYS has shape [E, 3 + D] (raw stats as they are not transformed by message-passing)
-        # We always pick Index 1 (Count as Predicate)
-        c_edge = edge_attr[:, 1:2]
-        e_edge = edge_attr[:, 3:]
-        
-        # L2 Normalize the embedding inputs
-        e_i = F.normalize(e_i, p=2, dim=1)
-        e_j = F.normalize(e_j, p=2, dim=1)
-        e_edge = F.normalize(e_edge, p=2, dim=1)
-
-        # 1. Independence Assumption (Triple Pattern)
-        c_base = c_i + c_j + c_edge - 2*self.log_N
-        
-        # Calculating Embedding of triple pattern
-        # Revert to sum (remove /3) to preserve gradient magnitude
-        e_combined = e_i + e_j + e_edge
-
-        # 2. Selectivity Correction
-        tp_sel = self.sel_triple(e_combined)
-        
-        # Complete Cardinality Estimate
-        c_msg = c_base - tp_sel
-        
-        # 3. Update Embedding for message
-        e_msg = self.emb_update_triple(e_combined)
-        
-        return torch.cat([c_msg, e_msg], dim=1)
-
-
-class QueryCardinalityGNNOLD(torch.nn.Module):
-    def __init__(self, feat_dim):
-        super().__init__()
-        # feat_dim is the total width of input vector (3 counts + embedding)
-        self.emb_dim = feat_dim - 3 
-        
-        # Layer 1: Handles 3-count input
-        self.layer1 = CardinalityConv(self.emb_dim, is_first_layer=True)
-        
-        # Layer 2: Handles 1-count refined input
-        self.layer2 = CardinalityConv(self.emb_dim, is_first_layer=False)
-        
-        # Global Aggregation
-        self.sel_global = NeuralSelectivity(self.emb_dim)
-
-
-        self.emb_update_global = torch.nn.Sequential(
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.emb_dim, self.emb_dim),
-        )
-        #self.emb_update_global = nn.Linear(self.emb_dim, self.emb_dim)
-        
-    def forward(self, batch, N):
-        x = batch.x # [Nodes, 3 + D]
-        edge_index = batch.edge_index
-        edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log(torch.tensor(N))
-        
-        
-        # Layer 1
-        # Output x becomes [Nodes, 1 + D]
-        x = self.layer1(x, edge_index, edge_attr, log_N)
-        
-        # Layer 2 (we dont do this for stars as we only have one hop there )
-        #x = self.layer2(x, edge_index, edge_attr, log_N)
-        
-        # --- Step 3: Global Aggregation ---
-        #global_sum = global_add_pool(x, batch.batch)
-
-
-        # Pick the first node of each graph in the batch (which corresponds to the -1 node)
-        # batch.ptr[:-1] gives the start index of every graph in the batch
-        global_sum = x[batch.ptr[:-1]]
-        
-        c_global = global_sum[:, 0:1]
-        e_global = global_sum[:, 1:]
-        
-        #correction = self.sel_global(e_global)
-        #final_est = c_global - correction
-        final_est = c_global
-        
-        return torch.abs(final_est.squeeze(-1))
-
+############Independent Query GNN ############
+# this model only usees the raw count to predict based on independence assumption
 
 class IndependentQueryGNN(torch.nn.Module):
     def __init__(self, feat_dim):
@@ -554,219 +385,8 @@ class IndependentNeuralJoin(MessagePassing):
         return torch.cat([c_msg, e_msg], dim=1)
 
 
-class BaseCardinalityEstimator(MessagePassing):
-    """
-    Deterministic layer that calculates the independent log-cardinality 
-    for every triple pattern (edge) and aggregates them to the nodes.
-    
-    Formula for triple t = (s, p, o):
-    log(|t|) = log(|s|) + log(|p|) + log(|o|) - 2 * log(N)
-    """
-    def __init__(self):
-        super().__init__(aggr='add', flow='target_to_source')
-        
-    def forward(self, x, edge_index, edge_attr, log_N):
-        self.log_N = log_N
-        # Propagate calculates log|t| for each edge and sums them at the target node
-        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
-
-    def message(self, x_i, x_j, edge_attr):
-        # x_j is Source (Subject), x_i is Target (Object) based on flow='target_to_source'
-        # Assuming data loading convention:
-        # x index 0: subject count (for bound atoms or variables)
-        # x index 2: object count
-        # edge_attr index 1: predicate count
-        
-        # Note: Inputs are assumed to be already in log-space
-        c_s = x_j[:, 0:1]
-        c_o = x_i[:, 2:3]
-        c_p = edge_attr[:, 1:2]
-        
-        # Independent Joint Cardinality
-        # log(|t|) = log(|s|) + log(|p|) + log(|o|) - 2*log(N)
-        log_card_t = c_s + c_p + c_o - 2 * self.log_N
-        
-        return log_card_t
-
-
-
-class QueryCardinalityGNNv2(torch.nn.Module):
-    def __init__(self, feat_dim, hidden_dim=64, num_layers=1):
-        super().__init__()
-        self.feat_dim = feat_dim
-        self.emb_dim = feat_dim - 3
-        
-        # 1. Deterministic Base Estimator
-        self.base_estimator = BaseCardinalityEstimator()
-        
-        # 2. GNN for Semantic Embeddings (Learns Selectivity/Correlations)
-        # Input dimension is emb_dim. 
-        # We can use GINEConv or a custom TripleConv that acts on embeddings.
-        self.convs = torch.nn.ModuleList()
-        for _ in range(num_layers):
-            mlp = nn.Sequential(
-                nn.Linear(self.emb_dim, hidden_dim),
-                nn.SiLU(),
-                nn.Linear(hidden_dim, self.emb_dim)
-            )
-            self.convs.append(GINEConv(mlp, edge_dim=self.emb_dim))
-            
-        # 3. Node Correction Head
-        # Predicts the local selectivity/join reduction term for each node
-        self.node_correction_mlp = nn.Sequential(
-            nn.Linear(self.emb_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, 1)
-        )
-
-    def forward(self, batch, N):
-        x = batch.x # [Nodes, 3 + D]
-        edge_index = batch.edge_index
-        edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log(torch.tensor(N, device=x.device))
-
-        # --- Part 1: Base Cardinality (Sum of Independent Triples) ---
-        # Calculate log|t| for every edge and sum up to nodes
-        node_base_estimates = self.base_estimator(x, edge_index, edge_attr, log_N)
-        
-        # Sum over all nodes to get the global sum of edge cardinalities
-        # (Since edges are directed in message passing, each edge is counted once at its target)
-        # We select the first node of each graph to represent the global sum if we aggregated there,
-        # but here we have distributed sums, so we use global_add_pool.
-        global_base_est = global_add_pool(node_base_estimates, batch.batch)
-
-
-        # --- Part 2: Learn Selectivity Correction (GNN on Embeddings) ---
-        # Extract embeddings
-        h = x[:, 3:]
-        edge_emb = edge_attr[:, 3:]
-        
-        # Run Message Passing
-        for conv in self.convs:
-            h = conv(h, edge_index, edge_emb)
-            h = F.silu(h)
-            
-        # Predict Correction per Node
-        # This captures correlations + structural join reductions
-        node_corrections = self.node_correction_mlp(h)
-        
-        # Sum corrections over the graph
-        global_correction = global_add_pool(node_corrections, batch.batch)
-        
-        # --- Part 3: Combine ---
-        # log|Q| = Sum(log|t|) - Correction
-        final_est = global_base_est - global_correction
-        
-        return torch.abs(final_est.squeeze(-1))
-
-class SelectivityConvv3(MessagePassing):
-    """
-    Specialized layer for selectivity learning:
-    - message: computes per-edge log-selectivity ψ(tp) >= 0 from (e_s, e_p, e_o)
-               and an embedding message for target.
-    - aggregate: sums ψ(tp) at the target node (matches BaseCardinalityEstimator counting).
-    - forward: returns updated node embeddings and per-node summed corrections.
-    """
-    def __init__(self, emb_dim: int, hidden_dim: int = 64, nonneg: bool = True):
-        super().__init__(aggr='add', flow='target_to_source')
-        self.emb_dim = emb_dim
-        self.nonneg = nonneg
-
-        # Role-aware projections
-        self.proj_s = nn.Linear(emb_dim, hidden_dim, bias=False)
-        self.proj_p = nn.Linear(emb_dim, hidden_dim, bias=False)
-        self.proj_o = nn.Linear(emb_dim, hidden_dim, bias=False)
-
-        # Triple composer
-        self.triple_mlp = nn.Sequential(
-            nn.Linear(3 * hidden_dim, hidden_dim),
-            nn.SiLU(),
-            nn.Linear(hidden_dim, hidden_dim),
-            nn.SiLU(),
-        )
-
-        # Heads: selectivity scalar and embedding message
-        self.psi_head = nn.Linear(hidden_dim, 1)
-        self.msg_head = nn.Linear(hidden_dim, emb_dim)
-
-        # Node update from aggregated message (residual)
-        self.node_update = nn.Sequential(
-            nn.Linear(2 * emb_dim, emb_dim),
-            nn.SiLU(),
-            nn.Linear(emb_dim, emb_dim),
-        )
-
-    def message(self, x_i: torch.Tensor, x_j: torch.Tensor, edge_attr: torch.Tensor) -> torch.Tensor:
-        # e_s (source), e_p (predicate), e_o (target)
-        e_s = F.normalize(x_j, p=2, dim=1)
-        e_o = F.normalize(x_i, p=2, dim=1)
-        e_p = F.normalize(edge_attr, p=2, dim=1)
-
-        # Role-aware triple encoding
-        h_s = self.proj_s(e_s)
-        h_p = self.proj_p(e_p)
-        h_o = self.proj_o(e_o)
-
-        h_t = self.triple_mlp(torch.cat([h_s, h_p, h_o], dim=1))
-
-        psi = self.psi_head(h_t)
-        if self.nonneg:
-            psi = F.softplus(psi)  # enforce ψ(tp) >= 0
-
-        delta = self.msg_head(h_t)  # embedding message for target node
-        return torch.cat([psi, delta], dim=1)  # [E, 1 + emb_dim]
-
-    def forward(self, x: torch.Tensor, edge_index: torch.Tensor, edge_emb: torch.Tensor):
-        """
-        x: [N, emb_dim]           node embeddings (only semantics)
-        edge_emb: [E, emb_dim]    edge embeddings (only semantics)
-        returns:
-          x_new: [N, emb_dim]
-          node_corr: [N, 1]       summed ψ(tp) for incoming edges
-        """
-        aggr = self.propagate(edge_index, x=x, edge_attr=edge_emb)  # [N, 1 + emb_dim]
-        node_corr = aggr[:, :1]
-        msg = aggr[:, 1:]
-
-        x_new = x + self.node_update(torch.cat([x, msg], dim=1))
-
-
-        return x_new, node_corr
-
-
-class QueryCardinalityGNNv3(nn.Module):
-    def __init__(self, feat_dim, hidden_dim=64, num_layers=1):
-        super().__init__()
-        self.feat_dim = feat_dim
-        self.emb_dim = feat_dim - 3
-
-        self.base_estimator = BaseCardinalityEstimator()
-        self.sel_convs = nn.ModuleList(
-            [SelectivityConvv3(self.emb_dim, hidden_dim) for _ in range(num_layers)]
-        )
-
-    def forward(self, batch, N):
-        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
-        log_N = torch.log(torch.tensor(N, device=x.device))
-
-        # Track 1: independent base estimate
-        node_base = self.base_estimator(x, edge_index, edge_attr, log_N)
-        global_base = global_add_pool(node_base, batch.batch)
-
-        # Track 2: selectivity as per-edge ψ(tp), counted once at targets
-        h = x[:, 3:]            # node semantics only
-        e = edge_attr[:, 3:]    # edge semantics only
-
-        total_node_corr = None
-        for conv in self.sel_convs:
-            h, node_corr = conv(h, edge_index, e)
-            total_node_corr = node_corr if total_node_corr is None else total_node_corr + node_corr
-
-        global_corr = global_add_pool(total_node_corr, batch.batch)
-
-        final = global_base - global_corr
-        return torch.abs(final.squeeze(-1))
-
+############ Query Cardinality GNN ############
+# uses the raw counts for independence cardinality and then subtracts a learned selectivity correction
 
 class CardinalityConv(MessagePassing):
     """
@@ -954,6 +574,108 @@ class QueryCardinalityGNN(torch.nn.Module):
         
         global_est = global_add_pool(c_curr, batch.batch)
         
-        return torch.abs(global_est.squeeze(-1))
+        return global_est.squeeze(-1)
 
 
+class SimpleSumConv(MessagePassing):
+    def __init__(self):
+        super().__init__(aggr='add')
+
+    def forward(self, x, edge_index, edge_attr):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_i, x_j, edge_attr):
+        return x_i + x_j + edge_attr
+
+
+class SimpleSumGNN(torch.nn.Module):
+    def __init__(self, feat_dim=None, hidden_dim=128, **kwargs):
+        super().__init__()
+        self.conv = SimpleSumConv()
+        
+        # Input dimension is feat_dim - 3 due to slicing
+        input_dim = feat_dim - 3
+        if hidden_dim is None:
+            hidden_dim = 128
+            
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, batch, N=None):
+        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+        x = x[:, 3:]
+        edge_attr = edge_attr[:, 3:]
+        out = self.conv(x, edge_index, edge_attr)
+        out = global_add_pool(out, batch.batch)
+        return self.mlp(out).squeeze(-1)
+
+
+############ QueryTransformer ############
+
+class QueryTransformer(torch.nn.Module):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=1, laplacian_pe_k=0):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.hidden_dim = hidden_dim
+        self.laplacian_pe_k = laplacian_pe_k
+
+        # Project input (131) to hidden_dim (128)
+        self.input_proj = Linear(feat_dim, hidden_dim)
+
+        # Optional Laplacian PE
+        if self.laplacian_pe_k > 0:
+            self.pe_transform = AddLaplacianEigenvectorPE(k=self.laplacian_pe_k, attr_name='pe')
+            self.pe_proj = Linear(self.laplacian_pe_k, hidden_dim)
+
+        self.convs = nn.ModuleList()
+
+        for _ in range(num_layers):
+            mlp = nn.Sequential(
+                Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                Linear(hidden_dim, hidden_dim),
+            )
+
+            conv = GPSConv(hidden_dim, GINEConv(mlp, edge_dim=feat_dim), heads=4)
+            self.convs.append(conv)
+
+        self.readout = nn.Sequential(
+            Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.ReLU(),
+            Linear(hidden_dim // 4, 1),
+        )
+
+
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+
+        x = self.input_proj(x)
+
+        # 2. Optionally compute and ADD Laplacian PE
+        if self.laplacian_pe_k > 0:
+            try:
+                # Compute PE on the fly (warning: might be slow for large batches)
+                # This works because 'batch' is structurally a single large disconnected graph
+                batch = self.pe_transform(batch)
+                pe = batch.pe.to(x.device)  # [Nodes, k]
+                
+                # Project PE to hidden_dim and ADD to features
+                x = x + self.pe_proj(pe)
+            except Exception as e:
+                raise
+                # Fallback if PE computation fails (e.g. eigendecomposition issues)
+                pass
+
+        for conv in self.convs:
+            # Pass batch.batch (the index tensor) instead of the whole batch object
+            x = conv(x, edge_index, batch.batch, edge_attr=edge_attr)
+        x = global_add_pool(x, batch.batch)
+        x = self.readout(x)
+        return x.squeeze(-1)

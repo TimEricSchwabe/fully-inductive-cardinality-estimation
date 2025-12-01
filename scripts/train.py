@@ -21,6 +21,9 @@ from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.utils import subgraph
 from tqdm import tqdm
 
+import networkx as nx
+
+
 # Try to import the low-level NeighborSampler (newer API)
 try:
     from torch_geometric.sampler import NeighborSampler as PYGNeighborSampler
@@ -33,6 +36,7 @@ except Exception:
 matplotlib.use('Agg')
 
 # Project imports
+from utils.plotting import compute_and_plot_laplacian_pe
 import utils.metrics as metrics
 from fice.models import FICE, FiceBinary, FiceIndependent
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
@@ -59,8 +63,40 @@ from utils.logging_helper import (
 from utils.models import DataComponents, ModelComponents, TrainingContext, TrainingState
 from utils.multigraph import MultigraphLoader
 from utils.neighborhood_sampler import MultigraphNeighborSampler
-
+from torch_geometric.utils import k_hop_subgraph, subgraph
 logger = logging.getLogger(__name__)
+
+def sample_connected_subgraph(data, num_hops=3, max_nodes=500):
+    """
+    Extracts a connected patch of the graph to visualize structure.
+    """
+    g = torch.Generator()
+    g.seed()
+
+    # 1. Pick a random start node
+    start_node = torch.randint(0, data.num_nodes, (1,), generator=g).item()
+    
+    # 2. Get k-hop neighbors (BFS expansion)
+    # Increase num_hops until we have enough nodes
+    subset, sub_edge_index, mapping, _ = k_hop_subgraph(
+        node_idx=start_node, 
+        num_hops=num_hops, 
+        edge_index=data.edge_index, 
+        relabel_nodes=True
+    )
+    
+    # Safety: If too huge, trim it (though k-hop is usually safe)
+    if subset.size(0) > max_nodes:
+        # If too big, just take a smaller random subset of the valid connected subset
+        # and induce the subgraph again to keep connections
+        perm = torch.randperm(subset.size(0))[:max_nodes]
+        subset = subset[perm]
+        sub_edge_index, _ = subgraph(subset, data.edge_index, relabel_nodes=True)
+
+    print(f"Sampled subgraph: {subset.size(0)} nodes.")
+    
+    # Create new Data object for the visualization function
+    return Data(edge_index=sub_edge_index, num_nodes=subset.size(0))
 
 
 def setup_directories(config):
@@ -106,7 +142,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             layer_norm=layer_norm,
             query_gnn=query_gnn,
             vector_dim=vector_dim,
-            n_embedding_layers=n_embedding_layers # Pass the new parameter
+            n_embedding_layers=n_embedding_layers, # Pass the new parameter
+            use_unified_bipartite_graph=(config.entity_graph == "bipartite")
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
@@ -188,13 +225,14 @@ def train_epoch(state: TrainingState):
             offset = full_graph.num_nodes
             seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
             seeds = seeds[seeds >= 0].unique().detach().cpu()
+            rel_global_to_local = None
             if seeds.numel() > 0:
-                relation_graph, global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
+                relation_graph, rel_global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
                 edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
 
                 edge_embedding_indices_detached = torch.where(
                     edge_embedding_indices_detached >= 0,
-                    global_to_local[edge_embedding_indices_detached + offset],
+                    rel_global_to_local[edge_embedding_indices_detached + offset],
                     torch.full_like(edge_embedding_indices_detached, -1),
                 ).to(torch.long)
                 query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
@@ -204,17 +242,67 @@ def train_epoch(state: TrainingState):
 
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
+
             if plot_embeddings:
-                edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
-                node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
-                edge_embeddings = edge_embeddings.detach().cpu().squeeze()
-                node_embeddings = node_embeddings.detach().cpu().squeeze()
-                # state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
-                # state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
-                figure_dir = state.training_context.log_dir / "figures"
-                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=figure_dir)
-                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=figure_dir)
+                if state.model_components.model.use_unified_bipartite_graph:
+                    edge_embeddings = state.model_components.model.embedding_model(data=relation_graph)
+                    edge_embeddings = edge_embeddings.detach().cpu().squeeze()
+                    state.metric_logger.log_embedding_similarity(edge_embeddings, "Embeddings", state.training_context.current_epoch)
+                    analyze_vector_similarity(edge_embeddings, "Embeddings Epoch " + str(state.training_context.current_epoch))
+                else:
+                    edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
+                    node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
+                    edge_embeddings = edge_embeddings.detach().cpu().squeeze()
+                    node_embeddings = node_embeddings.detach().cpu().squeeze()
+                    #state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
+                    #state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
+                    analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
+                    analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
                 plot_embeddings = False
+
+
+                # # # --- Plot Relation Graph Structure ---
+                # import networkx as nx
+                # # Convert edge index to list of edges
+                # edge_index_np = relation_graph.edge_index.detach().cpu().numpy()
+                # # edge_type is no longer available in the bipartite graph
+                # # edge_type_np  = relation_graph.edge_type.detach().cpu().numpy()
+                
+                # # Create graph
+                # G = nx.DiGraph()
+                
+                # # Add edges with type as label
+                # for i in range(edge_index_np.shape[1]):
+                #     u, v = edge_index_np[0, i], edge_index_np[1, i]
+                #     # etype = edge_type_np[i]
+                #     G.add_edge(u, v)
+                
+                # plt.figure(figsize=(40, 40))
+                # # Use spring layout for 2D visualization
+                # pos = nx.spring_layout(G, seed=42, k=2.0) # increased k for more spacing
+                
+                # nx.draw_networkx_edges(G, pos, alpha=0.5, arrows=True, connectionstyle='arc3,rad=0.1')
+                # nx.draw_networkx_nodes(G, pos, node_size=300, node_color='skyblue')
+                
+                # # Draw edge labels
+                # edge_labels = nx.get_edge_attributes(G, 'label')
+                # #nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
+
+                # # Optional: Draw labels if graph is small enough
+                # if G.number_of_nodes() < 100:
+                #     nx.draw_networkx_labels(G, pos, font_size=10)
+                    
+                # plt.title(f"Relation Graph Structure (Epoch {state.training_context.current_epoch})")
+                # plt.axis('off')
+                
+                # save_path = state.training_context.log_dir / f"relation_graph_epoch_{state.training_context.current_epoch}.png"
+                # plt.savefig(save_path)
+                # plt.close()
+                # logger.info(f"Saved relation graph plot to {save_path}")
+
+                # # -------------------------------------
+                # exit()
+
 
             if state.model_components.optimizer is not None:
                 state.model_components.optimizer.zero_grad()
@@ -224,31 +312,52 @@ def train_epoch(state: TrainingState):
                 graph = None
                 num_neighbors = False
             else:
-                num_neighbors = num_neighbors_cfg   
-                if num_neighbors is not None:
-                    # Reusable sampler path
-                    node_indices = query_batch.node_embedding_indices
-                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                    if seeds_cpu.numel() > 0:
-                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
-                        # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+                if state.training_context.config.entity_graph == "bipartite":
+                    # Use the SAME bipartite graph as used for relations
+                    if relation_graph is not None and rel_global_to_local is not None:
+                        graph = relation_graph
+                        
+                        # Map entity indices using the relation graph's mapping
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
-                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+                        
+                        # Note: In bipartite graph, entity IDs [0..N-1] correspond to global IDs [0..N-1]
+                        # rel_global_to_local maps global bipartite ID to local bipartite ID
                         mapped = torch.where(
                             query_nodes >= 0,
-                            global_to_local[query_nodes],
+                            rel_global_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
-                        # Update the graph to the sampled subgraph
-                        graph = graph_sub.to(device)
-                        # Update the node indices to the mapped indices
-                        query_batch.node_embedding_indices = mapped
+                        
+                        query_batch.node_embedding_indices = mapped.to(device)
                     else:
                         graph = None
                 else:
-                    graph = full_graph.to(device)
+                    # "KG" mode - Standard Logic
+                    num_neighbors = num_neighbors_cfg   
+                    if num_neighbors is not None:
+                        # Reusable sampler path
+                        node_indices = query_batch.node_embedding_indices
+                        seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                        if seeds_cpu.numel() > 0:
+                            # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+                            # If a node is not in the subgraph, its mapped to -1
+                            graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+                            query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                            # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+                            # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+                            mapped = torch.where(
+                                query_nodes >= 0,
+                                global_to_local[query_nodes],
+                                torch.full_like(query_nodes, -1),
+                            ).to(torch.long)
+                            # Update the graph to the sampled subgraph
+                            graph = graph_sub.to(device)
+                            # Update the node indices to the mapped indices
+                            query_batch.node_embedding_indices = mapped
+                        else:
+                            graph = None
+                    else:
+                        graph = full_graph.to(device)
 
             relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
@@ -325,43 +434,83 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
         neighbor_sampler = state.data_components.neighbor_sampler
 
         for batch_idx, (full_graph, query_batch) in tqdm(enumerate(loader), desc="Evaluating", leave=False, total=total_batches):
-            relation_graph = full_graph.relation_graph.to(device)
+            relation_graph = full_graph.bipartite_graph.to(device)
+            offset = full_graph.num_nodes
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
             if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
                 relation_graph_inp = None
             else:
-                if num_neighbors_eval is not None:
-                    # Reusable sampler path
+                if state.training_context.config.entity_graph == "bipartite":
+                    # Use the SAME bipartite graph as used for relations
+                    # Need to run neighbor sampler to get valid subgraph and mappings first
                     node_indices = query_batch.node_embedding_indices
-                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                    if seeds_cpu.numel() > 0:
-                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
-                        # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+                    edge_indices = query_batch.edge_embedding_indices + offset
+                    seeds = torch.cat((node_indices, edge_indices))
+                    seeds = seeds[seeds >= 0].unique().detach().cpu()
+                    
+                    rel_global_to_local = None
+                    if seeds.numel() > 0:
+                        relation_graph, rel_global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
+                        
+                        # Map edges
+                        edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
+                        edge_embedding_indices_detached = torch.where(
+                            edge_embedding_indices_detached >= 0,
+                            rel_global_to_local[edge_embedding_indices_detached + offset],
+                            torch.full_like(edge_embedding_indices_detached, -1),
+                        ).to(torch.long)
+                        query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
+                        
+                        # Map entities
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
-                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
                         mapped = torch.where(
                             query_nodes >= 0,
-                            global_to_local[query_nodes],
+                            rel_global_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
-                        # Update the graph to the sampled subgraph
-                        graph = graph_sub.to(device)
-                        # Update the node indices to the mapped indices
-                        query_batch.node_embedding_indices = mapped
+                        query_batch.node_embedding_indices = mapped.to(device)
+                        
+                        relation_graph = relation_graph.to(device)
+                        graph = relation_graph # Set graph to bipartite relation graph
                     else:
                         graph = None
+                        relation_graph = None
                 else:
-                    graph = full_graph.to(device)
+                    if num_neighbors_eval is not None:
+                        # Reusable sampler path
+                        node_indices = query_batch.node_embedding_indices
+                        seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                        if seeds_cpu.numel() > 0:
+                            # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+                            # If a node is not in the subgraph, its mapped to -1
+                            graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+                            query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                            # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+                            # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+                            mapped = torch.where(
+                                query_nodes >= 0,
+                                global_to_local[query_nodes],
+                                torch.full_like(query_nodes, -1),
+                            ).to(torch.long)
+                            # Update the graph to the sampled subgraph
+                            graph = graph_sub.to(device)
+                            # Update the node indices to the mapped indices
+                            query_batch.node_embedding_indices = mapped
+                        else:
+                            graph = None
+                    else:
+                        graph = full_graph.to(device)
                 relation_graph_inp = relation_graph
 
             # Forward pass
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
+            # Apply ReLU during evaluation (inference logic)
+            log_cardinality_pred = torch.relu(log_cardinality_pred)
+
             true_cardinality = query_batch.y.to(torch.float32).to(device)
             log_true_cardinality = torch.log(true_cardinality)
             

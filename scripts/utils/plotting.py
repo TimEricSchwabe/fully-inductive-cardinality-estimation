@@ -10,6 +10,99 @@ import numpy as np
 import pandas as pd
 from pathlib import Path
 from typing import List, Optional, Tuple, Union
+import torch
+import networkx as nx
+import matplotlib.pyplot as plt
+import numpy as np
+from torch_geometric.data import Data
+from torch_geometric.utils import to_networkx, to_dense_adj, to_scipy_sparse_matrix
+import scipy.sparse as sp
+import scipy.sparse.linalg as linalg
+
+
+
+
+def compute_and_plot_laplacian_pe(data, k_vectors=3, num_eigenvalues_to_plot=15):
+    """
+    1. Plots the 'Scree Plot' (Eigenvalues vs Index) to help choose k.
+    2. Visualizes the first 'k_vectors' non-trivial eigenvectors on the graph.
+    """
+    # --- 1. Math: Compute Laplacian and Eigendecomposition ---
+    num_nodes = data.num_nodes
+    A = to_dense_adj(data.edge_index)[0]
+    D = torch.diag(A.sum(dim=1))
+    L = D - A
+    
+    # Get ALL eigenvalues/vectors (sorted low to high)
+    # Note: For huge graphs, use sparse solvers to get only top K, 
+    # but for visualization/debugging, dense 'eigh' is safer and easier.
+    eigenvalues, eigenvectors = torch.linalg.eigh(L)
+    
+    # Convert to numpy for plotting
+    evals_np = eigenvalues.numpy()
+    evecs_np = eigenvectors.numpy()
+
+    # --- 2. Visualization Setup ---
+    G_nx = to_networkx(data, to_undirected=True)
+    pos = nx.kamada_kawai_layout(G_nx) # Good force-directed layout
+    
+    # Create a figure: 1 row. 
+    # First slot = Scree Plot. Remaining slots = Graph Visualizations.
+    total_plots = k_vectors + 1
+    fig, axes = plt.subplots(1, total_plots, figsize=(4 * total_plots, 4))
+    
+    # --- 3. Plot 1: The Scree Plot (Eigenvalues) ---
+    ax_scree = axes[0]
+    
+    # Determine how many to plot (don't exceed graph size)
+    limit = min(num_nodes, num_eigenvalues_to_plot)
+    indices = range(limit)
+    values = evals_np[:limit]
+    
+    # Plot the line
+    ax_scree.plot(indices, values, marker='o', linestyle='-', color='black', alpha=0.7)
+    
+    # Highlight the zero eigenvalue
+    ax_scree.scatter([0], [values[0]], color='red', zorder=5, label='$\lambda_0=0$')
+    
+    # Draw a line showing the user's current 'k' choice
+    # We draw it at k+1 because index 0 is trivial.
+    # So if user wants k=2 vectors, we are looking at indices 1 and 2.
+    cutoff_index = k_vectors 
+    ax_scree.axvline(x=cutoff_index, color='blue', linestyle='--', label=f'Cutoff (k={k_vectors})')
+    
+    ax_scree.set_title("Eigenvalue Spectrum (Scree Plot)")
+    ax_scree.set_xlabel("Index ($i$)")
+    ax_scree.set_ylabel("Eigenvalue ($\lambda_i$)")
+    ax_scree.grid(True, alpha=0.3)
+    ax_scree.legend()
+
+    # --- 4. Plot 2..N: The Eigenvectors on the Graph ---
+    # We start from index 1 because index 0 is the trivial constant vector
+    for i in range(k_vectors):
+        ax = axes[i + 1] # Shift by 1 because axes[0] is the scree plot
+        
+        ev_index = i + 1 
+        vec = evecs_np[:, ev_index]
+        val = evals_np[ev_index]
+        
+        nx.draw(
+            G_nx, pos, ax=ax,
+            node_color=vec, 
+            cmap='coolwarm', 
+            node_size=200, 
+            with_labels=False,
+            edge_color='gray',
+            width=0.8
+        )
+        ax.set_title(f"Vector $v_{{{ev_index}}}$\n$\lambda_{{{ev_index}}}$ = {val:.4f}")
+
+    plt.tight_layout()
+    plt.savefig(f"laplacian_pe_plot_{k_vectors}.png")
+    plt.close()
+    print(f"Saved Laplacian PE plot to laplacian_pe_plot_{k_vectors}.png")
+    
+    return eigenvectors[:, 1:k_vectors+1]
 
 
 def plot_training_metrics(

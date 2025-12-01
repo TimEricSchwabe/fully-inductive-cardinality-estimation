@@ -184,6 +184,7 @@ def get_device(device_arg: str) -> torch.device:
         return torch.device("cuda" if torch.cuda.is_available() else "cpu")
     else:
         return torch.device(device_arg)
+
 ### Helper Functions ###
 def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, output_dir: Union[Path, str]=None):
     """
