@@ -18,7 +18,6 @@ from torch_geometric.utils import coalesce
 
 logger = logging.getLogger(__name__)
 
-# Dataset mapping: config name -> dataset class
 DATASET_REGISTRY = {
     "LUBM": datasets.LUBM,
     "SWDF": datasets.SWDF,
@@ -30,7 +29,6 @@ DATASET_REGISTRY = {
     "dbpedia100k": datasets.DBpedia100k,
 }
 
-# Query mapping: config name -> query class
 QUERY_REGISTRY = {
     "LUBMQueries": datasets.LUBMQueries,
     "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
@@ -45,6 +43,10 @@ QUERY_REGISTRY = {
     "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
     "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
     "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
+
+    "lubm_path_queries": datasets.lubm_path_queries,
+    "swdf_path_queries": datasets.swdf_path_queries,
+    "wikidata_path_queries": datasets.wikidata_path_queries,
 }
 
 
@@ -74,31 +76,22 @@ def get_dataset_processed_dir(dataset_name: str):
 
 def load_dataset(dataset_name: str) -> List:
     """Load the graph dataset and verify its properties."""
-    # Get the appropriate dataset class
     DatasetClass = get_dataset_class(dataset_name)
     
-    # Instantiate and load the dataset
     graph_dataset = DatasetClass()
     graph = graph_dataset[0].to("cpu")
-    
-    
-    # no logging here — logging is centralized in `load_data`
-
     return graph
 
 
 def load_occurrences(dataset_name: str):
     """Load entity and relation mappings and occurrence data."""
-    # Get the processed directory for the dataset
     processed_dir = get_dataset_processed_dir(dataset_name)
     
-    # Construct file paths using the dataset name
     entity_occurrences_path = processed_dir / "entity_occurrences.json"
     relation_occurrences_path = processed_dir / "relation_occurrences.json"
     entity_mapping_path = processed_dir / "entity_to_id.json"
     relation_mapping_path = processed_dir / "relation_to_id.json"
 
-    # Load the JSON files
     with open(entity_occurrences_path, "r") as f:
         entity_occurrences = json.load(f)
     with open(relation_occurrences_path, "r") as f:
@@ -108,7 +101,6 @@ def load_occurrences(dataset_name: str):
     with open(relation_mapping_path, "r") as f:
         relation_mapping = json.load(f)
 
-    # no logging here — logging is centralized in `load_data`
  
     return entity_occurrences, relation_occurrences, entity_mapping, relation_mapping
 
@@ -120,10 +112,8 @@ def load_queries(
     relation_mapping,
 ):
     """Load queries and create train/test split."""
-    # Get the appropriate query class
     QueryClass = get_query_class(query_name)
     
-    # Instantiate the query dataset
     # Keep queries on CPU initially - they'll be moved to GPU batch by batch
     queries = QueryClass(
         entity_occurrences=entity_occurrences,
@@ -132,7 +122,6 @@ def load_queries(
         global_relation_mapping=relation_mapping,
     )
 
-    # no logging here — logging is centralized in `load_data`
     return queries
 
 
@@ -158,12 +147,13 @@ def load_data(dataset_name: str, queries_name: str):
         relation_mapping=rm,
     )
 
-    # Consolidated logging for the whole load sequence
     logger.info(f"Loaded dataset: {dataset_name}")
     try:
         device = dataset.edge_index.device
     except Exception:
         device = "unknown"
+
+
     logger.info(f"Graph moved to device: {device}")
     logger.info(f"Number of nodes: {getattr(dataset, 'num_nodes', 'unknown')}")
     logger.info(f"Number of edges: {getattr(dataset, 'num_edges', 'unknown')}")
@@ -225,7 +215,8 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
     return processed_data
 
 def make_bipartit_graph(data):
-    # Convert a homogeneous graph to a bipartite graph representation
+    """ Convert a homogeneous graph to a bipartite graph representation """
+
     edge_index = data.edge_index
     edge_type = data.edge_type 
     

@@ -613,6 +613,70 @@ class dbpedia100k_star_queries(NTQueries):
             **kwargs
         )
 
+class lubm_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/60037037?private_link=8e4493e070acfd065b77",
+            dataset_name="lubm_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path",
+            **kwargs
+        )
+
+
+class swdf_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/60037112?private_link=81b137c60854d11ee270",
+            dataset_name="swdf_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path",
+            **kwargs
+        )
+
+class wikidata_path_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="https://figshare.com/ndownloader/files/60037220?private_link=435c4febc01f57ca3b6d",
+            dataset_name="wikidata_path_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path",
+            **kwargs
+        )
+
+
+
+
 class wn18rr_v4_ind_path_queries(NTQueries):
     def __init__(
         self,
@@ -629,6 +693,7 @@ class wn18rr_v4_ind_path_queries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
+            type="path",
             **kwargs
         )
 
@@ -648,6 +713,7 @@ class wn18rr_v4_path_queries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
+            type="path",
             **kwargs
         )
 
@@ -667,6 +733,7 @@ class dbpedia100k_path_queries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
+            type="path",
             **kwargs
         )
 
@@ -686,6 +753,7 @@ class fb237_v4_path_queries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
+            type="path",
             **kwargs
         )
 
@@ -705,6 +773,7 @@ class fb237_v4_ind_path_queries(NTQueries):
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
             global_relation_mapping=global_relation_mapping,
+            type="path",
             **kwargs
         )
 
