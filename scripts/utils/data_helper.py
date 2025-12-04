@@ -269,6 +269,17 @@ def make_bipartit_graph(data):
     # Concatenate everything
     final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
     final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
+
+    # offset = data.num_nodes
+    # min_relation_index = offset # inclusive
+    # max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
+    # relation_indices = torch.arange(min_relation_index, max_relation_index, device=device)
+
+    # min_entity_index = 0 # inclusive
+    # max_entity_index = offset # exclusive
+    # entity_indices = torch.arange(min_entity_index, max_entity_index, device=device)
+
+
     
     bipartite_data = Data(
         edge_index=final_edge_index,
@@ -277,6 +288,8 @@ def make_bipartit_graph(data):
         dataset_name=f"{data.dataset_name}_bipartite",
         original_edge_index=data.edge_index,
         original_edge_type=data.edge_type,
+        original_num_nodes=data.num_nodes,
+        original_num_relations=num_relations,
     )
 
     return bipartite_data

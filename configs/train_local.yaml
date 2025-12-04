@@ -10,8 +10,23 @@ data:
     batch_size: 4
     num_queries: 100
     type: "validation"
-epochs: 200
-wandb: True
+  - dataset: "SWDF"
+    queries: "swdf_path_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
+  - dataset: "LUBM"
+    queries: "lubm_path_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
+epochs: 20
+wandb: False
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -21,12 +36,14 @@ seed: 42
 device: "auto"
 EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
-RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
+RelationGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "GAT", 'gine'
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
-QueryGNN: "SimpleSumGNN" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
+QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
 embedding_dim: 128
 n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay
+relation_graph: "bipartite" # 
+entity_graph: "KG"

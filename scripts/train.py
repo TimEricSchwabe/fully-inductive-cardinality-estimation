@@ -143,15 +143,17 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             query_gnn=query_gnn,
             vector_dim=vector_dim,
             n_embedding_layers=n_embedding_layers, # Pass the new parameter
-            use_unified_bipartite_graph=(config.entity_graph == "bipartite")
+            entity_graph_mode=config.entity_graph,
+            relation_graph_mode=config.relation_graph,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
         model = FiceIndependent(vector_dim=vector_dim)
     else:
-        raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary'")
+        raise ValueError(f"Unknown model type: {model_type}. Choose 'FICE' or 'FiceBinary' or 'FiceIndependent'")
     
     if model_state_dict is not None:
+        # TODO: this might not work if different models are used, model fo the state_dict and the current model must match
         model.load_state_dict(model_state_dict)
         logger.info("Model state loaded from checkpoint.")
 
@@ -221,26 +223,57 @@ def train_epoch(state: TrainingState):
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
 
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
-            relation_graph = full_graph.bipartite_graph.to(device)
-            offset = full_graph.num_nodes
-            seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
-            seeds = seeds[seeds >= 0].unique().detach().cpu()
-            rel_global_to_local = None
-            if seeds.numel() > 0:
-                relation_graph, rel_global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
-                edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
-
-                edge_embedding_indices_detached = torch.where(
-                    edge_embedding_indices_detached >= 0,
-                    rel_global_to_local[edge_embedding_indices_detached + offset],
-                    torch.full_like(edge_embedding_indices_detached, -1),
-                ).to(torch.long)
-                query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
-                relation_graph = relation_graph.to(device)
-            else:
-                relation_graph = None
 
             graph_size = torch.tensor([full_graph.num_edges], device=device)
+
+            bipartite_graph = None
+            bipartite_graph_gloal_to_local = None
+
+            # generate a sample of the bipartite graph if needed
+            if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
+                full_bipartite_graph = full_graph.bipartite_graph.to(device)
+                offset = full_graph.num_nodes
+                seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
+                seeds = seeds[seeds >= 0].unique().detach().cpu()
+                if seeds.numel() > 0:
+                    # bipartite_graph_global_to_local of shape fullbipartite_graph.num_nodes
+                    bipartite_graph, bipartite_graph_gloal_to_local = neighbor_sampler.sample(full_bipartite_graph, seeds=seeds)
+                    # TODO: IN den sampler schreiben
+                    bipartite_graph.original_num_relations = full_bipartite_graph.original_num_relations
+                    bipartite_graph.original_num_nodes = full_bipartite_graph.original_num_nodes
+
+                    # TODO: in make_bipartite_graph schreiben
+                    min_relation_index = offset # inclusive
+                    max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
+                    mapped_relation_indices = bipartite_graph_gloal_to_local[min_relation_index:max_relation_index] 
+
+
+                    min_entity_index = 0 # inclusive
+                    max_entity_index = full_bipartite_graph.original_num_nodes # exclusive
+                    mapped_entity_indices = bipartite_graph_gloal_to_local[min_entity_index:max_entity_index]
+
+                    bipartite_graph.mapped_relation_indices = mapped_relation_indices
+                    bipartite_graph.mapped_entity_indices = mapped_entity_indices
+                    bipartite_graph = bipartite_graph.to(device)
+
+
+            
+            # Choose correct graph for relation GNN
+            if state.training_context.config.relation_graph == "bipartite":
+                relation_graph = bipartite_graph
+                offset = full_graph.num_nodes
+                # TODO: typo in edge_emebeddings => edge_embeddings
+                edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
+
+                edge_emebeddings = torch.where(
+                    edge_emebeddings >= 0,
+                    bipartite_graph_gloal_to_local[edge_emebeddings + offset],
+                    torch.full_like(edge_emebeddings, -1),
+                ).to(torch.long)
+                query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
+                query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+            else: 
+                relation_graph = full_graph.relation_graph.to(device)
 
 
             if plot_embeddings:
@@ -304,9 +337,7 @@ def train_epoch(state: TrainingState):
                 # exit()
 
 
-            if state.model_components.optimizer is not None:
-                state.model_components.optimizer.zero_grad()
-
+            # SELECT GRAPH FOR ENTITY GNN
             # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
             if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
@@ -314,17 +345,17 @@ def train_epoch(state: TrainingState):
             else:
                 if state.training_context.config.entity_graph == "bipartite":
                     # Use the SAME bipartite graph as used for relations
-                    if relation_graph is not None and rel_global_to_local is not None:
-                        graph = relation_graph
+                    if bipartite_graph is not None and bipartite_graph_gloal_to_local is not None:
+                        graph = bipartite_graph
                         
-                        # Map entity indices using the relation graph's mapping
+                        # Map entity indices using the bipartite graph's mapping
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
                         
                         # Note: In bipartite graph, entity IDs [0..N-1] correspond to global IDs [0..N-1]
                         # rel_global_to_local maps global bipartite ID to local bipartite ID
                         mapped = torch.where(
                             query_nodes >= 0,
-                            rel_global_to_local[query_nodes],
+                            bipartite_graph_gloal_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
                         
@@ -359,6 +390,10 @@ def train_epoch(state: TrainingState):
                     else:
                         graph = full_graph.to(device)
 
+            # Forward pass
+            if state.model_components.optimizer is not None:
+                state.model_components.optimizer.zero_grad()
+
             relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
@@ -366,7 +401,6 @@ def train_epoch(state: TrainingState):
             true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
             log_true_cardinality = torch.log(true_cardinality)
             
-
             # Compute loss
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
 
@@ -395,19 +429,6 @@ def train_epoch(state: TrainingState):
                 }
             )
 
-        
-            # Log batch-level metrics to wandb if enabled
-            if state.training_context.use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
-                wandb.log({
-                    f"train_loss_epoch_{state.training_context.current_epoch}": loss.item(),
-                    f"train_loss_epoch_{state.training_context.current_epoch}_{full_graph.dataset_name}": loss.item(),
-                })
-
-            # Clean up batch tensors to free GPU memory
-            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-            if graph is not None:
-                del graph
-
     progress_bar.close()
     # Clear GPU cache after training epoch
     if torch.cuda.is_available():
@@ -434,51 +455,87 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
         neighbor_sampler = state.data_components.neighbor_sampler
 
         for batch_idx, (full_graph, query_batch) in tqdm(enumerate(loader), desc="Evaluating", leave=False, total=total_batches):
-            relation_graph = full_graph.bipartite_graph.to(device)
-            offset = full_graph.num_nodes
+
             graph_size = torch.tensor([full_graph.num_edges], device=device)
 
+            bipartite_graph = None
+            bipartite_graph_gloal_to_local = None
+
+            # generate a sample of the bipartite graph if needed
+            if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
+                full_bipartite_graph = full_graph.bipartite_graph.to(device)
+                offset = full_graph.num_nodes
+                seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
+                seeds = seeds[seeds >= 0].unique().detach().cpu()
+                if seeds.numel() > 0:
+                    # bipartite_graph_global_to_local of shape fullbipartite_graph.num_nodes
+                    bipartite_graph, bipartite_graph_gloal_to_local = neighbor_sampler.sample(full_bipartite_graph, seeds=seeds)
+                    # TODO: IN den sampler schreiben
+                    bipartite_graph.original_num_relations = full_bipartite_graph.original_num_relations
+                    bipartite_graph.original_num_nodes = full_bipartite_graph.original_num_nodes
+
+                    # TODO: in make_bipartite_graph schreiben
+                    min_relation_index = offset # inclusive
+                    max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
+                    mapped_relation_indices = bipartite_graph_gloal_to_local[min_relation_index:max_relation_index] 
+
+
+                    min_entity_index = 0 # inclusive
+                    max_entity_index = full_bipartite_graph.original_num_nodes # exclusive
+                    mapped_entity_indices = bipartite_graph_gloal_to_local[min_entity_index:max_entity_index]
+
+                    bipartite_graph.mapped_relation_indices = mapped_relation_indices
+                    bipartite_graph.mapped_entity_indices = mapped_entity_indices
+                    bipartite_graph = bipartite_graph.to(device)
+
+            # Choose correct graph for relation GNN
+            if state.training_context.config.relation_graph == "bipartite":
+                relation_graph = bipartite_graph
+                offset = full_graph.num_nodes
+                # TODO: typo in edge_emebeddings => edge_embeddings
+                edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
+
+                edge_emebeddings = torch.where(
+                    edge_emebeddings >= 0,
+                    bipartite_graph_gloal_to_local[edge_emebeddings + offset],
+                    torch.full_like(edge_emebeddings, -1),
+                ).to(torch.long)
+                query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
+                query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+            else: 
+                relation_graph = full_graph.relation_graph.to(device)
+
+
+
+            # SELECT GRAPH FOR ENTITY GNN
+            # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
             if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
                 graph = None
-                relation_graph_inp = None
+                num_neighbors = False
             else:
                 if state.training_context.config.entity_graph == "bipartite":
                     # Use the SAME bipartite graph as used for relations
-                    # Need to run neighbor sampler to get valid subgraph and mappings first
-                    node_indices = query_batch.node_embedding_indices
-                    edge_indices = query_batch.edge_embedding_indices + offset
-                    seeds = torch.cat((node_indices, edge_indices))
-                    seeds = seeds[seeds >= 0].unique().detach().cpu()
-                    
-                    rel_global_to_local = None
-                    if seeds.numel() > 0:
-                        relation_graph, rel_global_to_local = neighbor_sampler.sample(relation_graph, seeds=seeds)
+                    if bipartite_graph is not None and bipartite_graph_gloal_to_local is not None:
+                        graph = bipartite_graph
                         
-                        # Map edges
-                        edge_embedding_indices_detached = query_batch.edge_embedding_indices.detach().cpu()
-                        edge_embedding_indices_detached = torch.where(
-                            edge_embedding_indices_detached >= 0,
-                            rel_global_to_local[edge_embedding_indices_detached + offset],
-                            torch.full_like(edge_embedding_indices_detached, -1),
-                        ).to(torch.long)
-                        query_batch.edge_embedding_indices = edge_embedding_indices_detached.to(device)
-                        
-                        # Map entities
+                        # Map entity indices using the bipartite graph's mapping
                         query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                        
+                        # Note: In bipartite graph, entity IDs [0..N-1] correspond to global IDs [0..N-1]
+                        # rel_global_to_local maps global bipartite ID to local bipartite ID
                         mapped = torch.where(
                             query_nodes >= 0,
-                            rel_global_to_local[query_nodes],
+                            bipartite_graph_gloal_to_local[query_nodes],
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
-                        query_batch.node_embedding_indices = mapped.to(device)
                         
-                        relation_graph = relation_graph.to(device)
-                        graph = relation_graph # Set graph to bipartite relation graph
+                        query_batch.node_embedding_indices = mapped.to(device)
                     else:
                         graph = None
-                        relation_graph = None
                 else:
-                    if num_neighbors_eval is not None:
+                    # "KG" mode - Standard Logic
+                    num_neighbors = state.training_context.config.EntityGNNNeighborhood   
+                    if num_neighbors is not None:
                         # Reusable sampler path
                         node_indices = query_batch.node_embedding_indices
                         seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
@@ -502,9 +559,9 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                             graph = None
                     else:
                         graph = full_graph.to(device)
-                relation_graph_inp = relation_graph
 
             # Forward pass
+            relation_graph_inp = None if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent) else relation_graph
             log_cardinality_pred = state.model_components.model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
             
@@ -528,17 +585,6 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
 
             epoch_test_loss += loss.item()
 
-            # Log batch-level metrics to wandb if enabled
-            if use_wandb and batch_idx % 10 == 0:  # Log every 10 batches to avoid spam
-                wandb.log({
-                    f"test_loss_epoch_{state.training_context.current_epoch}": loss.item(),
-                    f"test_loss_epoch_{state.training_context.current_epoch}_{full_graph.dataset_name}": loss.item(),
-                })
-
-            # Clean up batch tensors to free GPU memory
-            del log_cardinality_pred, true_cardinality, log_true_cardinality, loss
-            if graph is not None:
-                del graph
 
     # Clear GPU cache after evaluation
     if torch.cuda.is_available():
