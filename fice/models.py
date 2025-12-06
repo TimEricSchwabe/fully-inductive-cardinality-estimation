@@ -641,7 +641,7 @@ class FICE(nn.Module):
         else:
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
-    def forward(self, data, relation_graph, batch, graph_size, plot_embeddings=False, epoch=0):
+    def forward(self, data, relation_graph, batch, graph_size, epoch=0):
 
         # All inputs should already be on the correct device
         device = batch.x.device
@@ -803,13 +803,6 @@ class FICE(nn.Module):
             edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_features
         
-        # --- PLOTTING ---
-        if plot_embeddings:
-            if 'node_embeddings' in locals():
-                analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(epoch))
-            if 'edge_embeddings' in locals():
-                analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(epoch))
-
         # TODO:
         if self.query_gnn_type == 'QueryCardinalityGNN':
             # update Counts for log:

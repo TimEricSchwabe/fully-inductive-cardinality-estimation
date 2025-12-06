@@ -291,11 +291,12 @@ def train_epoch(state: TrainingState):
 
 
             if plot_embeddings:
+                figure_dir = state.training_context.log_dir / "figures"
                 if state.model_components.model.use_unified_bipartite_graph:
                     edge_embeddings = state.model_components.model.embedding_model(data=relation_graph)
                     edge_embeddings = edge_embeddings.detach().cpu().squeeze()
                     state.metric_logger.log_embedding_similarity(edge_embeddings, "Embeddings", state.training_context.current_epoch)
-                    analyze_vector_similarity(edge_embeddings, "Embeddings Epoch " + str(state.training_context.current_epoch))
+                    analyze_vector_similarity(edge_embeddings, "Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=figure_dir)
                 else:
                     edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
                     node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
@@ -303,8 +304,8 @@ def train_epoch(state: TrainingState):
                     node_embeddings = node_embeddings.detach().cpu().squeeze()
                     #state.metric_logger.log_embedding_similarity(node_embeddings, "Node_Embeddings", state.training_context.current_epoch)
                     #state.metric_logger.log_embedding_similarity(edge_embeddings, "Edge_Embeddings", state.training_context.current_epoch)
-                    analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch))
-                    analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch))
+                    analyze_vector_similarity(node_embeddings, "Node_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=figure_dir)
+                    analyze_vector_similarity(edge_embeddings, "Edge_Embeddings Epoch " + str(state.training_context.current_epoch), output_dir=figure_dir)
                 plot_embeddings = False
 
 
