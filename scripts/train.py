@@ -195,6 +195,53 @@ def log_gpu_memory_usage(step_name: str):
         logger.debug(f"CPU-only mode at {step_name}")
 
 
+
+def prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device):
+    full_bipartite_graph = full_graph.bipartite_graph.to(device)
+    offset = full_graph.num_nodes
+    seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
+    seeds = seeds[seeds >= 0].unique().detach().cpu()
+    if seeds.numel() > 0:
+        # bipartite_graph_global_to_local of shape fullbipartite_graph.num_nodes
+        bipartite_graph, bipartite_graph_gloal_to_local = neighbor_sampler.sample(full_bipartite_graph, seeds=seeds)
+        # TODO: IN den sampler schreiben
+        bipartite_graph.original_num_relations = full_bipartite_graph.original_num_relations
+        bipartite_graph.original_num_nodes = full_bipartite_graph.original_num_nodes
+
+        # TODO: in make_bipartite_graph schreiben
+        min_relation_index = offset # inclusive
+        max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
+        mapped_relation_indices = bipartite_graph_gloal_to_local[min_relation_index:max_relation_index] 
+
+
+        min_entity_index = 0 # inclusive
+        max_entity_index = full_bipartite_graph.original_num_nodes # exclusive
+        mapped_entity_indices = bipartite_graph_gloal_to_local[min_entity_index:max_entity_index]
+
+        bipartite_graph.mapped_relation_indices = mapped_relation_indices
+        bipartite_graph.mapped_entity_indices = mapped_entity_indices
+        bipartite_graph = bipartite_graph.to(device)
+
+    return bipartite_graph, bipartite_graph_gloal_to_local
+
+
+
+def prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device):
+    offset = full_graph.num_nodes
+    # TODO: typo in edge_emebeddings => edge_embeddings
+    edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
+
+    edge_emebeddings = torch.where(
+        edge_emebeddings >= 0,
+        bipartite_graph_gloal_to_local[edge_emebeddings + offset],
+        torch.full_like(edge_emebeddings, -1),
+    ).to(torch.long)
+    query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
+    query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+
+    return bipartite_graph
+
+
 def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     # Extract components for easier access
@@ -231,47 +278,14 @@ def train_epoch(state: TrainingState):
 
             # generate a sample of the bipartite graph if needed
             if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
-                full_bipartite_graph = full_graph.bipartite_graph.to(device)
-                offset = full_graph.num_nodes
-                seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
-                seeds = seeds[seeds >= 0].unique().detach().cpu()
-                if seeds.numel() > 0:
-                    # bipartite_graph_global_to_local of shape fullbipartite_graph.num_nodes
-                    bipartite_graph, bipartite_graph_gloal_to_local = neighbor_sampler.sample(full_bipartite_graph, seeds=seeds)
-                    # TODO: IN den sampler schreiben
-                    bipartite_graph.original_num_relations = full_bipartite_graph.original_num_relations
-                    bipartite_graph.original_num_nodes = full_bipartite_graph.original_num_nodes
-
-                    # TODO: in make_bipartite_graph schreiben
-                    min_relation_index = offset # inclusive
-                    max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
-                    mapped_relation_indices = bipartite_graph_gloal_to_local[min_relation_index:max_relation_index] 
-
-
-                    min_entity_index = 0 # inclusive
-                    max_entity_index = full_bipartite_graph.original_num_nodes # exclusive
-                    mapped_entity_indices = bipartite_graph_gloal_to_local[min_entity_index:max_entity_index]
-
-                    bipartite_graph.mapped_relation_indices = mapped_relation_indices
-                    bipartite_graph.mapped_entity_indices = mapped_entity_indices
-                    bipartite_graph = bipartite_graph.to(device)
+                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
 
 
             
             # Choose correct graph for relation GNN
             if state.training_context.config.relation_graph == "bipartite":
-                relation_graph = bipartite_graph
-                offset = full_graph.num_nodes
-                # TODO: typo in edge_emebeddings => edge_embeddings
-                edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
-
-                edge_emebeddings = torch.where(
-                    edge_emebeddings >= 0,
-                    bipartite_graph_gloal_to_local[edge_emebeddings + offset],
-                    torch.full_like(edge_emebeddings, -1),
-                ).to(torch.long)
-                query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
-                query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+                relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
+                
             else: 
                 relation_graph = full_graph.relation_graph.to(device)
 
@@ -463,45 +477,10 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
 
             # generate a sample of the bipartite graph if needed
             if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
-                full_bipartite_graph = full_graph.bipartite_graph.to(device)
-                offset = full_graph.num_nodes
-                seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
-                seeds = seeds[seeds >= 0].unique().detach().cpu()
-                if seeds.numel() > 0:
-                    # bipartite_graph_global_to_local of shape fullbipartite_graph.num_nodes
-                    bipartite_graph, bipartite_graph_gloal_to_local = neighbor_sampler.sample(full_bipartite_graph, seeds=seeds)
-                    # TODO: IN den sampler schreiben
-                    bipartite_graph.original_num_relations = full_bipartite_graph.original_num_relations
-                    bipartite_graph.original_num_nodes = full_bipartite_graph.original_num_nodes
+                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
 
-                    # TODO: in make_bipartite_graph schreiben
-                    min_relation_index = offset # inclusive
-                    max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
-                    mapped_relation_indices = bipartite_graph_gloal_to_local[min_relation_index:max_relation_index] 
-
-
-                    min_entity_index = 0 # inclusive
-                    max_entity_index = full_bipartite_graph.original_num_nodes # exclusive
-                    mapped_entity_indices = bipartite_graph_gloal_to_local[min_entity_index:max_entity_index]
-
-                    bipartite_graph.mapped_relation_indices = mapped_relation_indices
-                    bipartite_graph.mapped_entity_indices = mapped_entity_indices
-                    bipartite_graph = bipartite_graph.to(device)
-
-            # Choose correct graph for relation GNN
             if state.training_context.config.relation_graph == "bipartite":
-                relation_graph = bipartite_graph
-                offset = full_graph.num_nodes
-                # TODO: typo in edge_emebeddings => edge_embeddings
-                edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
-
-                edge_emebeddings = torch.where(
-                    edge_emebeddings >= 0,
-                    bipartite_graph_gloal_to_local[edge_emebeddings + offset],
-                    torch.full_like(edge_emebeddings, -1),
-                ).to(torch.long)
-                query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
-                query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+                relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
             else: 
                 relation_graph = full_graph.relation_graph.to(device)
 

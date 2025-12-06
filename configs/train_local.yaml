@@ -25,7 +25,21 @@ data:
     batch_size: 4
     num_queries: 100
     type: "validation"
-epochs: 20
+
+  - dataset: "Wikidata"
+    queries: "WIKIDATA_Star_Queries"
+    batch_size: 4
+    num_queries: 100
+    type: "validation"
+
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries"
+    batch_size: 4
+    num_queries: 100
+    type: "train-val"
+
+
+epochs: 40
 wandb: False
 learning_rate: 1e-4
 train_ratio: 0.8
