@@ -266,8 +266,8 @@ class TripleModel(torch.nn.Module):
         # x = self.dropout(x)
         x = F.relu(x)
         x = self.lin2(x)
-        return x.squeeze(-1)
-        # return torch.abs(x.squeeze(-1))
+        # return x.squeeze(-1)
+        return torch.abs(x.squeeze(-1))
 
 ############Independent Query GNN ############
 # this model only usees the raw count to predict based on independence assumption
