@@ -631,7 +631,7 @@ class FICE(nn.Module):
 
         # Dataset creates node/edge features of size (vector_dim + 3)
         if self.query_gnn_type == 'QueryCardinalityGNN':
-            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3)
+            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
             self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'QueryTransformer':
