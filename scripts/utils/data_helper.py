@@ -13,10 +13,11 @@ import numpy as np
 # Import project modules
 from fice import datasets
 from torch_geometric.loader import DataLoader
+from torch_geometric.data import Data
+from torch_geometric.utils import coalesce
 
 logger = logging.getLogger(__name__)
 
-# Dataset mapping: config name -> dataset class
 DATASET_REGISTRY = {
     "LUBM": datasets.LUBM,
     "SWDF": datasets.SWDF,
@@ -28,7 +29,6 @@ DATASET_REGISTRY = {
     "dbpedia100k": datasets.DBpedia100k,
 }
 
-# Query mapping: config name -> query class
 QUERY_REGISTRY = {
     "LUBMQueries": datasets.LUBMQueries,
     "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
@@ -38,6 +38,15 @@ QUERY_REGISTRY = {
     "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
     "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
     "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
+    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
+    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
+    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
+
+    "lubm_path_queries": datasets.lubm_path_queries,
+    "swdf_path_queries": datasets.swdf_path_queries,
+    "wikidata_path_queries": datasets.wikidata_path_queries,
 }
 
 
@@ -67,31 +76,22 @@ def get_dataset_processed_dir(dataset_name: str):
 
 def load_dataset(dataset_name: str) -> List:
     """Load the graph dataset and verify its properties."""
-    # Get the appropriate dataset class
     DatasetClass = get_dataset_class(dataset_name)
     
-    # Instantiate and load the dataset
     graph_dataset = DatasetClass()
     graph = graph_dataset[0].to("cpu")
-    
-    
-    # no logging here — logging is centralized in `load_data`
-
     return graph
 
 
 def load_occurrences(dataset_name: str):
     """Load entity and relation mappings and occurrence data."""
-    # Get the processed directory for the dataset
     processed_dir = get_dataset_processed_dir(dataset_name)
     
-    # Construct file paths using the dataset name
     entity_occurrences_path = processed_dir / "entity_occurrences.json"
     relation_occurrences_path = processed_dir / "relation_occurrences.json"
     entity_mapping_path = processed_dir / "entity_to_id.json"
     relation_mapping_path = processed_dir / "relation_to_id.json"
 
-    # Load the JSON files
     with open(entity_occurrences_path, "r") as f:
         entity_occurrences = json.load(f)
     with open(relation_occurrences_path, "r") as f:
@@ -101,7 +101,6 @@ def load_occurrences(dataset_name: str):
     with open(relation_mapping_path, "r") as f:
         relation_mapping = json.load(f)
 
-    # no logging here — logging is centralized in `load_data`
  
     return entity_occurrences, relation_occurrences, entity_mapping, relation_mapping
 
@@ -113,10 +112,8 @@ def load_queries(
     relation_mapping,
 ):
     """Load queries and create train/test split."""
-    # Get the appropriate query class
     QueryClass = get_query_class(query_name)
     
-    # Instantiate the query dataset
     # Keep queries on CPU initially - they'll be moved to GPU batch by batch
     queries = QueryClass(
         entity_occurrences=entity_occurrences,
@@ -125,7 +122,6 @@ def load_queries(
         global_relation_mapping=relation_mapping,
     )
 
-    # no logging here — logging is centralized in `load_data`
     return queries
 
 
@@ -151,12 +147,13 @@ def load_data(dataset_name: str, queries_name: str):
         relation_mapping=rm,
     )
 
-    # Consolidated logging for the whole load sequence
     logger.info(f"Loaded dataset: {dataset_name}")
     try:
         device = dataset.edge_index.device
     except Exception:
         device = "unknown"
+
+
     logger.info(f"Graph moved to device: {device}")
     logger.info(f"Number of nodes: {getattr(dataset, 'num_nodes', 'unknown')}")
     logger.info(f"Number of edges: {getattr(dataset, 'num_edges', 'unknown')}")
@@ -217,6 +214,86 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
     
     return processed_data
 
+def make_bipartit_graph(data):
+    """ Convert a homogeneous graph to a bipartite graph representation """
+
+    edge_index = data.edge_index
+    edge_type = data.edge_type 
+    
+    # Calculate actual number of relation types
+    num_relations = edge_type.max().item() + 1
+    
+    # Offset relation types to create their node IDs
+    relation_nodes = edge_type + data.num_nodes
+    
+    # 1. Create Directed Bipartite Edges (s -> p and p -> o)
+    # Head part: Source -> RelationNode
+    edge_index_head = torch.vstack((edge_index[0], relation_nodes))
+    
+    # Tail part: RelationNode -> Target
+    edge_index_tail = torch.vstack((relation_nodes, edge_index[1]))
+    
+    # Combine them
+    bipartite_edge_index = torch.hstack((edge_index_head, edge_index_tail))
+    
+    # Correct total number of nodes
+    total_num_nodes = data.num_nodes + num_relations
+
+    # Create initial weights of 1 (counts)
+    edge_weight = torch.ones(bipartite_edge_index.size(1), device=bipartite_edge_index.device)
+
+    # Collapse duplicate edges to get counts
+    # unique_edges shape: [2, num_unique_edges]
+    # counts shape: [num_unique_edges]
+    unique_edges, counts = coalesce(
+        bipartite_edge_index, 
+        edge_weight, 
+        num_nodes=total_num_nodes,
+        reduce='add'
+    )
+
+    # 2. Make Undirected (Add Reverse Edges) with Direction Attribute
+    # Forward direction: 1
+    # Reverse direction: -1
+    
+    # Prepare attributes for forward edges: [Count, 1]
+    # Shape: [num_unique_edges, 2]
+    forward_attr = torch.stack([counts, torch.ones_like(counts)], dim=1)
+    
+    # Prepare reverse edges: swap rows 0 and 1
+    reverse_edges = torch.stack([unique_edges[1], unique_edges[0]], dim=0)
+    
+    # Prepare attributes for reverse edges: [Count, -1]
+    reverse_attr = torch.stack([counts, -torch.ones_like(counts)], dim=1)
+    
+    # Concatenate everything
+    final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
+    final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
+
+    # offset = data.num_nodes
+    # min_relation_index = offset # inclusive
+    # max_relation_index = offset + full_bipartite_graph.original_num_relations # exclusive
+    # relation_indices = torch.arange(min_relation_index, max_relation_index, device=device)
+
+    # min_entity_index = 0 # inclusive
+    # max_entity_index = offset # exclusive
+    # entity_indices = torch.arange(min_entity_index, max_entity_index, device=device)
+
+
+    
+    bipartite_data = Data(
+        edge_index=final_edge_index,
+        edge_attr=final_edge_attr,  # Shape: [2*E_unique, 2] -> (Count, Direction)
+        num_nodes=total_num_nodes, 
+        dataset_name=f"{data.dataset_name}_bipartite",
+        original_edge_index=data.edge_index,
+        original_edge_type=data.edge_type,
+        original_num_nodes=data.num_nodes,
+        original_num_relations=num_relations,
+    )
+
+    return bipartite_data
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -247,6 +324,10 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+
+        bipartite_graph = make_bipartit_graph(dataset)
+        dataset.bipartite_graph = bipartite_graph
+
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
@@ -291,6 +372,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets
+        test_batch_size = validation_batch_size
 
     test_loader = MultigraphLoader(
         data=test_dataset,

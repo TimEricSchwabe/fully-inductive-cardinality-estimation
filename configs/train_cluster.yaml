@@ -3,30 +3,90 @@ data:
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
     type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
     type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
     type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
     type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 20000
+    type: "validation"
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "LUBMQueries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+  - dataset: "Wikidata"
+    queries: "WIKIDATA_Star_Queries"
+    batch_size: 4
+    num_queries: 20000
     type: "validation"
 
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "validation"
+
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries"
+    batch_size: 4
+    num_queries: 20000
+    type: "train-val"
+
+
+
+
 epochs: 200
+wandb: True
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -34,15 +94,17 @@ save_every: 5
 eval_every: 1
 seed: 42
 device: "auto"
-EntityGNNNeighborhood: [100, 100, 100]
-EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN
-RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
+EntityGNNNeighborhood: [100, 100]
+EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
+RelationGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "GAT", 'gine'
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
-model: "FICE" # choices are "FICE", "FiceBinary"
-layer_norm: True # True or False, whether to use layer normalization in the GNNs
-QueryGNN: "QueryCardinalityGNN"
-wandb: True
-embedding_dim: 256
-n_embedding_layers: 3
+QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
+model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
+layer_norm: False # True or False, whether to use layer normalization in the GNNs
+embedding_dim: 128
+n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay
+relation_graph: "bipartite" # 
+entity_graph: "KG"
+
