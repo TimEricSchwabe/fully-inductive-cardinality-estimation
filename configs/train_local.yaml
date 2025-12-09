@@ -3,39 +3,39 @@ data:
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 4
-    num_queries: 10000
+    num_queries: 1000
     type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_star_queries"
     batch_size: 4
-    num_queries: 100
-    type: "validation"
+    num_queries: 1000
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
     batch_size: 4
-    num_queries: 100
-    type: "validation"
+    num_queries: 1000
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: 4
-    num_queries: 100
+    num_queries: 1000
     type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: 4
-    num_queries: 100
+    num_queries: 1000
     type: "validation"
 
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 100
-    type: "validation"
+    num_queries: 1000
+    type: "train-val"
 
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: 4
-    num_queries: 100
+    num_queries: 1000
     type: "train-val"
 
 
