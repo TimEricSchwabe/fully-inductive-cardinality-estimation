@@ -266,6 +266,11 @@ class TripleModel(torch.nn.Module):
         # x = self.dropout(x)
         x = F.relu(x)
         x = self.lin2(x)
+        
+        # We did an tested it and either with or without abs works fine
+        # also x = troch.where(x<0, torch.zeros_like(x), x) works fine as well 
+        # all produce similar results
+
         # return x.squeeze(-1)
         return torch.abs(x.squeeze(-1))
 
