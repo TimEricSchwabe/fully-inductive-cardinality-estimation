@@ -12,6 +12,7 @@ import json
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
+import hashlib
 
 
 logger = logging.getLogger(__name__)
@@ -35,13 +36,24 @@ def initialize_wandb(config, run_dir):
     # Prepare training config for wandb
     training_config = config.model_dump()
 
+
     os.environ["WANDB_DIR"] = str(run_dir)
     logger.info(f"Weights & Biases dir: {run_dir}")
     # Initialize wandb using WANDB_CONFIG defaults
+    
+    run_name = None
+    if config.wandb_run_name is not None:
+        run_name = config.wandb_run_name.strip().replace(" ", "_")
+        config_hash = hashlib.sha1(str(config.model_dump_json()).encode()).hexdigest()[:6]
+        run_name = f"{run_name}_{config_hash}"
+    else:
+        run_name = WANDB_CONFIG['run_name']
+
+
     run = wandb.init(   
         project=WANDB_CONFIG['project'],
         entity=WANDB_CONFIG['entity'],
-        name=WANDB_CONFIG['run_name'],
+        name=run_name,
         config=training_config,
         tags=WANDB_CONFIG['tags'],
         notes=WANDB_CONFIG['notes'],
