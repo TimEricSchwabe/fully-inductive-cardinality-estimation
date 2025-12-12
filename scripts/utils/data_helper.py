@@ -34,16 +34,18 @@ QUERY_REGISTRY = {
     "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
     "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
     "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
+
     "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
     "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
     "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
     "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+
     "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
     "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
     "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
     "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
-    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
 
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
     "lubm_path_queries": datasets.lubm_path_queries,
     "swdf_path_queries": datasets.swdf_path_queries,
     "wikidata_path_queries": datasets.wikidata_path_queries,
