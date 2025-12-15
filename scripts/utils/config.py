@@ -32,6 +32,7 @@ class Config(BaseSettings):
     train_ratio: float = 0.8  # Ratio of data used for training
     output_dir: str = "output/"  # Directory for output files
     save_every: int = 5  # Save checkpoint every N epochs
+    save_metrics_every: int = 1  # Save metrics CSV files every N epochs
     eval_every: int = 1  # Evaluate model every N epochs
     seed: int = 42  # Random seed for reproducibility
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
