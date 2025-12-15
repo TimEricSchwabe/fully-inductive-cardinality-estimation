@@ -26,17 +26,17 @@ data:
     num_queries: 1000
     type: "validation"
 
-  - dataset: "Wikidata"
-    queries: "WIKIDATA_Star_Queries"
-    batch_size: 4
-    num_queries: 1000
-    type: "train-val"
+  # - dataset: "Wikidata"
+  #   queries: "WIKIDATA_Star_Queries"
+  #   batch_size: 4
+  #   num_queries: 1000
+  #   type: "train-val"
 
-  - dataset: "Wikidata"
-    queries: "wikidata_path_queries"
-    batch_size: 4
-    num_queries: 1000
-    type: "train-val"
+  # - dataset: "Wikidata"
+  #   queries: "wikidata_path_queries"
+  #   batch_size: 4
+  #   num_queries: 1000
+  #   type: "train-val"
 
 
 epochs: 100
