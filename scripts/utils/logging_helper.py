@@ -637,17 +637,8 @@ class MetricLogger:
             
             data = [[float(pred), float(true)] for pred, true in zip(predictions_sampled, true_values_sampled)]
             table = wandb.Table(data=data, columns=["prediction", "true_value"])
-            
-            # Create a scatter plot from the table
-            scatter_plot = wandb.plot.scatter(
-                table, 
-                "prediction", 
-                "true_value",
-                title=f"{stage} Predictions vs True ({dataset_name}) - Epoch {epoch}"
-            )
-            
             self._wandb_log_retry({
-                f"{stage}_predictions_{dataset_name}_epoch_{epoch}": scatter_plot,
+                f"{stage}_predictions_{dataset_name}_epoch_{epoch}": table,
                 "epoch": epoch
             })
         except Exception as e:
