@@ -4,6 +4,7 @@ import logging
 import math
 import random
 import subprocess
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Literal, Tuple, Union
@@ -56,8 +57,11 @@ from utils.logging_helper import (
     TEST_METRICS_FILE_NAME,
     TRAIN_METRICS_PER_GRAPH_FILE_NAME,
     TEST_METRICS_PER_GRAPH_FILE_NAME,
-    TRAIN_VALUES_PER_GRAPH_FILE_NAME,
-    TEST_VALUES_PER_GRAPH_FILE_NAME,
+    TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME,
+    TEST_METRICS_PER_QUERY_TYPE_FILE_NAME,
+    TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME,
+    TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME,
+    PREDICTIONS_FILE_NAME,
     MetricLogger,
 )
 from utils.models import DataComponents, ModelComponents, TrainingContext, TrainingState
@@ -246,7 +250,7 @@ def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     # Extract components for easier access
     state.model_components.model.train()
-    state.metric_logger.start_epoch()
+    state.metric_logger.start_epoch(epoch=state.training_context.current_epoch, stage='train')
     
     epoch_train_loss = 0.0
     num_train_batches = 0
@@ -431,7 +435,8 @@ def train_epoch(state: TrainingState):
                 true_values_log=log_true_cardinality,
                 loss=loss,
                 dataset_name=full_graph.dataset_name,
-                query_type=query_batch.type
+                query_type=query_batch.type,
+                query_set_name=query_batch.query_set_name
             )
 
             epoch_train_loss += loss.item()
@@ -458,7 +463,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     use_wandb = state.training_context.use_wandb
 
     state.model_components.model.eval()
-    state.metric_logger.start_epoch()
+    stage = 'final_test' if mode == 'test' else 'test'
+    state.metric_logger.start_epoch(epoch=state.training_context.current_epoch, stage=stage)
 
     epoch_test_loss = 0.0
     
@@ -561,7 +567,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                 true_values_log=log_true_cardinality,
                 loss=loss,
                 dataset_name=full_graph.dataset_name,
-                query_type=query_batch.type
+                query_type=query_batch.type,
+                query_set_name=query_batch.query_set_name
             )
 
             epoch_test_loss += loss.item()
@@ -596,7 +603,7 @@ def train_model(
         train_epoch(state)
         
         # End training epoch
-        should_save = (epoch % 10 == 0 or epoch == epochs)
+        should_save = (epoch % state.training_context.config.save_metrics_every == 0 or epoch == epochs)
         train_metrics = state.metric_logger.end_epoch(epoch, stage='train', save=should_save)
         epoch_avg_train_loss = train_metrics['loss']
 
@@ -739,16 +746,21 @@ def print_final_summary(
     logger.info(f"  Run directory: {run_dir}")
     logger.info(f"  Best model: {checkpoint_dir / 'best_model.pt'}")
     logger.info(f"  Final model: {checkpoint_dir / 'final_model.pt'}")
+    logger.info(f"  Config files: {run_dir / 'config.yaml'}, {run_dir / 'config.json'}")
     logger.info(f"  Training metrics CSV: {log_dir / TRAIN_METRICS_FILE_NAME}")
     logger.info(f"  Validation metrics CSV: {log_dir / TEST_METRICS_FILE_NAME}")
-    logger.info(f"  Training predictions per graph CSV: {log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME}")
-    logger.info(f"  Validation predictions per graph CSV: {log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME}")
+    logger.info(f"  Predictions CSV (all stages): {log_dir / PREDICTIONS_FILE_NAME}")
     logger.info(f"  Training metrics per graph CSV: {log_dir / TRAIN_METRICS_PER_GRAPH_FILE_NAME}")
     logger.info(f"  Validation metrics per graph CSV: {log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME}")
+    logger.info(f"  Training metrics per query type CSV: {log_dir / TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME}")
+    logger.info(f"  Validation metrics per query type CSV: {log_dir / TEST_METRICS_PER_QUERY_TYPE_FILE_NAME}")
+    logger.info(f"  Training metrics per query set name CSV: {log_dir / TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME}")
+    logger.info(f"  Validation metrics per query set name CSV: {log_dir / TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME}")
     if training_results.get('final_test_loss') is not None:
         logger.info(f"  Final test metrics CSV: {log_dir / 'final_test_metrics.csv'}")
-        logger.info(f"  Final test predictions per graph CSV: {log_dir / 'final_test_predictions_per_graph.csv'}")
         logger.info(f"  Final test metrics per graph CSV: {log_dir / 'final_test_metrics_per_graph.csv'}")
+        logger.info(f"  Final test metrics per query type CSV: {log_dir / 'final_test_metrics_per_query_type.csv'}")
+        logger.info(f"  Final test metrics per query set name CSV: {log_dir / 'final_test_metrics_per_query_set_name.csv'}")
     logger.info(f"  Log files: {log_dir}")
 
     logger.info("\n" + "=" * 60)
@@ -811,6 +823,19 @@ def main():
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"Log directory: {log_dir}")
     logger.info(f"Checkpoint directory: {checkpoint_dir}")
+    
+    # Save config files for reproducibility
+    config_dict = config.model_dump()
+    config_yaml_path = run_dir / "config.yaml"
+    config_json_path = run_dir / "config.json"
+    
+    with open(config_yaml_path, 'w', encoding='utf-8') as f:
+        yaml.dump(config_dict, f, default_flow_style=False, sort_keys=False)
+    
+    with open(config_json_path, 'w', encoding='utf-8') as f:
+        json.dump(config_dict, f, indent=2)
+    
+    logger.info(f"Config saved to {config_yaml_path} and {config_json_path}")
 
     # Log final configuration (after merging with command-line args)
     logger.info("Final Configuration (after command-line overrides):")
@@ -980,6 +1005,8 @@ def main():
         
         # Save training data
         artifact = wandb.Artifact("training_data", type="dataset")
+        
+        # Add metrics files
         if (state.training_context.log_dir / TRAIN_METRICS_FILE_NAME).exists():
             artifact.add_file(str(state.training_context.log_dir / TRAIN_METRICS_FILE_NAME))
         if (state.training_context.log_dir / TEST_METRICS_FILE_NAME).exists():
@@ -988,18 +1015,34 @@ def main():
             artifact.add_file(str(state.training_context.log_dir / TRAIN_METRICS_PER_GRAPH_FILE_NAME))
         if (state.training_context.log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME).exists():
             artifact.add_file(str(state.training_context.log_dir / TEST_METRICS_PER_GRAPH_FILE_NAME))
-        if (state.training_context.log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME).exists():
-            artifact.add_file(str(state.training_context.log_dir / TRAIN_VALUES_PER_GRAPH_FILE_NAME))
-        if (state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME).exists():
-            artifact.add_file(str(state.training_context.log_dir / TEST_VALUES_PER_GRAPH_FILE_NAME))
+        if (state.training_context.log_dir / TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TRAIN_METRICS_PER_QUERY_TYPE_FILE_NAME))
+        if (state.training_context.log_dir / TEST_METRICS_PER_QUERY_TYPE_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TEST_METRICS_PER_QUERY_TYPE_FILE_NAME))
+        if (state.training_context.log_dir / TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME))
+        if (state.training_context.log_dir / TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME))
+        
+        # Add unified predictions file
+        if (state.training_context.log_dir / PREDICTIONS_FILE_NAME).exists():
+            artifact.add_file(str(state.training_context.log_dir / PREDICTIONS_FILE_NAME))
+        
+        # Add config files
+        if (state.training_context.run_dir / 'config.yaml').exists():
+            artifact.add_file(str(state.training_context.run_dir / 'config.yaml'))
+        if (state.training_context.run_dir / 'config.json').exists():
+            artifact.add_file(str(state.training_context.run_dir / 'config.json'))
         
         # Add final test results to artifact if available
         if (state.training_context.log_dir / 'final_test_metrics.csv').exists():
             artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics.csv'))
-        if (state.training_context.log_dir / 'final_test_predictions_per_graph.csv').exists():
-            artifact.add_file(str(state.training_context.log_dir / 'final_test_predictions_per_graph.csv'))
         if (state.training_context.log_dir / 'final_test_metrics_per_graph.csv').exists():
             artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_graph.csv'))
+        if (state.training_context.log_dir / 'final_test_metrics_per_query_type.csv').exists():
+            artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_query_type.csv'))
+        if (state.training_context.log_dir / 'final_test_metrics_per_query_set_name.csv').exists():
+            artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_query_set_name.csv'))
         
         wandb.log_artifact(artifact)
         

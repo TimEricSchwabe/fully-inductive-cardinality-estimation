@@ -2,7 +2,7 @@
 import yaml
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import List, Union, Literal
+from typing import List, Optional, Union, Literal
 
 
 class DataConfig(BaseSettings):
@@ -32,10 +32,11 @@ class Config(BaseSettings):
     train_ratio: float = 0.8  # Ratio of data used for training
     output_dir: str = "output/"  # Directory for output files
     save_every: int = 5  # Save checkpoint every N epochs
+    save_metrics_every: int = 1  # Save metrics CSV files every N epochs
     eval_every: int = 1  # Evaluate model every N epochs
     seed: int = 42  # Random seed for reproducibility
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
-    weight_decay: float | None = None  # Optional weight decay for optimizer
+    weight_decay: Optional[float] = None  # Optional weight decay for optimizer
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
     EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
     EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
@@ -47,6 +48,7 @@ class Config(BaseSettings):
     layer_norm: bool = True  # Whether to use layer normalization in GNNs
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
+    wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
     
     entity_graph: Literal['bipartite', 'KG'] = "bipartite"
     relation_graph: Literal['bipartite', 'RelationGraph'] = "bipartite"

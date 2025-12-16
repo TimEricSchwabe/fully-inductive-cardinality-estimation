@@ -1,93 +1,91 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)data:
 data:
+  - dataset: "LUBM"
+    queries: "LUBMQueries"
+    batch_size: 4
+    num_queries: 2000
+    type: "validation" # current unseen validation data
+  - dataset: "LUBM"
+    queries: "lubm_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "WIKIDATA_Star_Queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_star_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 4
-    num_queries: 20000
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_star_queries"
+    batch_size: 4
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_path_queries"
+    batch_size: 4
+    num_queries: 2000
     type: "train-val"
 
-  # - dataset: "wn18rr_v4_ind"
-  #   queries: "wn18rr_v4_ind_star_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "validation"
-  # - dataset: "dbpedia100k"
-  #   queries: "dbpedia100k_star_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-  # - dataset: "fb237_v4"
-  #   queries: "fb237_v4_star_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-  # - dataset: "fb237_v4_ind"
-  #   queries: "fb237_v4_ind_star_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "validation"
-  # - dataset: "SWDF"
-  #   queries: "SWDF_Star_Queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-  # - dataset: "SWDF"
-  #   queries: "swdf_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-  # - dataset: "LUBM"
-  #   queries: "lubm_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-  # - dataset: "LUBM"
-  #   queries: "LUBMQueries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-
-  # - dataset: "Wikidata"
-  #   queries: "WIKIDATA_Star_Queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "validation"
-
-  # - dataset: "Wikidata"
-  #   queries: "wikidata_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-
-  # - dataset: "fb237_v4"
-  #   queries: "fb237_v4_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-
-  # - dataset: "fb237_v4_ind"
-  #   queries: "fb237_v4_ind_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "validation"
-
-  # - dataset: "dbpedia100k"
-  #   queries: "dbpedia100k_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
-
-  # - dataset: "wn18rr_v4"
-  #   queries: "wn18rr_v4_path_queries"
-  #   batch_size: 4
-  #   num_queries: 20000
-  #   type: "train-val"
 
 
-
-
-epochs: 800
+epochs: 100
 wandb: True
+wandb_run_name: "large_new_logging_test"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -108,4 +106,3 @@ n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay
 relation_graph: "bipartite" # 
 entity_graph: "KG"
-

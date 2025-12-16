@@ -352,6 +352,7 @@ class NTQueries(InMemoryDataset):
     def process_query_single(
         self,
         query: Dict,
+        query_set_name: str = "unknown",
     ):
         feat_dim = self.dim
         # Create local mapping
@@ -439,7 +440,8 @@ class NTQueries(InMemoryDataset):
 
             node_embedding_indices=embedding_indices,
             edge_embedding_indices=edge_embedding_indices,
-            type=self.query_type
+            type=self.query_type,
+            query_set_name=query_set_name,
         )
 
     def process(self):
@@ -451,7 +453,9 @@ class NTQueries(InMemoryDataset):
             data = json.load(file)
         queries = [
             self.process_query_single(
-                q
+                q,
+                query_set_name=self.dataset_name
+
             )
             for q in tqdm(data, desc="Processing queries")
         ]
