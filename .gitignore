@@ -32,6 +32,7 @@ run_*.zip
 .vscode/
 
 logs/
+gcare/
 
 # macOS
 .DS_Store
