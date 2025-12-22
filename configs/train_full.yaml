@@ -4,7 +4,7 @@ data:
     queries: "LUBMQueries"
     batch_size: 8
     num_queries: -1
-    type: "validation" # current unseen validation data
+    type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: 8
@@ -44,12 +44,12 @@ data:
     queries: "fb237_v4_ind_star_queries"
     batch_size: 8
     num_queries: -1
-    type: "train-val"
+    type: "validation"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
     batch_size: 8
     num_queries: -1
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: 8
