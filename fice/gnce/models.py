@@ -291,7 +291,7 @@ class IndependentQueryGNN(torch.nn.Module):
         x = batch.x # [Nodes, 3 + D]
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log(torch.tensor(N))
+        log_N = torch.log1p(torch.tensor(N))
         
         
         # Layer 1
@@ -559,7 +559,7 @@ class QueryCardinalityGNN(torch.nn.Module):
         x = batch.x # [Nodes, 3 + D]
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log(N).to(x.device) # TODO: muss so? vorher war da torch.log(torch.tensor(N, device=x.device))
+        log_N = torch.log1p(N).to(x.device) # TODO: muss so? vorher war da torch.log(torch.tensor(N, device=x.device))
 
         # --- Phase 1 ---
         # c_curr: [Nodes, 1] (Log cardinality estimate per node; accounting for tp cardinalitiies and first node joins)

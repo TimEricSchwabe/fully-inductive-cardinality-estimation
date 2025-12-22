@@ -49,8 +49,8 @@ def calculate_all_metrics(predictions_log, true_values_log):
     Returns:
         Dictionary containing all calculated metrics
     """
-    predictions = np.exp(predictions_log)
-    true_values = np.exp(true_values_log)
+    predictions = np.expm1(predictions_log)
+    true_values = np.expm1(true_values_log)
     mse = metrics.calculate_mse(predictions, true_values)
     
     epsilon = 1e-7
@@ -147,8 +147,8 @@ class MetricLogger:
                 query_set_name = query_set_name[0].item() if query_set_name.numel() > 0 else None
         
         # Store predictions in memory
-        predictions = np.exp(predictions_log)
-        true_values = np.exp(true_values_log)
+        predictions = np.expm1(predictions_log)
+        true_values = np.expm1(true_values_log)
         for i, (pred_log, true_log, pred, true) in enumerate(zip(
             predictions_log.tolist(), true_values_log.tolist(), 
             predictions.tolist(), true_values.tolist()

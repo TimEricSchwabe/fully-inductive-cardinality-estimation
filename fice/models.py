@@ -167,7 +167,7 @@ class EntityGNN(nn.Module):
         if data.edge_index.numel() > 0:
             deg = degree(data.edge_index[0], data.num_nodes, dtype=torch.float)
             # Normalize/Log degree to keep it in a reasonable range
-            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(batch_size, -1).unsqueeze(-1).to(device)
+            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(batch_size, -1).unsqueeze(-1).to(device)
             # Add to the first dimension of x (broadcast over batch)
             x = x.clone()
             x[:, :, 0] += deg_feature.squeeze(-1)
@@ -324,7 +324,7 @@ class RelationGNN(nn.Module):
         # Inject log(degree) into the first dimension to distinguish relations structurally
         if data.edge_index.numel() > 0:
             deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
-            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
+            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
             h = h.clone()
             h[:, :, 0] += deg_feature.squeeze(-1)
 
@@ -475,7 +475,7 @@ class BipartiteGraphGNN(nn.Module):
         # Inject log(degree) into the first dimension to distinguish relations structurally
         if data.edge_index.numel() > 0:
             deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
-            deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
+            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
             h = h.clone()
             h[:, :, 0] += deg_feature.squeeze(-1)
 
@@ -812,13 +812,13 @@ class FICE(nn.Module):
             bound_nodes = ~unbound_nodes
             
             # For unbound nodes: set first 3 dims to log(graph_size)
-            log_graph_size = torch.log(graph_size.float())
+            log_graph_size = torch.log1p(graph_size.float())
             batch.x[unbound_nodes, :3] = log_graph_size
             
             # For bound nodes: replace 0s with 1s in first 3 dims, then apply log
             first_3_dims = batch.x[bound_nodes, :3]
             first_3_dims = torch.where(first_3_dims == 0, torch.ones_like(first_3_dims), first_3_dims)
-            batch.x[bound_nodes, :3] = torch.log(first_3_dims)
+            batch.x[bound_nodes, :3] = torch.log1p(first_3_dims)
             
             # Process edge features (batch.edge_attr)
             unbound_edges = batch.edge_embedding_indices < 0
@@ -830,7 +830,7 @@ class FICE(nn.Module):
             # For bound edges: replace 0s with 1s in first 3 dims, then apply log
             edge_first_3_dims = batch.edge_attr[bound_edges, :3]
             edge_first_3_dims = torch.where(edge_first_3_dims == 0, torch.ones_like(edge_first_3_dims), edge_first_3_dims)
-            batch.edge_attr[bound_edges, :3] = torch.log(edge_first_3_dims)
+            batch.edge_attr[bound_edges, :3] = torch.log1p(edge_first_3_dims)
             
             log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
         elif self.query_gnn_type == 'TripleModel':

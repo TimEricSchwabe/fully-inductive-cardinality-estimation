@@ -419,7 +419,7 @@ def train_epoch(state: TrainingState):
             log_cardinality_pred = log_cardinality_pred.to(torch.float32)
 
             true_cardinality = query_batch.y.to(torch.float32).to(state.training_context.device)
-            log_true_cardinality = torch.log(true_cardinality)
+            log_true_cardinality = torch.log1p(true_cardinality)
             
             # Compute loss
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
@@ -556,7 +556,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             log_cardinality_pred = torch.relu(log_cardinality_pred)
 
             true_cardinality = query_batch.y.to(torch.float32).to(device)
-            log_true_cardinality = torch.log(true_cardinality)
+            log_true_cardinality = torch.log1p(true_cardinality)
             
             # Compute loss
             loss = F.mse_loss(log_cardinality_pred, log_true_cardinality)
