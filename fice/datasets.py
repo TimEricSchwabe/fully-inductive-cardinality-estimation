@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Tuple, Union, Literal
 import requests
 from tqdm import tqdm as _tqdm
 
-from fice.ultra.tasks import build_relation_graph
+from fice.tasks import build_relation_graph
 from tqdm import tqdm
 
 DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
