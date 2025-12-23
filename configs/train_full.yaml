@@ -103,7 +103,7 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null # Default from config.py
 QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
-layer_norm: False # True or False, whether to use layer normalization in the GNNs
+layer_norm: True # True or False, whether to use layer normalization in the GNNs
 skip_connection: True
 query_gnn_skip_connection: True
 embedding_dim: 128
