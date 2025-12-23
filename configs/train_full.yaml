@@ -84,6 +84,7 @@ data:
 
 epochs: 100
 wandb: True
+wandb_run_name: "new triple model test"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
