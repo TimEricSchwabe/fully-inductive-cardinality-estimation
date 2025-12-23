@@ -21,13 +21,14 @@ from sklearn.decomposition import PCA
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, **kwargs):
+    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
         self.hidden_dims = hidden_dims
         self.message_func = message_func
         self.conditioning = conditioning
+        self.skip_connection = skip_connection
 
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -147,7 +148,8 @@ class EntityGNN(nn.Module):
             if self.norms:
                 x = self.norms[i](x)
 
-            x = x + x_in
+            if self.skip_connection:
+                x = x + x_in
        
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -170,6 +172,7 @@ class RelationGNN(nn.Module):
         heads: int = 4,
         conditioning: str = "all",      
         layer_norm: bool = False,
+        skip_connection: bool = True,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -183,7 +186,8 @@ class RelationGNN(nn.Module):
         super().__init__()
         self.num_relation = num_relation
         self.conditioning = conditioning     
-        self.input_dim = input_dim  
+        self.input_dim = input_dim
+        self.skip_connection = skip_connection
 
         # 4 trainable relation embeddings
         self.rel_emb = nn.Embedding(num_relation, input_dim)
@@ -288,7 +292,8 @@ class RelationGNN(nn.Module):
            
             # --- FIX 2: Residual Connection ---
             # if x.shape == x_in.shape:
-            x = x + x_in
+            if self.skip_connection:
+                x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
@@ -308,6 +313,7 @@ class BipartiteGraphGNN(nn.Module):
         hidden_dims: tuple = (128, 128),
         conditioning: str = "false",      
         layer_norm: bool = False,
+        skip_connection: bool = True,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -319,7 +325,8 @@ class BipartiteGraphGNN(nn.Module):
 
         super().__init__()
         self.conditioning = conditioning     
-        self.input_dim = input_dim  
+        self.input_dim = input_dim
+        self.skip_connection = skip_connection
 
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
@@ -441,7 +448,7 @@ class BipartiteGraphGNN(nn.Module):
                  x = self.norms[i](x)
            
             # --- FIX 2: Residual Connection ---
-            if x.shape == x_in.shape:
+            if x.shape == x_in.shape and self.skip_connection:
                 x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
@@ -454,7 +461,7 @@ class BipartiteGraphGNN(nn.Module):
 class FICE(nn.Module):
 
     def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel',
-     vector_dim=128, n_embedding_layers=2, n_layers=6, skip_connection=True, entity_graph_mode: Literal['bipartite', 'KG'] = "KG", relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",):
+     vector_dim=128, n_embedding_layers=2, n_layers=6, skip_connection=True, query_gnn_skip_connection=True, entity_graph_mode: Literal['bipartite', 'KG'] = "KG", relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
         self.n_layers = n_layers
@@ -477,6 +484,7 @@ class FICE(nn.Module):
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,
                 layer_norm=layer_norm,
+                skip_connection=skip_connection,
                 conditioning=conditioning,
                 # output_dim=self.vector_dim
             )
@@ -490,6 +498,7 @@ class FICE(nn.Module):
                     num_relation=4,
                     heads=4,
                     layer_norm=layer_norm,
+                    skip_connection=skip_connection,
                     conditioning=conditioning
                 )
             elif self.relation_graph_mode == "bipartite":
@@ -498,6 +507,7 @@ class FICE(nn.Module):
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_relnet,
                     layer_norm=layer_norm,
+                    skip_connection=skip_connection,
                     conditioning=conditioning,
                     # output_dim=self.vector_dim
                 )
@@ -511,7 +521,8 @@ class FICE(nn.Module):
                     hidden_dims=self.hidden_dims_entitynet,
                     message_func=entity_message_func,
                     conditioning=conditioning,
-                    layer_norm=layer_norm
+                    layer_norm=layer_norm,
+                    skip_connection=skip_connection
                 )
             elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
                 raise ValueError(f"Naja macht nicht so richtig Sinn, lass mas lieber.")
@@ -522,7 +533,7 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm, n_layers=self.n_layers, skip_connection=self.skip_connection)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm, n_layers=self.n_layers, skip_connection=query_gnn_skip_connection)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':

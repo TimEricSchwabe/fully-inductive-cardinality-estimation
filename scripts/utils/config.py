@@ -48,6 +48,7 @@ class Config(BaseSettings):
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
     layer_norm: bool = False  # Whether to use layer normalization in GNNs
     skip_connection: bool = True # Whether to use skip connections in GNNs
+    query_gnn_skip_connection: bool = True # Whether to use skip connections in the Query GNN
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run

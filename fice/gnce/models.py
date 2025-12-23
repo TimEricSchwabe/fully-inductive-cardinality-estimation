@@ -234,7 +234,7 @@ class TripleModel(torch.nn.Module):
                 # torch.nn.Dropout(p=0.2)
             )
             self.layers.append(
-                TripleConv(
+                GINEConv(
                     nn=mlp,
                     edge_dim=self.feat_dim
                 )
@@ -243,7 +243,7 @@ class TripleModel(torch.nn.Module):
                 self.layer_norms.append(nn.LayerNorm(self.feat_dim))
 
 
-        self.lin = Linear(self.feat_dim, self.feat_dim//2)
+        self.lin = Linear(self.feat_dim + 1, self.feat_dim//2)
         self.lin2 = Linear(self.feat_dim//2, 1)
         
 
@@ -257,27 +257,29 @@ class TripleModel(torch.nn.Module):
 
         for i, layer in enumerate(self.layers):
             x_in = x
+            x = layer(x, edge_index, edge_attr=edge_attr)
+        
             if self.layer_norm:
                 x = self.layer_norms[i](x)  
 
-            x = layer(x, edge_index, edge_attr=edge_attr)
 
             if self.skip_connection:
                 x = x + x_in
+            
             
 
         
         x = global_add_pool(x, batch.batch)
 
-        # # Incorporate log-transformed graph size
-        # # Ensure graph_size broadcasts to [batch_size]
-        # if graph_size.dim() == 1 and graph_size.size(0) == 1:
-        #      graph_size_expanded = graph_size.expand(x.size(0))
-        # else:
-        #      graph_size_expanded = graph_size
+        # Incorporate log-transformed graph size
+        # Ensure graph_size broadcasts to [batch_size]
+        if graph_size.dim() == 1 and graph_size.size(0) == 1:
+             graph_size_expanded = graph_size.expand(x.size(0))
+        else:
+             graph_size_expanded = graph_size
 
-        # log_graph_size = torch.log1p(graph_size_expanded.float()).unsqueeze(-1)
-        # x = torch.cat([x, log_graph_size], dim=-1)
+        log_graph_size = torch.log1p(graph_size_expanded.float()).unsqueeze(-1)
+        x = torch.cat([x, log_graph_size], dim=-1)
 
         x = self.lin(x)
         x = F.silu(x)
@@ -288,8 +290,8 @@ class TripleModel(torch.nn.Module):
         # all produce similar results
 
         # return x.squeeze(-1)
-        # return torch.abs(x.squeeze(-1))
-        return F.softplus(x.squeeze(-1))
+        return torch.abs(x.squeeze(-1))
+        # return F.softplus(x.squeeze(-1))
 
 ############Independent Query GNN ############
 # this model only usees the raw count to predict based on independence assumption

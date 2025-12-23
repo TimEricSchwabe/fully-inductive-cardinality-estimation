@@ -89,22 +89,23 @@ learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
+save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
 device: "auto"
+weight_decay: null # Default from config.py
+n_embedding_layers: 2
+n_layers: 6
 EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "GAT", 'gine'
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
-min_cardinality: null
+min_cardinality: null # Default from config.py
 QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
 skip_connection: True
-n_layers: 6
+query_gnn_skip_connection: True
 embedding_dim: 128
-n_embedding_layers: 2
-# weight_decay: 0.01  # Uncomment to use weight decay
 relation_graph: "bipartite" # 
 entity_graph: "KG"
-

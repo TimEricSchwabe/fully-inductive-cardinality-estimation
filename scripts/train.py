@@ -149,6 +149,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             n_embedding_layers=n_embedding_layers, # Pass the new parameter
             n_layers=config.n_layers,
             skip_connection=config.skip_connection,
+            query_gnn_skip_connection=config.query_gnn_skip_connection,
             entity_graph_mode=config.entity_graph,
             relation_graph_mode=config.relation_graph,
         )

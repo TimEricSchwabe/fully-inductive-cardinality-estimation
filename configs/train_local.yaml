@@ -56,8 +56,9 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null
 QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
-layer_norm: False # True or False, whether to use layer normalization in the GNNs
-skip_connection: True
+layer_norm: True # True or False, whether to use layer normalization in the GNNs
+skip_connection: True # global skip connection for GNNs
+query_gnn_skip_connection: False
 n_layers: 6
 embedding_dim: 128
 n_embedding_layers: 2
