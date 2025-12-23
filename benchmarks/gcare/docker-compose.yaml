@@ -1,0 +1,23 @@
+
+services:
+  gcare-benchmark:
+    build: .
+    container_name: gcare-benchmark
+    environment:
+      - DATASET_NAME=swdf
+      - DATASET_TYPE=star
+    volumes:
+      # - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_path_queries/raw/:/usr/src/app/gcare/data/queryset/swdf/
+      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/queryset/swdf/:/usr/src/app/gcare/data/queryset/swdf/
+      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/dataset/swdf/:/usr/src/app/gcare/data/dataset/swdf/
+      - ./results/:/usr/src/app/results/
+    command: ["python3", "./run_estimation.py"]
+
+  # gcare-build:
+  #   build: .
+  #   container_name: gcare-build
+  #   environment:
+  #     - DATASET_NAME=swdf
+  #   volumes:
+  #     - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/dataset/swdf/:/usr/src/app/gcare/data/dataset/swdf/
+  #   command: ["cd", "./gcare/scripts/", "&&",  "./run-build.sh"]
