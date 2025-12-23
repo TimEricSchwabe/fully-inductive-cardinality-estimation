@@ -42,7 +42,7 @@ data:
 epochs: 40
 wandb: False
 wandb_run_name: "test mit leer zeichen"
-learning_rate: 1e-4
+learning_rate: 1e-5
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
@@ -57,6 +57,8 @@ min_cardinality: null
 QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
+skip_connection: True
+n_layers: 6
 embedding_dim: 128
 n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay

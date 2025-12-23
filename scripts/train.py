@@ -136,7 +136,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     
     if model_type == 'FiceBinary':
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
-        model = FiceBinary(vector_dim=vector_dim)
+        model = FiceBinary(vector_dim=vector_dim, n_layers=config.n_layers, skip_connection=config.skip_connection)
     elif model_type == 'FICE':
         logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
@@ -147,6 +147,8 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             query_gnn=query_gnn,
             vector_dim=vector_dim,
             n_embedding_layers=n_embedding_layers, # Pass the new parameter
+            n_layers=config.n_layers,
+            skip_connection=config.skip_connection,
             entity_graph_mode=config.entity_graph,
             relation_graph_mode=config.relation_graph,
         )
@@ -427,6 +429,7 @@ def train_epoch(state: TrainingState):
             # Backward pass
             if state.model_components.optimizer is not None:
                 loss.backward()
+                torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)
                 state.model_components.optimizer.step()
 
             # Log batch

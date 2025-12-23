@@ -101,6 +101,8 @@ min_cardinality: null
 QueryGNN: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
+skip_connection: True
+n_layers: 6
 embedding_dim: 128
 n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay

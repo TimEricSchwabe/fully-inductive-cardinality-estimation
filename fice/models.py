@@ -454,9 +454,11 @@ class BipartiteGraphGNN(nn.Module):
 class FICE(nn.Module):
 
     def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel',
-     vector_dim=128, n_embedding_layers=2, entity_graph_mode: Literal['bipartite', 'KG'] = "KG", relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",):
+     vector_dim=128, n_embedding_layers=2, n_layers=6, skip_connection=True, entity_graph_mode: Literal['bipartite', 'KG'] = "KG", relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
+        self.n_layers = n_layers
+        self.skip_connection = skip_connection
         self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite" and relation_graph_mode == "bipartite")
         # Use n_embedding_layers to create the list of hidden dimensions
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
@@ -520,7 +522,7 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm, n_layers=self.n_layers, skip_connection=self.skip_connection)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':
@@ -741,10 +743,10 @@ class FiceBinary(nn.Module):
     optional (they can be ``None``).
     """
 
-    def __init__(self, vector_dim: int = 128):
+    def __init__(self, vector_dim: int = 128, n_layers: int = 6, skip_connection: bool = True):
         super().__init__()
         self.vector_dim = vector_dim
-        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, n_layers=n_layers, skip_connection=skip_connection)
 
     # --- binary encoding helper ------------------------------------------------
     def _binary_encode(self, ids: torch.Tensor) -> torch.Tensor:

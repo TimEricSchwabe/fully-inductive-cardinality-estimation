@@ -38,6 +38,7 @@ class Config(BaseSettings):
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: Optional[float] = None  # Optional weight decay for optimizer
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
+    n_layers: int = 6  # Number of layers in Query GNN (e.g. TripleModel)
     EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
     EntityGNNMessageFunc: Literal['gine', 'GAT'] = "gine"  # Message function for entity GNN
     RelationGNNMessageFunc: Literal['GAT', 'gine'] = "GAT"  # Message function for relation GNN
@@ -45,7 +46,8 @@ class Config(BaseSettings):
     QueryGNN: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel' 
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
-    layer_norm: bool = True  # Whether to use layer normalization in GNNs
+    layer_norm: bool = False  # Whether to use layer normalization in GNNs
+    skip_connection: bool = True # Whether to use skip connections in GNNs
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run

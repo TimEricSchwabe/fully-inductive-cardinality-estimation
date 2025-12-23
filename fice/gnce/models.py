@@ -212,19 +212,19 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False):
+    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False, n_layers: int = 6):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
         self.skip_connection = skip_connection
-        self.n_layers = 6
+        self.n_layers = n_layers
 
 
         
 
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
         self.layers = nn.ModuleList()
-        self.layer_norm = nn.ModuleList()
+        self.layer_norms = nn.ModuleList()
         for _ in range(self.n_layers):
             mlp = torch.nn.Sequential(
                 torch.nn.Linear(self.feat_dim, self.feat_dim),
@@ -240,7 +240,7 @@ class TripleModel(torch.nn.Module):
                 )
             )
             if self.layer_norm:
-                self.layer_norm.append(nn.LayerNorm(self.feat_dim))
+                self.layer_norms.append(nn.LayerNorm(self.feat_dim))
 
 
         self.lin = Linear(self.feat_dim, self.feat_dim//2)
@@ -254,11 +254,11 @@ class TripleModel(torch.nn.Module):
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
-        x_in = x
 
         for i, layer in enumerate(self.layers):
+            x_in = x
             if self.layer_norm:
-                x = self.layer_norm[i](x)  
+                x = self.layer_norms[i](x)  
 
             x = layer(x, edge_index, edge_attr=edge_attr)
 
@@ -269,6 +269,16 @@ class TripleModel(torch.nn.Module):
         
         x = global_add_pool(x, batch.batch)
 
+        # # Incorporate log-transformed graph size
+        # # Ensure graph_size broadcasts to [batch_size]
+        # if graph_size.dim() == 1 and graph_size.size(0) == 1:
+        #      graph_size_expanded = graph_size.expand(x.size(0))
+        # else:
+        #      graph_size_expanded = graph_size
+
+        # log_graph_size = torch.log1p(graph_size_expanded.float()).unsqueeze(-1)
+        # x = torch.cat([x, log_graph_size], dim=-1)
+
         x = self.lin(x)
         x = F.silu(x)
         x = self.lin2(x)
@@ -278,7 +288,8 @@ class TripleModel(torch.nn.Module):
         # all produce similar results
 
         # return x.squeeze(-1)
-        return torch.abs(x.squeeze(-1))
+        # return torch.abs(x.squeeze(-1))
+        return F.softplus(x.squeeze(-1))
 
 ############Independent Query GNN ############
 # this model only usees the raw count to predict based on independence assumption
