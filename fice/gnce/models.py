@@ -212,39 +212,40 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True):
+    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
+        self.skip_connection = skip_connection
+        self.n_layers = 6
 
 
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        # second MLP maps feat_dim -> 200 (via 100)
-        self.mlp2 = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, 100),
-            # torch.nn.Dropout(p=0.2),
-            torch.nn.ReLU(),
-            torch.nn.Linear(100, 200),
-            # torch.nn.Dropout(p=0.2)
-        )
-
-        self.ln1 = nn.LayerNorm(self.feat_dim)
-        self.ln2 = nn.LayerNorm(200)
+        
 
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
-        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
-        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
-        # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        self.lin = Linear(200, 50)
-        self.lin2 = Linear(50, 1)
+        self.layers = nn.ModuleList()
+        self.layer_norm = nn.ModuleList()
+        for _ in range(self.n_layers):
+            mlp = torch.nn.Sequential(
+                torch.nn.Linear(self.feat_dim, self.feat_dim),
+                # torch.nn.Dropout(p=0.2),
+                torch.nn.SiLU(),
+                torch.nn.Linear(self.feat_dim, self.feat_dim),
+                # torch.nn.Dropout(p=0.2)
+            )
+            self.layers.append(
+                TripleConv(
+                    nn=mlp,
+                    edge_dim=self.feat_dim
+                )
+            )
+            if self.layer_norm:
+                self.layer_norm.append(nn.LayerNorm(self.feat_dim))
+
+
+        self.lin = Linear(self.feat_dim, self.feat_dim//2)
+        self.lin2 = Linear(self.feat_dim//2, 1)
+        
 
         # self.dropout = torch.nn.Dropout(p=0.2)
 
@@ -253,18 +254,23 @@ class TripleModel(torch.nn.Module):
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
+        x_in = x
 
+        for i, layer in enumerate(self.layers):
+            if self.layer_norm:
+                x = self.layer_norm[i](x)  
 
-        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
-        if self.layer_norm:
-            x = self.ln1(x)
-        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
-        if self.layer_norm:
-            x = self.ln2(x)
+            x = layer(x, edge_index, edge_attr=edge_attr)
+
+            if self.skip_connection:
+                x = x + x_in
+            
+
+        
         x = global_add_pool(x, batch.batch)
+
         x = self.lin(x)
-        # x = self.dropout(x)
-        x = F.relu(x)
+        x = F.silu(x)
         x = self.lin2(x)
         
         # We did an tested it and either with or without abs works fine

@@ -146,13 +146,9 @@ class EntityGNN(nn.Module):
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
             if self.norms:
                 x = self.norms[i](x)
-            
-            if i < len(self.layers) - 1:
-                x = F.silu(x)
-            
 
             x = x + x_in
-        
+       
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
         
@@ -202,7 +198,7 @@ class RelationGNN(nn.Module):
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
         )
-        self.act = nn.SiLU()
+        # self.act = nn.SiLU()
 
 
         self.laplacian_k = 0
@@ -289,12 +285,10 @@ class RelationGNN(nn.Module):
             x   = layer(x, edge_index, edge_attr)  # edge_attr is not used in GINEConv if not provided
             if self.norms:
                  x = self.norms[i](x)
-            if i < len(self.layers) - 1:
-                x = self.act(x)
-            
+           
             # --- FIX 2: Residual Connection ---
-            if x.shape == x_in.shape:
-                x = x + x_in
+            # if x.shape == x_in.shape:
+            x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
@@ -341,8 +335,6 @@ class BipartiteGraphGNN(nn.Module):
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
         )
-        self.act = nn.SiLU()
-
 
         self.laplacian_k = 0
         if self.laplacian_k > 0:
@@ -444,11 +436,10 @@ class BipartiteGraphGNN(nn.Module):
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
             x   = layer(x, edge_index, edge_attr)  # edge_attr is not used in GINEConv if not provided
+
             if self.norms:
                  x = self.norms[i](x)
-            if i < len(self.layers) - 1:
-                x = self.act(x)
-            
+           
             # --- FIX 2: Residual Connection ---
             if x.shape == x_in.shape:
                 x = x + x_in
@@ -529,7 +520,7 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':
