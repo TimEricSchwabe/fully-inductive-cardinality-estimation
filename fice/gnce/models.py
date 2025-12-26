@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv
+from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention
 from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
@@ -204,94 +204,115 @@ class TripleConv(MessagePassing):
 
 class TripleModel(torch.nn.Module):
     """
-    GNN model to predict cardinality of a query,
-    given the query graph and embeddings of nodes
-    and edges.
-
-    Args:
-
-
+    GNN model to predict cardinality of a query.
+    
+    Architecture V2 (Optimized):
+    1. Input Encoders: Align node and edge embeddings.
+    2. Deep GINE backbone: With residuals and Norms.
+    3. Multi-Perspective Pooling: Combines Attention, Max, and Mean pooling to capture 
+       both "bottlenecks" (max) and "volume" (mean/att).
     """
     def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False, n_layers: int = 6):
         super().__init__()
         self.feat_dim = feat_dim
-        self.layer_norm = layer_norm
+        self.enable_layer_norms = layer_norm
         self.skip_connection = skip_connection
         self.n_layers = n_layers
 
+        # 1. Input Encoders
+        # Project raw node/edge embeddings into a common latent space
+        self.node_encoder = torch.nn.Linear(feat_dim, feat_dim)
+        self.edge_encoder = torch.nn.Linear(feat_dim, feat_dim)
 
-        
-
-        # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
+        # 2. Backbone
         self.layers = nn.ModuleList()
         self.layer_norms = nn.ModuleList()
+        
         for _ in range(self.n_layers):
+            # Enhanced MLP for GINEConv
             mlp = torch.nn.Sequential(
-                torch.nn.Linear(self.feat_dim, self.feat_dim),
-                # torch.nn.Dropout(p=0.2),
+                torch.nn.Linear(self.feat_dim, self.feat_dim * 2),
                 torch.nn.SiLU(),
-                torch.nn.Linear(self.feat_dim, self.feat_dim),
-                # torch.nn.Dropout(p=0.2)
+                torch.nn.Linear(self.feat_dim * 2, self.feat_dim),
             )
             self.layers.append(
                 GINEConv(
                     nn=mlp,
-                    edge_dim=self.feat_dim
+                    edge_dim=self.feat_dim,
+                    train_eps=True 
                 )
             )
-            if self.layer_norm:
+            if self.enable_layer_norms:
                 self.layer_norms.append(nn.LayerNorm(self.feat_dim))
 
-
-        self.lin = Linear(self.feat_dim + 1, self.feat_dim//2)
-        self.lin2 = Linear(self.feat_dim//2, 1)
+        # 3. Multi-Perspective Pooling
+        # Attention Gate
+        self.gate_nn = torch.nn.Sequential(
+            torch.nn.Linear(self.feat_dim, self.feat_dim // 2),
+            torch.nn.SiLU(),
+            torch.nn.Linear(self.feat_dim // 2, 1)
+        )
+        self.pool_att = GlobalAttention(gate_nn=self.gate_nn)
         
-
-        # self.dropout = torch.nn.Dropout(p=0.2)
+        # 4. Final Head
+        # Input: 3 * feat_dim (Att + Max + Mean) + 1 (Graph Size)
+        head_input_dim = (self.feat_dim * 3) + 1
+        
+        self.head = torch.nn.Sequential(
+            torch.nn.Linear(head_input_dim, self.feat_dim * 2),
+            torch.nn.SiLU(),
+            torch.nn.Dropout(p=0.2),
+            torch.nn.Linear(self.feat_dim * 2, self.feat_dim),
+            torch.nn.SiLU(),
+            torch.nn.Linear(self.feat_dim, 1)
+        )
 
     def forward(self, batch, graph_size):
         x = batch.x
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
+        # 1. Encode Inputs
+        x = self.node_encoder(x)
+        # Handle edge_attr potentially being None or having different shape if not handled upstream
+        if edge_attr is not None:
+            edge_attr = self.edge_encoder(edge_attr)
 
+        # 2. Message Passing
         for i, layer in enumerate(self.layers):
             x_in = x
             x = layer(x, edge_index, edge_attr=edge_attr)
         
-            if self.layer_norm:
+            if self.enable_layer_norms:
                 x = self.layer_norms[i](x)  
 
+            x = F.silu(x)
 
             if self.skip_connection:
                 x = x + x_in
-            
-            
 
+        # 3. Multi-Pooling
+        # Combine different views of the graph
+        g_att = self.pool_att(x, batch.batch)
+        g_max = global_max_pool(x, batch.batch)
+        g_mean = global_mean_pool(x, batch.batch)
         
-        x = global_add_pool(x, batch.batch)
+        # Concatenate: [Batch, 3 * feat_dim]
+        g = torch.cat([g_att, g_max, g_mean], dim=-1)
 
-        # Incorporate log-transformed graph size
-        # Ensure graph_size broadcasts to [batch_size]
+        # 4. Inject Graph Size
         if graph_size.dim() == 1 and graph_size.size(0) == 1:
-             graph_size_expanded = graph_size.expand(x.size(0))
+             graph_size_expanded = graph_size.expand(g.size(0))
         else:
              graph_size_expanded = graph_size
 
         log_graph_size = torch.log1p(graph_size_expanded.float()).unsqueeze(-1)
-        x = torch.cat([x, log_graph_size], dim=-1)
-
-        x = self.lin(x)
-        x = F.silu(x)
-        x = self.lin2(x)
         
-        # We did an tested it and either with or without abs works fine
-        # also x = troch.where(x<0, torch.zeros_like(x), x) works fine as well 
-        # all produce similar results
+        g_final = torch.cat([g, log_graph_size], dim=-1)
 
-        # return x.squeeze(-1)
-        return torch.abs(x.squeeze(-1))
-        # return F.softplus(x.squeeze(-1))
+        out = self.head(g_final)
+        
+        return torch.abs(out.squeeze(-1))
 
 ############Independent Query GNN ############
 # this model only usees the raw count to predict based on independence assumption

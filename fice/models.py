@@ -2,26 +2,15 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import nn
-from torch_geometric.loader import NeighborLoader, LinkNeighborLoader
-from torch_geometric.nn import GATv2Conv, GINEConv, GINConv, GPSConv
+from torch_geometric.nn import GATv2Conv, GINEConv
 from torch_geometric.utils import degree
-from torch_geometric.transforms import AddRandomWalkPE, AddLaplacianEigenvectorPE
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
-
-from easydict import EasyDict
-
-from fice.gnce.models import QueryGNN, TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
-
-import matplotlib.pyplot as plt
-import numpy as np
-
-from sklearn.decomposition import PCA
-
+from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, num_relation=1, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, **kwargs):
+    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -29,6 +18,7 @@ class EntityGNN(nn.Module):
         self.message_func = message_func
         self.conditioning = conditioning
         self.skip_connection = skip_connection
+        self.enable_layer_norm = layer_norm
 
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -51,7 +41,7 @@ class EntityGNN(nn.Module):
                 )
 
         self.norms = nn.ModuleList(
-            [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
+            [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
         self.laplacian_k = 0
@@ -100,19 +90,15 @@ class EntityGNN(nn.Module):
                 # Ensure we don't exceed embedding dimensions
                 dim_limit = min(self.laplacian_k, x.size(-1) - 1)
                 x[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
-            except Exception as e:
+            except Exception:
                 print(f"Laplacian Eigenvector PE computation failed")
                 pass # Fallback to random features if Eigendecomposition fails
 
-
         x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
-
-
-
 
         # Set input of nodes appearing in query based on conditioning (labelling trick)
         if self.conditioning != "false" and batch is not None:
-        # Indices of the nodes that appear in the query batch
+            # Indices of the nodes that appear in the query batch
             node_indices = batch.node_embedding_indices 
             valid = node_indices != -1
             graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
@@ -135,7 +121,6 @@ class EntityGNN(nn.Module):
         batched_edge_index = torch.cat(batch_edge_list, dim=1)
         batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
 
-        
         # Shape (batch_size * num_edges) - maps each edge to its batch index
         all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
 
@@ -145,8 +130,9 @@ class EntityGNN(nn.Module):
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
-            if self.norms:
-                x = self.norms[i](x)
+
+            if self.enable_layer_norm:
+                 x = self.norms[i](x)
 
             if self.skip_connection:
                 x = x + x_in
@@ -155,7 +141,7 @@ class EntityGNN(nn.Module):
         x = x.view(batch_size, num_nodes, -1)
         
         return x
-        #return h
+
 
 class RelationGNN(nn.Module):
     """
@@ -169,7 +155,7 @@ class RelationGNN(nn.Module):
         input_dim: int = 128,
         hidden_dims: tuple = (128, 128),
         num_relation: int = 4,
-        heads: int = 4,
+        message_func: str = 'gine',
         conditioning: str = "all",      
         layer_norm: bool = False,
         skip_connection: bool = True,
@@ -182,12 +168,13 @@ class RelationGNN(nn.Module):
                 nn.Linear(out_dim, out_dim),
             )
 
-
         super().__init__()
         self.num_relation = num_relation
         self.conditioning = conditioning     
         self.input_dim = input_dim
         self.skip_connection = skip_connection
+        self.enable_layer_norm = layer_norm
+        self.message_func = message_func
 
         # 4 trainable relation embeddings
         self.rel_emb = nn.Embedding(num_relation, input_dim)
@@ -195,15 +182,19 @@ class RelationGNN(nn.Module):
         self.layers = nn.ModuleList()
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
-            self.layers.append(
-                GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
-            )
+            if self.message_func == 'gine':
+                self.layers.append(
+                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
+            else:
+                # GATv2Conv
+                self.layers.append(
+                    GATv2Conv(dims[i], dims[i + 1], heads=1, concat=False, edge_dim=input_dim)
+                )
 
         self.norms = nn.ModuleList(
-            [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
+            [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
-        # self.act = nn.SiLU()
-
 
         self.laplacian_k = 0
         if self.laplacian_k > 0:
@@ -224,8 +215,7 @@ class RelationGNN(nn.Module):
             device = batch.edge_index.device
         num_nodes = data.num_nodes
 
-
-        if   self.conditioning == "false":
+        if self.conditioning == "false":
             # random features 
             h = torch.randn(bs, num_nodes, self.rel_emb.embedding_dim, device=device) # todo !!
             #h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
@@ -286,19 +276,19 @@ class RelationGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x   = layer(x, edge_index, edge_attr)  # edge_attr is not used in GINEConv if not provided
-            if self.norms:
+            x   = layer(x, edge_index, edge_attr=edge_attr)  # edge_attr is not used in GINEConv if not provided
+
+            if self.enable_layer_norm:
                  x = self.norms[i](x)
            
             # --- FIX 2: Residual Connection ---
-            # if x.shape == x_in.shape:
             if self.skip_connection:
                 x = x + x_in
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
         return out
-        #return h
+
 
 class BipartiteGraphGNN(nn.Module):
     """
@@ -327,6 +317,7 @@ class BipartiteGraphGNN(nn.Module):
         self.conditioning = conditioning     
         self.input_dim = input_dim
         self.skip_connection = skip_connection
+        self.enable_layer_norm = layer_norm
 
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
@@ -340,7 +331,7 @@ class BipartiteGraphGNN(nn.Module):
             )
 
         self.norms = nn.ModuleList(
-            [nn.LayerNorm(d) for d in hidden_dims] if layer_norm else []
+            [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
         self.laplacian_k = 0
@@ -442,9 +433,9 @@ class BipartiteGraphGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x   = layer(x, edge_index, edge_attr)  # edge_attr is not used in GINEConv if not provided
+            x   = layer(x, edge_index, edge_attr = edge_attr)  # edge_attr is not used in GINEConv if not provided
 
-            if self.norms:
+            if self.enable_layer_norm:
                  x = self.norms[i](x)
            
             # --- FIX 2: Residual Connection ---
@@ -455,26 +446,42 @@ class BipartiteGraphGNN(nn.Module):
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
         return out
-        #return h
 
 
 class FICE(nn.Module):
 
-    def __init__(self, entity_message_func='rotate', relation_message_func='rotate', conditioning='all', layer_norm=True, query_gnn='TripleModel',
-     vector_dim=128, n_embedding_layers=2, n_layers=6, skip_connection=True, query_gnn_skip_connection=True, entity_graph_mode: Literal['bipartite', 'KG'] = "KG", relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",):
+    def __init__(self, 
+                 vector_dim=128, 
+                 n_embedding_layers=2, 
+                 conditioning='all',
+                 entity_graph_mode: Literal['bipartite', 'KG'] = "KG", 
+                 relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",
+                 # Entity GNN params
+                 entity_message_func='gine',
+                 entity_layer_norm=False,
+                 entity_skip_connection=True,
+                 # Relation GNN params
+                 relation_message_func='gine',
+                 relation_layer_norm=False,
+                 relation_skip_connection=True,
+                 # Query GNN params
+                 query_gnn_type='TripleModel',
+                 query_layer_norm=True,
+                 query_skip_connection=False,
+                 query_n_layers=6,
+                 ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
-        self.n_layers = n_layers
-        self.skip_connection = skip_connection
+        self.n_layers = query_n_layers
+        self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
         self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite" and relation_graph_mode == "bipartite")
         # Use n_embedding_layers to create the list of hidden dimensions
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
         
-        # Store message functions and conditioning for later use
         self.entity_message_func = entity_message_func
         self.relation_message_func = relation_message_func
         self.conditioning = conditioning
-        self.query_gnn_type = query_gnn
+        self.query_gnn_type = query_gnn_type
         self.relation_graph_mode = relation_graph_mode
         self.entity_graph_mode = entity_graph_mode
 
@@ -483,10 +490,9 @@ class FICE(nn.Module):
             self.embedding_model = BipartiteGraphGNN(
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,
-                layer_norm=layer_norm,
-                skip_connection=skip_connection,
+                layer_norm=relation_layer_norm, # Use relation norm as default for unified
+                skip_connection=relation_skip_connection,
                 conditioning=conditioning,
-                # output_dim=self.vector_dim
             )
 
         else:
@@ -496,9 +502,9 @@ class FICE(nn.Module):
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_relnet,
                     num_relation=4,
-                    heads=4,
-                    layer_norm=layer_norm,
-                    skip_connection=skip_connection,
+                    message_func=relation_message_func,
+                    layer_norm=relation_layer_norm,
+                    skip_connection=relation_skip_connection,
                     conditioning=conditioning
                 )
             elif self.relation_graph_mode == "bipartite":
@@ -506,10 +512,9 @@ class FICE(nn.Module):
                 self.relation_model = BipartiteGraphGNN(
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_relnet,
-                    layer_norm=layer_norm,
-                    skip_connection=skip_connection,
+                    layer_norm=relation_layer_norm,
+                    skip_connection=relation_skip_connection,
                     conditioning=conditioning,
-                    # output_dim=self.vector_dim
                 )
             else:
                 raise ValueError(f"Invalid relation message function: {relation_message_func}")
@@ -521,19 +526,18 @@ class FICE(nn.Module):
                     hidden_dims=self.hidden_dims_entitynet,
                     message_func=entity_message_func,
                     conditioning=conditioning,
-                    layer_norm=layer_norm,
-                    skip_connection=skip_connection
+                    layer_norm=entity_layer_norm,
+                    skip_connection=entity_skip_connection
                 )
             elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
-                raise ValueError(f"Naja macht nicht so richtig Sinn, lass mas lieber.")
+                raise ValueError(f"Entity graph bipartite but relation graph standard is not supported.")
             else:
                 raise ValueError(f"Invalid entity message function: {entity_message_func}")
 
-        # Dataset creates node/edge features of size (vector_dim + 3)
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=layer_norm, n_layers=self.n_layers, skip_connection=query_gnn_skip_connection)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, n_layers=self.n_layers, skip_connection=query_skip_connection)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':
@@ -542,19 +546,8 @@ class FICE(nn.Module):
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
     def forward(self, data, relation_graph, batch, graph_size, epoch=0):
-
-        # All inputs should already be on the correct device
         device = batch.x.device
-        if data is not None:
-            assert data.edge_index.device == device
-
-        # relation_graph can be None in certain ablations or tests, but usually present
-        if relation_graph is not None:
-            assert relation_graph.edge_index.device == device
         
-        assert batch.x.device == device
-        assert graph_size.device == device
-
         # Recreate query_features with correct vector_dim
         # Keep the first 3 dimensions (counts) and create new zero placeholders for the embedding part
         query_counts = batch.x[:, :3]
@@ -590,22 +583,12 @@ class FICE(nn.Module):
             # It returns embeddings for ALL nodes (Entities + Relations).
             # shape: (batch_size, num_bipartite_nodes, embedding_dim)
             all_embeddings = self.embedding_model(batch=batch, data=data)
-            assert all_embeddings.shape[0] == batch.batch_size
-
-            # We do NOT need to run entity_model.
-            # We just extract the embeddings using the indices.
 
             # 1. Extract Entity Embeddings
-            # indices are already remapped to the local bipartite graph indices in train.py
             bound_nodes = embedding_indices >= 0
-            graph_indices = batch.batch  # [num_query_nodes] -> batch index
+            graph_indices = batch.batch
             
-            # Gather from (Batch, Num_Nodes, Dim) using advanced indexing
-            # We need to select specific (batch_idx, node_idx) pairs
-            
-            # Prepare output container
             node_embeddings_gathered = torch.zeros(embedding_indices.size(0), self.vector_dim, device=device)
-            
             if bound_nodes.any():
                 valid_graph_idx = graph_indices[bound_nodes]
                 valid_node_idx  = embedding_indices[bound_nodes]
@@ -660,17 +643,11 @@ class FICE(nn.Module):
 
                 new_relation_representations = torch.zeros((relation_representations.shape[0], num_relations, relation_representations.shape[2]), device=device) 
                 new_relation_representations[edge2graph, batch.original_edge_embedding_indices] = extracted_relation_representation
-
                 relation_representations = new_relation_representations
-
-
-
 
             if data is not None:
                 node_representations = self.entity_model(batch=batch, data=data, relation_representations=relation_representations)
-                assert node_representations.shape[0] == batch.batch_size, "Node representations shape does not match batch size"
-
-                # If there are no node representations, we cannot map anything, so we keep the original features
+                
                 bound_nodes = embedding_indices >= 0
                 graph_indices = batch.batch
 
@@ -703,11 +680,7 @@ class FICE(nn.Module):
             edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_features
         
-        # TODO:
         if self.query_gnn_type == 'QueryCardinalityGNN':
-            # update Counts for log:
-            
-            # Process node features (batch.x)
             unbound_nodes = batch.node_embedding_indices < 0
             bound_nodes = ~unbound_nodes
             
@@ -743,8 +716,6 @@ class FICE(nn.Module):
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
         return log_cardinality_pred
-
-
 
 
 class FiceBinary(nn.Module):

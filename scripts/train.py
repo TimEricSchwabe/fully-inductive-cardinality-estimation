@@ -8,6 +8,7 @@ import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Literal, Tuple, Union
+import pprint
 
 # Third-party imports
 import matplotlib
@@ -122,36 +123,58 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     config = context.config
     device = context.device
     
-    # Get message functions from config if available
-    entity_message_func = config.EntityGNNMessageFunc
-    relation_message_func = config.RelationGNNMessageFunc
-    layer_norm = config.layer_norm
+    # Common params
     conditioning = config.Conditioning
-    query_gnn = config.QueryGNN
-    
     model_type = config.model
-    # Get embedding dimension and number of layers from config
     vector_dim = config.embedding_dim
     n_embedding_layers = config.n_embedding_layers
     
+    # Entity GNN params
+    entity_message_func = config.entity_gnn.message_func
+    entity_layer_norm = config.entity_gnn.layer_norm
+    entity_skip_connection = config.entity_gnn.skip_connection
+    entity_graph_mode = "bipartite" if config.entity_gnn.model == "BipartiteGraphGNN" else "KG"
+
+    # Relation GNN params
+    relation_message_func = config.relation_gnn.message_func
+    relation_layer_norm = config.relation_gnn.layer_norm
+    relation_skip_connection = config.relation_gnn.skip_connection
+    relation_graph_mode = "bipartite" if config.relation_gnn.model == "BipartiteGraphGNN" else "RelationGraph"
+
+    # Query GNN params
+    query_gnn_model = config.query_gnn.model
+    query_gnn_n_layers = config.query_gnn.n_layers
+    query_gnn_skip_connection = config.query_gnn.skip_connection
+    query_gnn_layer_norm = config.query_gnn.layer_norm
+    
+    
     if model_type == 'FiceBinary':
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
-        model = FiceBinary(vector_dim=vector_dim, n_layers=config.n_layers, skip_connection=config.skip_connection)
+        model = FiceBinary(vector_dim=vector_dim, n_layers=query_gnn_n_layers, skip_connection=query_gnn_skip_connection)
     elif model_type == 'FICE':
         logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
-            entity_message_func=entity_message_func,
-            relation_message_func=relation_message_func,
-            conditioning=conditioning,
-            layer_norm=layer_norm,
-            query_gnn=query_gnn,
             vector_dim=vector_dim,
-            n_embedding_layers=n_embedding_layers, # Pass the new parameter
-            n_layers=config.n_layers,
-            skip_connection=config.skip_connection,
-            query_gnn_skip_connection=config.query_gnn_skip_connection,
-            entity_graph_mode=config.entity_graph,
-            relation_graph_mode=config.relation_graph,
+            n_embedding_layers=n_embedding_layers, 
+            conditioning=conditioning,
+            entity_graph_mode=entity_graph_mode,
+            relation_graph_mode=relation_graph_mode,
+            
+            # Entity Params
+            entity_message_func=entity_message_func,
+            entity_layer_norm=entity_layer_norm,
+            entity_skip_connection=entity_skip_connection,
+            
+            # Relation Params
+            relation_message_func=relation_message_func,
+            relation_layer_norm=relation_layer_norm,
+            relation_skip_connection=relation_skip_connection,
+            
+            # Query Params
+            query_gnn_type=query_gnn_model,
+            query_layer_norm=query_gnn_layer_norm,
+            query_skip_connection=query_gnn_skip_connection,
+            query_n_layers=query_gnn_n_layers,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
@@ -270,7 +293,7 @@ def train_epoch(state: TrainingState):
     )
 
     # Prepare reusable sampler once per epoch if enabled
-    num_neighbors_cfg = state.training_context.config.EntityGNNNeighborhood
+    num_neighbors_cfg = state.training_context.config.GNNNeighborhood
 
     neighbor_sampler = state.data_components.neighbor_sampler
 
@@ -282,15 +305,18 @@ def train_epoch(state: TrainingState):
 
             bipartite_graph = None
             bipartite_graph_gloal_to_local = None
+            
+            use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_relation = state.training_context.config.relation_gnn.model == "BipartiteGraphGNN"
 
             # generate a sample of the bipartite graph if needed
-            if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
+            if use_bipartite_entity or use_bipartite_relation:
                 bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
 
 
             
             # Choose correct graph for relation GNN
-            if state.training_context.config.relation_graph == "bipartite":
+            if use_bipartite_relation:
                 relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
                 
             else: 
@@ -366,7 +392,7 @@ def train_epoch(state: TrainingState):
                 graph = None
                 num_neighbors = False
             else:
-                if state.training_context.config.entity_graph == "bipartite":
+                if use_bipartite_entity:
                     # Use the SAME bipartite graph as used for relations
                     if bipartite_graph is not None and bipartite_graph_gloal_to_local is not None:
                         graph = bipartite_graph
@@ -477,7 +503,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
 
     with torch.no_grad():
         # Prepare reusable sampler once for evaluation
-        num_neighbors_eval = getattr(state.training_context.config, 'EntityGNNNeighborhood', None)
+        num_neighbors_eval = getattr(state.training_context.config, 'GNNNeighborhood', None)
         neighbor_sampler = state.data_components.neighbor_sampler
 
         for batch_idx, (full_graph, query_batch) in tqdm(enumerate(loader), desc="Evaluating", leave=False, total=total_batches):
@@ -487,11 +513,14 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             bipartite_graph = None
             bipartite_graph_gloal_to_local = None
 
+            use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_relation = state.training_context.config.relation_gnn.model == "BipartiteGraphGNN"
+
             # generate a sample of the bipartite graph if needed
-            if state.training_context.config.entity_graph == "bipartite" or state.training_context.config.relation_graph == "bipartite":
+            if use_bipartite_entity or use_bipartite_relation:
                 bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
 
-            if state.training_context.config.relation_graph == "bipartite":
+            if use_bipartite_relation:
                 relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
             else: 
                 relation_graph = full_graph.relation_graph.to(device)
@@ -504,7 +533,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                 graph = None
                 num_neighbors = False
             else:
-                if state.training_context.config.entity_graph == "bipartite":
+                if use_bipartite_entity:
                     # Use the SAME bipartite graph as used for relations
                     if bipartite_graph is not None and bipartite_graph_gloal_to_local is not None:
                         graph = bipartite_graph
@@ -525,7 +554,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                         graph = None
                 else:
                     # "KG" mode - Standard Logic
-                    num_neighbors = state.training_context.config.EntityGNNNeighborhood   
+                    num_neighbors = state.training_context.config.GNNNeighborhood   
                     if num_neighbors is not None:
                         # Reusable sampler path
                         node_indices = query_batch.node_embedding_indices
@@ -807,8 +836,9 @@ def main():
     
     # Log original configuration
     logger.info("Original Configuration from file:")
-    for key, value in config.model_dump().items():
-        logger.info(f"  {key}: {value}")
+    pprint.pprint(config.model_dump())
+    # for key, value in config.model_dump().items():
+    #     logger.info(f"  {key}: {value}")
     
 
     logger.info(f"PyTorch version: {torch.__version__}")
@@ -843,8 +873,9 @@ def main():
 
     # Log final configuration (after merging with command-line args)
     logger.info("Final Configuration (after command-line overrides):")
-    for key, value in config.model_dump().items():
-        logger.info(f"  {key}: {value}")
+    pprint.pprint(config.model_dump())
+    # for key, value in config.model_dump().items():
+    #     logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
     processed_seed = process_seed(config.seed)
@@ -876,7 +907,7 @@ def main():
 
     # Load data
     data_component = prepare_data(config)
-    data_component.neighbor_sampler = MultigraphNeighborSampler(num_neighbors=config.EntityGNNNeighborhood)
+    data_component.neighbor_sampler = MultigraphNeighborSampler(num_neighbors=config.GNNNeighborhood)
 
 
     # Log dataset info to wandb (updated for new prepare_data returning a single DataComponents)
