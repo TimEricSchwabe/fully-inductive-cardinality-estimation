@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "new triple model test"
+wandb_run_name: "new approach test with layernorm only in query gnn (large)"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -105,13 +105,13 @@ entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
-  layer_norm: True
+  layer_norm: False
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
-  layer_norm: True
+  layer_norm: False
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
