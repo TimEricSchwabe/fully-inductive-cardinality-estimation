@@ -118,3 +118,4 @@ query_gnn:
   skip_connection: True
   layer_norm: False
   n_layers: 6
+  jk: "cat"

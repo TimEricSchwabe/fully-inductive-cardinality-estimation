@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "new approach test with layernorm only in query gnn (large)"
+wandb_run_name: "skip_connection and layer_norm all with jump"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -118,3 +118,4 @@ query_gnn:
   skip_connection: True
   layer_norm: True
   n_layers: 6
+  jk: "cat"
