@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention
+from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention, JumpingKnowledge
 from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
@@ -212,12 +212,13 @@ class TripleModel(torch.nn.Module):
     3. Multi-Perspective Pooling: Combines Attention, Max, and Mean pooling to capture 
        both "bottlenecks" (max) and "volume" (mean/att).
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False, n_layers: int = 6):
+    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False, n_layers: int = 6, jk_mode: str = 'cat'):
         super().__init__()
         self.feat_dim = feat_dim
         self.enable_layer_norms = layer_norm
         self.skip_connection = skip_connection
         self.n_layers = n_layers
+        self.jk_mode = jk_mode
 
         # 1. Input Encoders
         # Project raw node/edge embeddings into a common latent space
@@ -245,18 +246,28 @@ class TripleModel(torch.nn.Module):
             if self.enable_layer_norms:
                 self.layer_norms.append(nn.LayerNorm(self.feat_dim))
 
+        # Jumping Knowledge
+        if self.jk_mode is not None:
+            self.jk = JumpingKnowledge(mode=jk_mode, channels=feat_dim, num_layers=n_layers)
+            if self.jk_mode == 'cat':
+                embedding_dim = feat_dim * n_layers
+            else:
+                embedding_dim = feat_dim
+        else:
+            embedding_dim = feat_dim
+
         # 3. Multi-Perspective Pooling
         # Attention Gate
         self.gate_nn = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, self.feat_dim // 2),
+            torch.nn.Linear(embedding_dim, embedding_dim // 2),
             torch.nn.SiLU(),
-            torch.nn.Linear(self.feat_dim // 2, 1)
+            torch.nn.Linear(embedding_dim // 2, 1)
         )
         self.pool_att = GlobalAttention(gate_nn=self.gate_nn)
         
         # 4. Final Head
-        # Input: 3 * feat_dim (Att + Max + Mean) + 1 (Graph Size)
-        head_input_dim = (self.feat_dim * 3) + 1
+        # Input: 3 * embedding_dim (Att + Max + Mean) + 1 (Graph Size)
+        head_input_dim = (embedding_dim * 3) + 1
         
         self.head = torch.nn.Sequential(
             torch.nn.Linear(head_input_dim, self.feat_dim * 2),
@@ -278,6 +289,7 @@ class TripleModel(torch.nn.Module):
         if edge_attr is not None:
             edge_attr = self.edge_encoder(edge_attr)
 
+        xs = []
         # 2. Message Passing
         for i, layer in enumerate(self.layers):
             x_in = x
@@ -290,6 +302,12 @@ class TripleModel(torch.nn.Module):
 
             if self.skip_connection:
                 x = x + x_in
+            
+            if self.jk_mode is not None:
+                xs.append(x)
+
+        if self.jk_mode is not None:
+            x = self.jk(xs)
 
         # 3. Multi-Pooling
         # Combine different views of the graph
@@ -297,7 +315,7 @@ class TripleModel(torch.nn.Module):
         g_max = global_max_pool(x, batch.batch)
         g_mean = global_mean_pool(x, batch.batch)
         
-        # Concatenate: [Batch, 3 * feat_dim]
+        # Concatenate: [Batch, 3 * embedding_dim]
         g = torch.cat([g_att, g_max, g_mean], dim=-1)
 
         # 4. Inject Graph Size

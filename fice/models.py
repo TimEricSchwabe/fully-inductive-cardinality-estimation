@@ -469,6 +469,7 @@ class FICE(nn.Module):
                  query_layer_norm=True,
                  query_skip_connection=False,
                  query_n_layers=6,
+                 query_jk_mode='cat'
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
@@ -537,7 +538,7 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, n_layers=self.n_layers, skip_connection=query_skip_connection)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, n_layers=self.n_layers, skip_connection=query_skip_connection, jk_mode=query_jk_mode)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':

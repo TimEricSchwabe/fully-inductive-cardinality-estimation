@@ -3,45 +3,45 @@ data:
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_star_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "validation"
 
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "train-val"
 
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: 4
-    num_queries: 1000
+    num_queries: 200
     type: "train-val"
 
 
 epochs: 40
-wandb: True
-wandb_run_name: "kurzer test mit komplett neuem ansatz (layer norm nur bei query gnn)"
+wandb: False
+wandb_run_name: "local test, with layer_norm in embeddings"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -61,13 +61,13 @@ entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
-  layer_norm: False
+  layer_norm:  True
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
-  layer_norm: False
+  layer_norm: True
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"

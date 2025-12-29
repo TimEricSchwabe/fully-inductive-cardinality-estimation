@@ -146,6 +146,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     query_gnn_n_layers = config.query_gnn.n_layers
     query_gnn_skip_connection = config.query_gnn.skip_connection
     query_gnn_layer_norm = config.query_gnn.layer_norm
+    query_gnn_jk = config.query_gnn.jk
     
     
     if model_type == 'FiceBinary':
@@ -175,6 +176,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             query_layer_norm=query_gnn_layer_norm,
             query_skip_connection=query_gnn_skip_connection,
             query_n_layers=query_gnn_n_layers,
+            query_jk_mode=query_gnn_jk,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
