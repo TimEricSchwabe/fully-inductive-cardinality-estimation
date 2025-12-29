@@ -272,7 +272,7 @@ class TripleModel(torch.nn.Module):
         self.head = torch.nn.Sequential(
             torch.nn.Linear(head_input_dim, self.feat_dim * 2),
             torch.nn.SiLU(),
-            torch.nn.Dropout(p=0.2),
+            # torch.nn.Dropout(p=0.2),
             torch.nn.Linear(self.feat_dim * 2, self.feat_dim),
             torch.nn.SiLU(),
             torch.nn.Linear(self.feat_dim, 1)
