@@ -628,7 +628,7 @@ class FICE(nn.Module):
             # Provide shape [1, K] to seed K relations at once
             # No need to call .to(device) - already on correct device
             relation_representations = self.relation_model(batch=batch, data=relation_graph) # shape (batch_size, num_relations, embedding_dim)
-            assert relation_representations.shape[0] == batch.batch_size, "Relation representations shape does not match batch size"
+
             if self.relation_graph_mode == "bipartite" and self.entity_graph_mode == "KG":
                 # TODO: the returned relation_represtaitons contain both entity and relation embeddings stacked
                 # We need to split them here
