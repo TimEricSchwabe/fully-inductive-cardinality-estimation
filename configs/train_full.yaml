@@ -105,17 +105,15 @@ entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
-  layer_norm: True
+  layer_norm: False
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
-  layer_norm: True
+  layer_norm: False
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
-  n_layers: 6
-  jk: "cat"

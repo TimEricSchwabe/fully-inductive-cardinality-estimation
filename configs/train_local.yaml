@@ -1,42 +1,86 @@
-# Example YAML config for local training (updated to new Config/DataConfig schema)data:
+# Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_star_queries"
-    batch_size: 4
-    num_queries: 200
+  - dataset: "LUBM"
+    queries: "LUBMQueries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val" # current unseen validation data
+  - dataset: "LUBM"
+    queries: "lubm_path_queries"
+    batch_size: 8
+    num_queries: 300
     type: "train-val"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_star_queries"
-    batch_size: 4
-    num_queries: 200
+  - dataset: "SWDF"
+    queries: "SWDF_Star_Queries"
+    batch_size: 8
+    num_queries: 300
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
-    batch_size: 4
-    num_queries: 200
+    batch_size: 8
+    num_queries: 300
     type: "train-val"
-  - dataset: "LUBM"
-    queries: "lubm_path_queries"
-    batch_size: 4
-    num_queries: 200
-    type: "validation"
-  - dataset: "Wikidata"
-    queries: "wikidata_path_queries"
-    batch_size: 4
-    num_queries: 200
-    type: "validation"
-
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
-    batch_size: 4
-    num_queries: 200
+    batch_size: 8
+    num_queries: 300
     type: "train-val"
-
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
-    batch_size: 4
-    num_queries: 200
+    batch_size: 8
+    num_queries: 300
     type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_star_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "validation"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_path_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_star_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_star_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_path_queries"
+    batch_size: 8
+    num_queries: 300
+    type: "train-val"
+
 
 
 epochs: 40
@@ -48,7 +92,7 @@ output_dir: "output/"
 save_every: 5
 eval_every: 1
 seed: 42
-device: "auto"
+device: "cpu"
 GNNNeighborhood: [100, 100]
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
@@ -61,17 +105,15 @@ entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
-  layer_norm:  True
+  layer_norm:  False
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
-  layer_norm: True
+  layer_norm: False
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
-  n_layers: 6
-  jk: "cat"

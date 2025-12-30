@@ -255,14 +255,13 @@ class TripleModel(torch.nn.Module):
         edge_attr = batch.edge_attr
 
         x_input = x
-
         x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln1(x)
         if self.skip_connection:
             x = x + x_input
-        x_input = x
 
+        x_input = x
         x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln2(x)
