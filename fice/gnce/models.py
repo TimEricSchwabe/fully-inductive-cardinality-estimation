@@ -1,6 +1,6 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention, JumpingKnowledge
+from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention
 from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
@@ -201,136 +201,85 @@ class TripleConv(MessagePassing):
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(nn={self.nn})'
 
-
 class TripleModel(torch.nn.Module):
     """
-    GNN model to predict cardinality of a query.
-    
-    Architecture V2 (Optimized):
-    1. Input Encoders: Align node and edge embeddings.
-    2. Deep GINE backbone: With residuals and Norms.
-    3. Multi-Perspective Pooling: Combines Attention, Max, and Mean pooling to capture 
-       both "bottlenecks" (max) and "volume" (mean/att).
+    GNN model to predict cardinality of a query,
+    given the query graph and embeddings of nodes
+    and edges.
+
+    Args:
+
+
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=False, skip_connection=False, n_layers: int = 6, jk_mode: str = 'cat'):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False):
         super().__init__()
         self.feat_dim = feat_dim
-        self.enable_layer_norms = layer_norm
+        self.layer_norm = layer_norm
         self.skip_connection = skip_connection
-        self.n_layers = n_layers
-        self.jk_mode = jk_mode
 
-        # 1. Input Encoders
-        # Project raw node/edge embeddings into a common latent space
-        self.node_encoder = torch.nn.Linear(feat_dim, feat_dim)
-        self.edge_encoder = torch.nn.Linear(feat_dim, feat_dim)
 
-        # 2. Backbone
-        self.layers = nn.ModuleList()
-        self.layer_norms = nn.ModuleList()
-        
-        for _ in range(self.n_layers):
-            # Enhanced MLP for GINEConv
-            mlp = torch.nn.Sequential(
-                torch.nn.Linear(self.feat_dim, self.feat_dim * 2),
-                torch.nn.SiLU(),
-                torch.nn.Linear(self.feat_dim * 2, self.feat_dim),
-            )
-            self.layers.append(
-                GINEConv(
-                    nn=mlp,
-                    edge_dim=self.feat_dim,
-                    train_eps=True 
-                )
-            )
-            if self.enable_layer_norms:
-                self.layer_norms.append(nn.LayerNorm(self.feat_dim))
-
-        # Jumping Knowledge
-        if self.jk_mode is not None:
-            self.jk = JumpingKnowledge(mode=jk_mode, channels=feat_dim, num_layers=n_layers)
-            if self.jk_mode == 'cat':
-                embedding_dim = feat_dim * n_layers
-            else:
-                embedding_dim = feat_dim
-        else:
-            embedding_dim = feat_dim
-
-        # 3. Multi-Perspective Pooling
-        # Attention Gate
-        self.gate_nn = torch.nn.Sequential(
-            torch.nn.Linear(embedding_dim, embedding_dim // 2),
-            torch.nn.SiLU(),
-            torch.nn.Linear(embedding_dim // 2, 1)
-        )
-        self.pool_att = GlobalAttention(gate_nn=self.gate_nn)
-        
-        # 4. Final Head
-        # Input: 3 * embedding_dim (Att + Max + Mean) + 1 (Graph Size)
-        head_input_dim = (embedding_dim * 3) + 1
-        
-        self.head = torch.nn.Sequential(
-            torch.nn.Linear(head_input_dim, self.feat_dim * 2),
-            torch.nn.SiLU(),
+        self.mlp = torch.nn.Sequential(
+            torch.nn.Linear(self.feat_dim, self.feat_dim),
             # torch.nn.Dropout(p=0.2),
-            torch.nn.Linear(self.feat_dim * 2, self.feat_dim),
-            torch.nn.SiLU(),
-            torch.nn.Linear(self.feat_dim, 1)
+            torch.nn.ReLU(),
+            torch.nn.Linear(self.feat_dim, self.feat_dim),
+            # torch.nn.Dropout(p=0.2)
         )
+
+        # second MLP maps feat_dim -> 200 (via 100)
+        self.mlp2 = torch.nn.Sequential(
+            torch.nn.Linear(self.feat_dim, 100),
+            # torch.nn.Dropout(p=0.2),
+            torch.nn.ReLU(),
+            torch.nn.Linear(100, 200),
+            # torch.nn.Dropout(p=0.2)
+        )
+
+        self.ln1 = nn.LayerNorm(self.feat_dim)
+        self.ln2 = nn.LayerNorm(200)
+
+        # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
+        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
+        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
+        # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        self.skip_proj = Linear(self.feat_dim, 200)
+        self.lin = Linear(200, 50)
+        self.lin2 = Linear(50, 1)
+
+        # self.dropout = torch.nn.Dropout(p=0.2)
 
     def forward(self, batch, graph_size):
         x = batch.x
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
-        # 1. Encode Inputs
-        x = self.node_encoder(x)
-        # Handle edge_attr potentially being None or having different shape if not handled upstream
-        if edge_attr is not None:
-            edge_attr = self.edge_encoder(edge_attr)
+        x_input = x
 
-        xs = []
-        # 2. Message Passing
-        for i, layer in enumerate(self.layers):
-            x_in = x
-            x = layer(x, edge_index, edge_attr=edge_attr)
+        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
+        if self.layer_norm:
+            x = self.ln1(x)
+        if self.skip_connection:
+            x = x + x_input
+        x_input = x
+
+        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
+        if self.layer_norm:
+            x = self.ln2(x)
+        if self.skip_connection:
+            x = x + self.skip_proj(x_input)
+        x = global_add_pool(x, batch.batch)
+        x = self.lin(x)
+        # x = self.dropout(x)
+        x = F.relu(x)
+        x = self.lin2(x)
         
-            if self.enable_layer_norms:
-                x = self.layer_norms[i](x)  
+        # We did an tested it and either with or without abs works fine
+        # also x = troch.where(x<0, torch.zeros_like(x), x) works fine as well 
+        # all produce similar results
 
-            x = F.silu(x)
-
-            if self.skip_connection:
-                x = x + x_in
-            
-            if self.jk_mode is not None:
-                xs.append(x)
-
-        if self.jk_mode is not None:
-            x = self.jk(xs)
-
-        # 3. Multi-Pooling
-        # Combine different views of the graph
-        g_att = self.pool_att(x, batch.batch)
-        g_max = global_max_pool(x, batch.batch)
-        g_mean = global_mean_pool(x, batch.batch)
-        
-        # Concatenate: [Batch, 3 * embedding_dim]
-        g = torch.cat([g_att, g_max, g_mean], dim=-1)
-
-        # 4. Inject Graph Size
-        if graph_size.dim() == 1 and graph_size.size(0) == 1:
-             graph_size_expanded = graph_size.expand(g.size(0))
-        else:
-             graph_size_expanded = graph_size
-
-        log_graph_size = torch.log1p(graph_size_expanded.float()).unsqueeze(-1)
-        
-        g_final = torch.cat([g, log_graph_size], dim=-1)
-
-        out = self.head(g_final)
-        
-        return torch.abs(out.squeeze(-1))
+        # return x.squeeze(-1)
+        return torch.abs(x.squeeze(-1))
 
 ############Independent Query GNN ############
 # this model only usees the raw count to predict based on independence assumption
