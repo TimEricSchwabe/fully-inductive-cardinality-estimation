@@ -343,49 +343,6 @@ def train_epoch(state: TrainingState):
                     plot_embeddings = False
 
 
-                # # # --- Plot Relation Graph Structure ---
-                # import networkx as nx
-                # # Convert edge index to list of edges
-                # edge_index_np = relation_graph.edge_index.detach().cpu().numpy()
-                # # edge_type is no longer available in the bipartite graph
-                # # edge_type_np  = relation_graph.edge_type.detach().cpu().numpy()
-                
-                # # Create graph
-                # G = nx.DiGraph()
-                
-                # # Add edges with type as label
-                # for i in range(edge_index_np.shape[1]):
-                #     u, v = edge_index_np[0, i], edge_index_np[1, i]
-                #     # etype = edge_type_np[i]
-                #     G.add_edge(u, v)
-                
-                # plt.figure(figsize=(40, 40))
-                # # Use spring layout for 2D visualization
-                # pos = nx.spring_layout(G, seed=42, k=2.0) # increased k for more spacing
-                
-                # nx.draw_networkx_edges(G, pos, alpha=0.5, arrows=True, connectionstyle='arc3,rad=0.1')
-                # nx.draw_networkx_nodes(G, pos, node_size=300, node_color='skyblue')
-                
-                # # Draw edge labels
-                # edge_labels = nx.get_edge_attributes(G, 'label')
-                # #nx.draw_networkx_edge_labels(G, pos, edge_labels=edge_labels, font_size=8)
-
-                # # Optional: Draw labels if graph is small enough
-                # if G.number_of_nodes() < 100:
-                #     nx.draw_networkx_labels(G, pos, font_size=10)
-                    
-                # plt.title(f"Relation Graph Structure (Epoch {state.training_context.current_epoch})")
-                # plt.axis('off')
-                
-                # save_path = state.training_context.log_dir / f"relation_graph_epoch_{state.training_context.current_epoch}.png"
-                # plt.savefig(save_path)
-                # plt.close()
-                # logger.info(f"Saved relation graph plot to {save_path}")
-
-                # # -------------------------------------
-                # exit()
-
-
             # SELECT GRAPH FOR ENTITY GNN
             # Fast path for FiceBinary: skip neighborhood sampling & avoid moving big graphs
             if isinstance(state.model_components.model, FiceBinary) or isinstance(state.model_components.model, FiceIndependent):
