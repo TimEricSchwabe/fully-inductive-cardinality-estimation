@@ -13,28 +13,9 @@ import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import hashlib
-from git import Repo, InvalidGitRepositoryError
 
 
 logger = logging.getLogger(__name__)
-
-
-def get_git_info():
-    """Get current git branch, commit hash, and dirty status.
-    
-    Returns:
-        tuple: (branch_name, commit_hash, is_dirty)
-               Falls back to ("nogit", "unknown", False) if not a git repo
-    """
-    try:
-        repo = Repo(search_parent_directories=True)
-        branch = repo.active_branch.name
-        commit = repo.head.commit.hexsha[:7]  # Short hash (7 chars)
-        is_dirty = repo.is_dirty()
-        return branch, commit, is_dirty
-    except (InvalidGitRepositoryError, Exception) as e:
-        logger.warning(f"Could not get git info: {e}")
-        return "nogit", "unknown", False
 
 
 # Weights & Biases configuration
@@ -52,18 +33,8 @@ def initialize_wandb(config, run_dir):
     """Initialize Weights & Biases logging if enabled."""
     # Check if wandb is enabled: command-line flag takes precedence over WANDB_CONFIG
 
-    # Get git information
-    branch, commit, is_dirty = get_git_info()
-    git_suffix = f"{branch}_{commit}"
-    if is_dirty:
-        git_suffix += "-dirty"
-
     # Prepare training config for wandb
     training_config = config.model_dump()
-    # Add git metadata to config
-    training_config['git_branch'] = branch
-    training_config['git_commit'] = commit
-    training_config['git_dirty'] = is_dirty
 
 
     os.environ["WANDB_DIR"] = str(run_dir)
@@ -74,7 +45,7 @@ def initialize_wandb(config, run_dir):
     if config.wandb_run_name is not None:
         run_name = config.wandb_run_name.strip().replace(" ", "_")
         config_hash = hashlib.sha1(str(config.model_dump_json()).encode()).hexdigest()[:6]
-        run_name = f"{run_name}_{config_hash}_{git_suffix}"
+        run_name = f"{run_name}_{config_hash}"
     else:
         run_name = WANDB_CONFIG['run_name']
 
@@ -91,7 +62,6 @@ def initialize_wandb(config, run_dir):
     )
     
     logger.info(f"Weights & Biases initialized: {run.url}")
-    logger.info(f"Git info - Branch: {branch}, Commit: {commit}, Dirty: {is_dirty}")
 
 
 

@@ -46,7 +46,6 @@ from utils.config import Config, DataConfig, load_config_yaml
 from utils.data_helper import prepare_data
 from utils.helper import (
     get_device,
-    get_git_info,
     initialize_wandb,
     parse_arguments,
     process_seed,
@@ -761,11 +760,7 @@ def print_final_summary(
 
 def setup_run_dir(config):
     timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    branch, commit, is_dirty = get_git_info()
-    git_suffix = f"{branch}_{commit}"
-    if is_dirty:
-        git_suffix += "-dirty"
-    run_dir = Path(config.output_dir) / f"run_{timestamp}_{git_suffix}"
+    run_dir = Path(config.output_dir) / f"run_{timestamp}"
     run_dir.mkdir(parents=True, exist_ok=True)
     return run_dir
 
