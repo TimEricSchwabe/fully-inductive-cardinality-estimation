@@ -211,7 +211,7 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
@@ -220,19 +220,19 @@ class TripleModel(torch.nn.Module):
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2),
+            torch.nn.Dropout(p=dropout),
             torch.nn.ReLU(),
             torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2)
+            torch.nn.Dropout(p=dropout)
         )
 
         # second MLP maps feat_dim -> 200 (via 100)
         self.mlp2 = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, 100),
-            # torch.nn.Dropout(p=0.2),
+            torch.nn.Dropout(p=dropout),
             torch.nn.ReLU(),
             torch.nn.Linear(100, 200),
-            # torch.nn.Dropout(p=0.2)
+            torch.nn.Dropout(p=dropout)
         )
 
         self.ln1 = nn.LayerNorm(self.feat_dim)
@@ -247,7 +247,7 @@ class TripleModel(torch.nn.Module):
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)
 
-        # self.dropout = torch.nn.Dropout(p=0.2)
+        self.dropout = torch.nn.Dropout(p=dropout)
 
     def forward(self, batch, graph_size):
         x = batch.x
@@ -268,6 +268,7 @@ class TripleModel(torch.nn.Module):
         if self.skip_connection:
             x = x + self.skip_proj(x_input)
         x = global_add_pool(x, batch.batch)
+        x = self.dropout(x)
         x = self.lin(x)
         # x = self.dropout(x)
         x = F.relu(x)

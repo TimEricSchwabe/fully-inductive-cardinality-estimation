@@ -468,11 +468,10 @@ class FICE(nn.Module):
                  query_gnn_type='TripleModel',
                  query_layer_norm=True,
                  query_skip_connection=False,
-                 query_n_layers=6
+                 query_gnn_dropout=0.0
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
-        self.n_layers = query_n_layers
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
         self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite" and relation_graph_mode == "bipartite")
         # Use n_embedding_layers to create the list of hidden dimensions
@@ -537,7 +536,7 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, skip_connection=query_skip_connection)
+            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, skip_connection=query_skip_connection, dropout=query_gnn_dropout)
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':

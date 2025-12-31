@@ -32,6 +32,7 @@ class QueryGNNConfig(BaseSettings):
     layer_norm: bool = True
     n_layers: int = 6  # Number of layers in Query GNN (e.g. TripleModel)
     jk: Literal['cat', 'max', 'lstm'] | None = 'cat'
+    dropout: float = 0.0
 
 
 
