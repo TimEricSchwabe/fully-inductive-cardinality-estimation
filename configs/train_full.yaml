@@ -100,7 +100,7 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-laplacian_k: 8
+laplacian_k: 0
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
@@ -116,6 +116,6 @@ relation_gnn:
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
   dropout: 0.0
