@@ -98,6 +98,7 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
+laplacian_k: 8
 n_embedding_layers: 2
 # weight_decay: 0.01  # Uncomment to use weight decay
 

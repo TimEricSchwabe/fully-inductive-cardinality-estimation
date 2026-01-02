@@ -8,6 +8,10 @@ import torch
 import logging
 from utils.data_helper import *
 from utils.config import Config
+import time
+from utils.helper import wandb_log_artifact_with_retry
+
+logger = logging.getLogger(__name__)
 
 def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
     def to_cpu(obj):
@@ -51,13 +55,18 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
 
     # Log checkpoint as wandb artifact if enabled
     if getattr(state.training_context, 'use_wandb', False):
-        artifact = wandb.Artifact(
-            name=f"checkpoint_epoch_{epoch}",
-            type="model",
-            description=f"Checkpoint at epoch {epoch}"
-        )
-        artifact.add_file(str(checkpoint_path))
-        wandb.log_artifact(artifact)
+        try:
+            artifact = wandb.Artifact(
+                name=f"checkpoint_epoch_{epoch}",
+                type="model",
+                description=f"Checkpoint at epoch {epoch}"
+            )
+            artifact.add_file(str(checkpoint_path))
+            
+            wandb_log_artifact_with_retry(artifact)
+                    
+        except Exception as e:
+            logger.error(f"Failed to prepare/log checkpoint artifact: {e}")
 
 
 def load_checkpoint(checkpoint_path: Union[str, Path]) -> TrainingState:

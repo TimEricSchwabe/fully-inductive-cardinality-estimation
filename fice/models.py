@@ -10,7 +10,7 @@ from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryG
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, **kwargs):
+    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, laplacian_k=0, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -44,7 +44,7 @@ class EntityGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = 0
+        self.laplacian_k = laplacian_k
         if self.laplacian_k > 0:
             self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
@@ -60,8 +60,7 @@ class EntityGNN(nn.Module):
         # Preparing node features based on conditioning strategy
         # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
         if self.conditioning in ["false", "all"]:
-            x = torch.randn(batch_size, data.num_nodes, self.input_dim, device=device) # todo !!
-            #x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+            x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
         elif self.conditioning == "seed only":
             x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
         else:
@@ -159,6 +158,7 @@ class RelationGNN(nn.Module):
         conditioning: str = "all",      
         layer_norm: bool = False,
         skip_connection: bool = True,
+        laplacian_k: int = 0,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -196,7 +196,7 @@ class RelationGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = 0
+        self.laplacian_k = laplacian_k
         if self.laplacian_k > 0:
             self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
@@ -215,14 +215,12 @@ class RelationGNN(nn.Module):
             device = batch.edge_index.device
         num_nodes = data.num_nodes
 
-        if self.conditioning == "false":
-            # random features 
-            h = torch.randn(bs, num_nodes, self.rel_emb.embedding_dim, device=device) # todo !!
-            #h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+        if   self.conditioning in ["false", "all"]:
+            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
         elif self.conditioning == "seed only":
             h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
-        else:  # "all"
-            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+        else:
+            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
         # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
         # Inject log(degree) into the first dimension to distinguish relations structurally
@@ -304,6 +302,7 @@ class BipartiteGraphGNN(nn.Module):
         conditioning: str = "false",      
         layer_norm: bool = False,
         skip_connection: bool = True,
+        laplacian_k: int = 0,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -334,7 +333,7 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = 0
+        self.laplacian_k = laplacian_k
         if self.laplacian_k > 0:
             self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
@@ -354,26 +353,12 @@ class BipartiteGraphGNN(nn.Module):
         num_nodes = data.num_nodes
 
 
-        if   self.conditioning == "false":
-            # random features, random gauss wegen randn
-            # h = torch.zeros(bs, num_nodes, self.input_dim, device=device)
-            #h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
-
-            # TODO: extra condition self.conditioning == "random_relations"
-            mask = torch.zeros(num_nodes, dtype=torch.bool, device=device)
-            bound_nodes = data.mapped_entity_indices[data.mapped_entity_indices >= 0]
-            mask[bound_nodes] = True
-
-            h = torch.zeros((num_nodes, self.input_dim), device=device)
-            h[mask] = torch.randn((bound_nodes.size(0), self.input_dim), device=device)
-            h = h.unsqueeze(0)  # (1, num_nodes, input_dim)
-            h = h.repeat(bs, 1, 1)
-
-
+        if   self.conditioning in ["false", "all"]:
+            h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
         elif self.conditioning == "seed only":
             h = torch.zeros(bs, num_nodes, self.input_dim, device=device)
-        else:  # "all"
-            h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
+        else:
+            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
 
         # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
         # Inject log(degree) into the first dimension to distinguish relations structurally
@@ -468,7 +453,9 @@ class FICE(nn.Module):
                  query_gnn_type='TripleModel',
                  query_layer_norm=True,
                  query_skip_connection=False,
-                 query_gnn_dropout=0.0
+                 query_gnn_dropout=0.0,
+                 # Global params
+                 laplacian_k=0
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
@@ -492,6 +479,7 @@ class FICE(nn.Module):
                 layer_norm=relation_layer_norm, # Use relation norm as default for unified
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
+                laplacian_k=laplacian_k
             )
 
         else:
@@ -504,7 +492,8 @@ class FICE(nn.Module):
                     message_func=relation_message_func,
                     layer_norm=relation_layer_norm,
                     skip_connection=relation_skip_connection,
-                    conditioning=conditioning
+                    conditioning=conditioning,
+                    laplacian_k=laplacian_k
                 )
             elif self.relation_graph_mode == "bipartite":
                 # If using bipartite graph for relations, we use the unified model
@@ -514,6 +503,7 @@ class FICE(nn.Module):
                     layer_norm=relation_layer_norm,
                     skip_connection=relation_skip_connection,
                     conditioning=conditioning,
+                    laplacian_k=laplacian_k
                 )
             else:
                 raise ValueError(f"Invalid relation message function: {relation_message_func}")
@@ -526,7 +516,8 @@ class FICE(nn.Module):
                     message_func=entity_message_func,
                     conditioning=conditioning,
                     layer_norm=entity_layer_norm,
-                    skip_connection=entity_skip_connection
+                    skip_connection=entity_skip_connection,
+                    laplacian_k=laplacian_k
                 )
             elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
                 raise ValueError(f"Entity graph bipartite but relation graph standard is not supported.")
@@ -724,10 +715,10 @@ class FiceBinary(nn.Module):
     optional (they can be ``None``).
     """
 
-    def __init__(self, vector_dim: int = 128, n_layers: int = 6, skip_connection: bool = True):
+    def __init__(self, vector_dim: int = 128, skip_connection: bool = True):
         super().__init__()
         self.vector_dim = vector_dim
-        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, n_layers=n_layers, skip_connection=skip_connection)
+        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, skip_connection=skip_connection)
 
     # --- binary encoding helper ------------------------------------------------
     def _binary_encode(self, ids: torch.Tensor) -> torch.Tensor:

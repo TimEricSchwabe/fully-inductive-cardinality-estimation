@@ -5,6 +5,7 @@ import math
 import random
 import subprocess
 import yaml
+import time
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Literal, Tuple, Union
@@ -52,6 +53,8 @@ from utils.helper import (
     set_random_seeds,
     setup_logging,
     analyze_vector_similarity,
+    wandb_log_artifact_with_retry,
+    wandb_log_with_retry,
 )
 from utils.logging_helper import (
     TRAIN_METRICS_FILE_NAME,
@@ -143,7 +146,6 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
 
     # Query GNN params
     query_gnn_model = config.query_gnn.model
-    query_gnn_n_layers = config.query_gnn.n_layers
     query_gnn_skip_connection = config.query_gnn.skip_connection
     query_gnn_layer_norm = config.query_gnn.layer_norm
     query_gnn_dropout = config.query_gnn.dropout
@@ -151,7 +153,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     
     if model_type == 'FiceBinary':
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
-        model = FiceBinary(vector_dim=vector_dim, n_layers=query_gnn_n_layers, skip_connection=query_gnn_skip_connection)
+        model = FiceBinary(vector_dim=vector_dim, skip_connection=query_gnn_skip_connection)
     elif model_type == 'FICE':
         logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
@@ -633,10 +635,9 @@ def train_model(
                         description=f"Best model checkpoint at epoch {state.training_context.current_epoch} with test loss {state.best_test_loss:.6f}"
                     )
                     artifact.add_file(str(best_model_path))
-                    wandb.log_artifact(artifact)
-                    
-                    # Also log the best test loss metric
-                    wandb.log({
+                    wandb_log_artifact_with_retry(artifact)
+                        
+                    wandb_log_with_retry({
                         "best_test_loss": state.best_test_loss,
                         "best_model_epoch": state.training_context.current_epoch
                     })
@@ -886,7 +887,7 @@ def main():
             total_nodes += getattr(g, "num_nodes", 0) or 0
             total_edges += getattr(g, "num_edges", 0) or 0
 
-        wandb.log({
+        wandb_log_with_retry({
             "dataset_total_queries": total_train + total_test,
             "dataset_train_queries": total_train,
             "dataset_test_queries": total_test,
@@ -921,13 +922,16 @@ def main():
         logger.info("No optimizer found")
 
     if use_wandb:
-        wandb.watch(model_components.model, log="all", log_freq=100)
+        try:
+            wandb.watch(model_components.model, log="all", log_freq=100)
+        except Exception as e:
+            logger.warning(f"Failed to setup wandb.watch: {e}")
 
     # Log model information to wandb
     if use_wandb:
         total_params = sum(p.numel() for p in model_components.model.parameters())
         trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
-        wandb.log({
+        wandb_log_with_retry({
             "model_total_parameters": total_params,
             "model_trainable_parameters": trainable_params,
             "model_name": model_components.model.__class__.__name__
@@ -994,7 +998,7 @@ def main():
                         f"final_test_q_error_{dataset_name}": row['q_error'],
                     })
         
-        wandb.log(final_metrics)
+        wandb_log_with_retry(final_metrics)
         
         # Save training data
         artifact = wandb.Artifact("training_data", type="dataset")
@@ -1037,7 +1041,7 @@ def main():
         if (state.training_context.log_dir / 'final_test_metrics_per_query_set_name.csv').exists():
             artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_query_set_name.csv'))
         
-        wandb.log_artifact(artifact)
+        wandb_log_artifact_with_retry(artifact)
         
         
         wandb.finish()

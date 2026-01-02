@@ -337,13 +337,19 @@ class MetricLogger:
         return overall_metrics
     
     def _wandb_log_retry(self, data):
-        for _ in range(200):
+        max_retries = 1000
+        initial_wait = 2
+        wait_time = initial_wait
+        
+        for attempt in range(max_retries):
             try:
                 wandb.log(data)
                 return
             except Exception as e:
-                logger.error(f"Error logging to wandb: {e}. Retrying...")
-                time.sleep(1)
+                # Catching generic Exception is intentional here to survive network glitches
+                logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
 
     def log_embedding_similarity(self, embeddings, name: str, epoch: int, sample_size: int = 2000):
         """
@@ -388,7 +394,7 @@ class MetricLogger:
             max_sim = similarities.max().item()
             
             # Log scalar metrics
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_avg_similarity": avg_sim,
                 f"{name}_std_similarity": std_sim,
                 f"{name}_min_similarity": min_sim,
@@ -410,7 +416,7 @@ class MetricLogger:
             ax_hist.legend()
             ax_hist.grid(True, alpha=0.3)
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_similarity_hist": wandb.Image(fig_hist),
                 "epoch": epoch
             })
@@ -428,7 +434,7 @@ class MetricLogger:
             ax_pca.set_ylabel('PC2')
             ax_pca.grid(True, alpha=0.3)
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_pca_projection": wandb.Image(fig_pca),
                 "epoch": epoch
             })
@@ -450,7 +456,7 @@ class MetricLogger:
                 ax_tsne.set_ylabel('Dim 2')
                 ax_tsne.grid(True, alpha=0.3)
                 
-                wandb.log({
+                self._wandb_log_retry({
                     f"{name}_tsne_projection": wandb.Image(fig_tsne),
                     "epoch": epoch
                 })

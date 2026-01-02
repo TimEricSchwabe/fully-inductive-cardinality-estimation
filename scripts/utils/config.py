@@ -30,8 +30,6 @@ class QueryGNNConfig(BaseSettings):
     model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
     skip_connection: bool = False
     layer_norm: bool = True
-    n_layers: int = 6  # Number of layers in Query GNN (e.g. TripleModel)
-    jk: Literal['cat', 'max', 'lstm'] | None = 'cat'
     dropout: float = 0.0
 
 
@@ -56,6 +54,7 @@ class Config(BaseSettings):
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
+    laplacian_k: int = 0  # Number of Laplacian eigenvectors for Positional Encoding
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
