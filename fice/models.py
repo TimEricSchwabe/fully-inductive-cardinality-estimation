@@ -320,6 +320,7 @@ class BipartiteGraphGNN(nn.Module):
         self,
         input_dim: int = 128,
         hidden_dims: tuple = (128, 128),
+        message_func: str = 'gine',
         conditioning: str = "false",      
         layer_norm: bool = False,
         skip_connection: bool = True,
@@ -336,6 +337,7 @@ class BipartiteGraphGNN(nn.Module):
         super().__init__()
         self.conditioning = conditioning     
         self.input_dim = input_dim
+        self.message_func = message_func
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
 
@@ -346,9 +348,14 @@ class BipartiteGraphGNN(nn.Module):
         self.layers = nn.ModuleList()
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
-            self.layers.append(
-                GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
-            )
+            if self.message_func == 'gine':
+                self.layers.append(
+                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
+            else:
+                self.layers.append(
+                    GATv2Conv(dims[i], dims[i + 1], heads=1, concat=False, edge_dim=input_dim)
+                )
 
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
@@ -505,6 +512,7 @@ class FICE(nn.Module):
             self.embedding_model = BipartiteGraphGNN(
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,
+                message_func=relation_message_func,
                 layer_norm=relation_layer_norm, # Use relation norm as default for unified
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
@@ -529,6 +537,7 @@ class FICE(nn.Module):
                 self.relation_model = BipartiteGraphGNN(
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_relnet,
+                    message_func=relation_message_func,
                     layer_norm=relation_layer_norm,
                     skip_connection=relation_skip_connection,
                     conditioning=conditioning,
