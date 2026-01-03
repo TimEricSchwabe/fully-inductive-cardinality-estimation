@@ -5,6 +5,7 @@ import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv, GINEConv
 from torch_geometric.utils import degree
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
+from torch_geometric.data import Data
 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
 
@@ -146,6 +147,9 @@ class EntityGNN(nn.Module):
        
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
+        
+        # Clean up large batched tensors
+        del batched_edge_index, edge_attr
         
         return x
 
@@ -298,6 +302,10 @@ class RelationGNN(nn.Module):
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
+        
+        # Clean up large batched tensors
+        del edge_index, edge_type, edge_attr
+        
         return out
 
 
@@ -447,6 +455,10 @@ class BipartiteGraphGNN(nn.Module):
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
+        
+        # Clean up large batched tensors
+        del edge_index, edge_attr, edge_attr_stacked
+        
         return out
 
 
@@ -693,31 +705,23 @@ class FICE(nn.Module):
             edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_features
         
+        # Universal log-transform for counts
+        x_counts = torch.log1p(batch.x[:, :3])
+        e_counts = torch.log1p(batch.edge_attr[:, :3])
+
         if self.query_gnn_type == 'QueryCardinalityGNN':
-            unbound_nodes = batch.node_embedding_indices < 0
-            bound_nodes = ~unbound_nodes
-            
-            # For unbound nodes: set first 3 dims to log(graph_size)
             log_graph_size = torch.log1p(graph_size.float())
-            batch.x[unbound_nodes, :3] = log_graph_size
             
-            # For bound nodes: replace 0s with 1s in first 3 dims, then apply log
-            first_3_dims = batch.x[bound_nodes, :3]
-            first_3_dims = torch.where(first_3_dims == 0, torch.ones_like(first_3_dims), first_3_dims)
-            batch.x[bound_nodes, :3] = torch.log1p(first_3_dims)
+            unbound_nodes = batch.node_embedding_indices < 0
+            x_counts = torch.where(unbound_nodes.unsqueeze(-1), log_graph_size, x_counts)
             
-            # Process edge features (batch.edge_attr)
             unbound_edges = batch.edge_embedding_indices < 0
-            bound_edges = ~unbound_edges
-            
-            # For unbound edges: set first 3 dims to log(graph_size)
-            batch.edge_attr[unbound_edges, :3] = log_graph_size
-            
-            # For bound edges: replace 0s with 1s in first 3 dims, then apply log
-            edge_first_3_dims = batch.edge_attr[bound_edges, :3]
-            edge_first_3_dims = torch.where(edge_first_3_dims == 0, torch.ones_like(edge_first_3_dims), edge_first_3_dims)
-            batch.edge_attr[bound_edges, :3] = torch.log1p(edge_first_3_dims)
-            
+            e_counts = torch.where(unbound_edges.unsqueeze(-1), log_graph_size, e_counts)
+
+        batch.x = torch.cat([x_counts, batch.x[:, 3:]], dim=1)
+        batch.edge_attr = torch.cat([e_counts, batch.edge_attr[:, 3:]], dim=1)
+        
+        if self.query_gnn_type == 'QueryCardinalityGNN':
             log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
         elif self.query_gnn_type == 'TripleModel':
             log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
@@ -799,9 +803,12 @@ class FiceBinary(nn.Module):
             edge_attr = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_attr
 
-        # ------------------------------------------------------------------
-        # Cardinality prediction through query GNN
-        # ------------------------------------------------------------------
+        x_counts = torch.log1p(batch.x[:, :3])
+        batch.x = torch.cat([x_counts, batch.x[:, 3:]], dim=1)
+
+        e_counts = torch.log1p(batch.edge_attr[:, :3])
+        batch.edge_attr = torch.cat([e_counts, batch.edge_attr[:, 3:]], dim=1)
+
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
         return log_cardinality_pred
 
@@ -820,7 +827,12 @@ class FiceIndependent(nn.Module):
 
     # --- forward ----------------------------------------------------------------
     def forward(self, data, relation_graph, batch, graph_size):
+        
+        x_counts = torch.log1p(batch.x[:, :3])
+        batch.x = torch.cat([x_counts, batch.x[:, 3:]], dim=1)
 
+        e_counts = torch.log1p(batch.edge_attr[:, :3])
+        batch.edge_attr = torch.cat([e_counts, batch.edge_attr[:, 3:]], dim=1)
 
         log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
         return log_cardinality_pred

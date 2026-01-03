@@ -439,6 +439,16 @@ def train_epoch(state: TrainingState):
                     "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
                 }
             )
+            # Clean up batch tensors to prevent memory accumulation
+            del graph, relation_graph, log_cardinality_pred, loss
+            if bipartite_graph is not None:
+                del bipartite_graph, bipartite_graph_gloal_to_local
+            
+            # Periodic cache cleanup
+            if batch_idx % 10 == 0 and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+
+
 
     progress_bar.close()
     # Clear GPU cache after training epoch
