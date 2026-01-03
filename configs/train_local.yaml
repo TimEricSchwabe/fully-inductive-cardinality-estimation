@@ -116,6 +116,6 @@ relation_gnn:
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: False
+  skip_connection: True
   layer_norm: True
   dropout: 0.0
