@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "BaseRun"
+wandb_run_name: "GineRunWithRandom"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -103,13 +103,13 @@ embedding_dim: 128
 laplacian_k: 0
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT"
+  message_func: "GAT" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: False
   layer_norm: True
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine"
+  message_func: "GAT" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: False
   layer_norm: True
