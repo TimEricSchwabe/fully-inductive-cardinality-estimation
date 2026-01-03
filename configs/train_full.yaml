@@ -96,7 +96,7 @@ device: "auto"
 weight_decay: null # Default from config.py defualt is 0.01
 n_embedding_layers: 2
 GNNNeighborhood: [100, 100]
-Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
+Conditioning: "random" # choices are "seed only", "all", "false", "random". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1; random sets all to random values
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
@@ -105,13 +105,13 @@ laplacian_k: 0
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
 
 query_gnn:

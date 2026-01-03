@@ -61,6 +61,8 @@ class EntityGNN(nn.Module):
         # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
         if self.conditioning in ["false", "all"]:
             x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
+        elif self.conditioning == "random":
+            x = torch.randn(batch_size, data.num_nodes, self.input_dim, device=device)
         elif self.conditioning == "seed only":
             x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
         else:
@@ -217,6 +219,8 @@ class RelationGNN(nn.Module):
 
         if   self.conditioning in ["false", "all"]:
             h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
+        elif self.conditioning == "random":
+            h = torch.randn(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
         elif self.conditioning == "seed only":
             h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
         else:
@@ -355,6 +359,8 @@ class BipartiteGraphGNN(nn.Module):
 
         if   self.conditioning in ["false", "all"]:
             h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
+        elif self.conditioning == "random":
+            h = torch.randn(bs, num_nodes, self.input_dim, device=device)
         elif self.conditioning == "seed only":
             h = torch.zeros(bs, num_nodes, self.input_dim, device=device)
         else:

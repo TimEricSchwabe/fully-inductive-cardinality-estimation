@@ -637,10 +637,14 @@ def train_model(
                     artifact.add_file(str(best_model_path))
                     wandb_log_artifact_with_retry(artifact)
                         
-                    wandb_log_with_retry({
-                        "best_test_loss": state.best_test_loss,
-                        "best_model_epoch": state.training_context.current_epoch
-                    })
+                    try:
+                        # Also log the best test loss metric
+                        wandb_log_with_retry({
+                            "best_test_loss": state.best_test_loss,
+                            "best_model_epoch": state.training_context.current_epoch
+                        })
+                    except Exception as e:
+                        logger.warning(f"Failed to log best test loss metrics: {e}")
         else:
             logger.info(
                 f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"

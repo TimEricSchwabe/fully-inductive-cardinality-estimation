@@ -48,7 +48,7 @@ class Config(BaseSettings):
     weight_decay: Optional[float] = None  # Optional weight decay for optimizer
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
     GNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
-    Conditioning: Literal['seed only', 'all', 'false'] = "false"  # Conditioning strategy for GNN
+    Conditioning: Literal['seed only', 'all', 'false', 'random'] = "false"  # Conditioning strategy for GNN
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
