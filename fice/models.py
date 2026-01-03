@@ -122,12 +122,18 @@ class EntityGNN(nn.Module):
         batched_edge_index = torch.cat(batch_edge_list, dim=1)
         batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
 
+        del batch_edge_list
+        del batched_edge_type_list
+
         # Shape (batch_size * num_edges) - maps each edge to its batch index
         all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
 
         # Since relation embeddings are different for each batch, we now use all_edges to pick the correct batch and batched_edge_type to get the global id of the relation
         edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
+        del all_edges
+        del batched_edge_type
+
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
             x = layer(x, batched_edge_index, edge_attr=edge_attr)
@@ -271,6 +277,9 @@ class RelationGNN(nn.Module):
         edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
         edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
 
+        del batch_edge_list
+        del batch_type_list
+
         edge_attr  = self.rel_emb(edge_type)  
 
         x = h.view(bs * num_nodes, -1)
@@ -407,6 +416,7 @@ class BipartiteGraphGNN(nn.Module):
             offset = b * num_nodes
             batch_edge_list.append(rel_edges + offset)
         edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+        del batch_edge_list
 
         # Encode edge attributes (Count, Direction)
         # 1. Replicate edge attributes for batch
@@ -415,6 +425,7 @@ class BipartiteGraphGNN(nn.Module):
         for b in range(bs):
             batch_edge_attr_list.append(rel_edge_attr)
         edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
+        del batch_edge_attr_list
         
         # 2. Project to embedding dimension
         edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]
@@ -611,6 +622,8 @@ class FICE(nn.Module):
             edge_embeddings = edge_embeddings_gathered # For plotting variable name consistency
             node_embeddings = node_embeddings_gathered # For plotting variable name consistency
 
+            del all_embeddings
+
             # Merge with edge attributes
             edge_last = torch.where(bound_edges.unsqueeze(-1),
                                     edge_embeddings_gathered,
@@ -649,6 +662,8 @@ class FICE(nn.Module):
 
                 # HACK: not the most efficient
                 node_embeddings = node_representations[graph_indices, embedding_indices]
+                
+                del node_representations
 
                 # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
                 last = torch.where(bound_nodes.unsqueeze(-1),          
@@ -667,6 +682,8 @@ class FICE(nn.Module):
                 edge_embedding_indices = batch.original_edge_embedding_indices
 
             edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
+
+            del relation_representations
 
             # Selectively replace last 64 (128) dims for edges with actual relations and keeping first 3 dims for all
             edge_last = torch.where(bound_edges.unsqueeze(-1),
