@@ -3,82 +3,82 @@ data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_star_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "validation"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_path_queries"
     batch_size: 8
-    num_queries: 1000
+    num_queries: 10000
     type: "train-val"
 
 
