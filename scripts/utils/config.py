@@ -32,6 +32,11 @@ class QueryGNNConfig(BaseSettings):
     layer_norm: bool = True
     dropout: float = 0.0
 
+class SchedulerConfig(BaseSettings):
+    enabled: bool = True
+    mode: Literal['min', 'max'] = 'min'
+    factor: float = 0.5
+    patience: int = 5
 
 
 class Config(BaseSettings):
@@ -59,6 +64,7 @@ class Config(BaseSettings):
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
     relation_gnn: RelationGNNConfig = RelationGNNConfig()
+    scheduler: SchedulerConfig = SchedulerConfig()
     
 
     # class Config:

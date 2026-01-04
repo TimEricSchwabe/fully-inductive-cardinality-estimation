@@ -121,7 +121,7 @@ def setup_directories(config):
     return run_dir, log_dir, checkpoint_dir
 
 
-def initialize_model_components(context: TrainingContext, model_state_dict: dict = None, optimizer_state_dict: dict = None) -> ModelComponents:
+def initialize_model_components(context: TrainingContext, model_state_dict: dict = None, optimizer_state_dict: dict = None, scheduler_state_dict: dict = None) -> ModelComponents:
     """Initialize the FICE model and optimizer."""
     config = context.config
     device = context.device
@@ -188,7 +188,6 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     if model_state_dict is not None:
         # TODO: this might not work if different models are used, model fo the state_dict and the current model must match
         model.load_state_dict(model_state_dict)
-        logger.info("Model state loaded from checkpoint.")
 
     model.to(device)
 
@@ -208,9 +207,20 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
         )
     if optimizer_state_dict is not None:
         optimizer.load_state_dict(optimizer_state_dict)
-        logger.info("Optimizer state loaded from checkpoint.")
 
-    return ModelComponents(model=model, optimizer=optimizer)
+    # Initialize scheduler (ReduceLROnPlateau)
+    scheduler = None
+    if optimizer is not None and config.scheduler.enabled:
+        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer, 
+            mode=config.scheduler.mode, 
+            factor=config.scheduler.factor, 
+            patience=config.scheduler.patience, 
+        )
+        if scheduler_state_dict is not None:
+            scheduler.load_state_dict(scheduler_state_dict)
+
+    return ModelComponents(model=model, optimizer=optimizer, scheduler=scheduler)
 
 
 def tensor_to_numpy(tensor):
@@ -655,6 +665,15 @@ def train_model(
                         })
                     except Exception as e:
                         logger.warning(f"Failed to log best test loss metrics: {e}")
+            
+            # Step scheduler
+            if state.model_components.scheduler is not None:
+                state.model_components.scheduler.step(avg_test_loss)
+                if state.model_components.optimizer is not None:
+                    current_lr = state.model_components.optimizer.param_groups[0]['lr']
+                    logging.info(f"Learning rate adjusted to: {current_lr:.6f}")
+                    if state.training_context.use_wandb:
+                        wandb_log_with_retry({"learning_rate": current_lr, "epoch": epoch})
         else:
             logger.info(
                 f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
@@ -793,11 +812,13 @@ def main():
         config = load_config_yaml(args.config) if args.config is not None else Config(**checkpoint['config'])
         model_state_dict = checkpoint['model_state_dict']
         optimizer_state_dict = checkpoint['optimizer_state_dict']
+        scheduler_state_dict = checkpoint.get('scheduler_state_dict')
     else:
         default_config_path = "configs/train_local.yaml"
         config = load_config_yaml(args.config or default_config_path)
         model_state_dict = None
         optimizer_state_dict = None
+        scheduler_state_dict = None
 
 
     run_dir, log_dir, checkpoint_dir = setup_directories(config)
@@ -843,12 +864,6 @@ def main():
         json.dump(config_dict, f, indent=2)
     
     logger.info(f"Config saved to {config_yaml_path} and {config_json_path}")
-
-    # Log final configuration (after merging with command-line args)
-    logger.info("Final Configuration (after command-line overrides):")
-    pprint.pprint(config.model_dump())
-    # for key, value in config.model_dump().items():
-    #     logger.info(f"  {key}: {value}")
 
     # Set random seeds for reproducibility
     processed_seed = process_seed(config.seed)
@@ -912,7 +927,7 @@ def main():
 
     # Initialize model and optimizer
     logger.info("Initializing model...")
-    model_components = initialize_model_components(context, model_state_dict=model_state_dict, optimizer_state_dict=optimizer_state_dict)
+    model_components = initialize_model_components(context, model_state_dict=model_state_dict, optimizer_state_dict=optimizer_state_dict, scheduler_state_dict=scheduler_state_dict)
 
     model_components.model = model_components.model.to(device)
 

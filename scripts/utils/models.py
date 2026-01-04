@@ -26,6 +26,7 @@ class ModelComponents:
     """Container for model and optimizer."""
     model: torch.nn.Module
     optimizer: torch.optim.Optimizer
+    scheduler: torch.optim.lr_scheduler.LRScheduler = None
 
 
 @dataclass

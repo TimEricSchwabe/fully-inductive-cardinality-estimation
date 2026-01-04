@@ -43,12 +43,15 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
 
     model_state_dict = state.model_components.model.state_dict()
     optimizer_state_dict = state.model_components.optimizer.state_dict()
+    
     training_state = {
         'model_state_dict': model_state_dict,
         'optimizer_state_dict': optimizer_state_dict,
         'config': state.training_context.config.model_dump(),
     }
-
+    
+    if state.model_components.scheduler is not None:
+        training_state['scheduler_state_dict'] = state.model_components.scheduler.state_dict()
 
     torch.save(training_state, checkpoint_path)
     epoch = state.training_context.current_epoch
