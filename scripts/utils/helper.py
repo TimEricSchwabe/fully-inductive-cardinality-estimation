@@ -275,7 +275,10 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
     
     # Optional: Downsample if too many vectors to avoid creating a massive NxN matrix
     if vecs.size(0) > sample_size:
-        perm = torch.randperm(vecs.size(0))
+        # Use a fixed generator to ensure we sample the same nodes every time (for consistent plots across epochs)
+        g = torch.Generator()
+        g.manual_seed(42)
+        perm = torch.randperm(vecs.size(0), generator=g)
         vecs = vecs[perm[:sample_size]]
     
     # 1. Normalize vectors to unit length (L2 norm)

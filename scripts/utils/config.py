@@ -45,6 +45,7 @@ class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use
     epochs: int = 10  # Number of training epochs
     learning_rate: float = 1e-4  # Learning rate for optimizer
+    embedding_learning_rate: float = 1e-5 # Learning rate for embedding GNNs
     train_ratio: float = 0.8  # Ratio of data used for training
     output_dir: str = "output/"  # Directory for output files
     save_every: int = 5  # Save checkpoint every N epochs
@@ -62,6 +63,7 @@ class Config(BaseSettings):
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
     laplacian_k: int = 0  # Number of Laplacian eigenvectors for Positional Encoding
+    gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()

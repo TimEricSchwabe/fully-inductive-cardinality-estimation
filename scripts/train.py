@@ -182,6 +182,7 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             query_layer_norm=query_gnn_layer_norm,
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
+            laplacian_k=config.laplacian_k,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
@@ -430,7 +431,10 @@ def train_epoch(state: TrainingState):
             # Backward pass
             if state.model_components.optimizer is not None:
                 loss.backward()
-                torch.nn.utils.clip_grad_norm_(state.model_components.model.parameters(), max_norm=1.0)
+                torch.nn.utils.clip_grad_norm_(
+                    state.model_components.model.parameters(), 
+                    max_norm=state.training_context.config.gradient_clipping
+                )
                 state.model_components.optimizer.step()
 
             # Log batch

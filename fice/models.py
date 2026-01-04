@@ -20,7 +20,20 @@ class EntityGNN(nn.Module):
         self.conditioning = conditioning
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
+        # Feature encoder to project structural features to hidden dimension
         self.dropout = dropout
+        self.laplacian_k = laplacian_k
+        
+        # Base Feature Dimension
+        if conditioning == 'random':
+             self.base_dim = input_dim
+        else:
+             self.base_dim = 1 # Constant 0.1
+             
+        # Input features: [Base + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
+        self.raw_in_dim = self.base_dim + 1 + self.laplacian_k + 1
+        self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
+        self.input_norm = nn.LayerNorm(input_dim)
 
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -48,10 +61,6 @@ class EntityGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = laplacian_k
-        if self.laplacian_k > 0:
-            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
-
 
     def forward(self, data, batch=None, relation_representations=None):
         if batch is None:
@@ -61,58 +70,55 @@ class EntityGNN(nn.Module):
             batch_size = batch.batch_size
             device = batch.edge_index.device
 
-        # Preparing node features based on conditioning strategy
-        # Conditioning choices: "false" (all 0.1), "seed only" (seeds=1, rest=0), "all" (seeds=1, rest=0.1)
-        if self.conditioning in ["false", "all"]:
-            x = torch.ones(batch_size, data.num_nodes, self.input_dim, device=device) * 0.1
-        elif self.conditioning == "random":
-            x = torch.randn(batch_size, data.num_nodes, self.input_dim, device=device)
-        elif self.conditioning == "seed only":
-            x = torch.zeros(batch_size, data.num_nodes, self.input_dim, device=device)
+        num_nodes = data.num_nodes
+
+        # --- Structural Feature Construction ---
+        # 1. Log Degree
+        deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+        feat_deg = torch.log1p(deg).unsqueeze(-1).to(device)  # (num_nodes, 1)
+
+        # 2. Laplacian PE (assumed pre-computed)
+        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
+            pe = data.laplacian_eigenvector_pe.to(device)
+            if pe.shape[-1] > self.laplacian_k:
+                pe = pe[:, :self.laplacian_k]
+            elif pe.shape[-1] < self.laplacian_k:
+                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+                pe = torch.cat([pe, padding], dim=-1)
+            feat_pe = pe
         else:
-            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
-
-        # --- FIX 1: Symmetry Breaking with Degrees ---
-        # Inject log(degree) into the first dimension of the features to distinguish nodes structurally
-        if data.edge_index.numel() > 0:
-            deg = degree(data.edge_index[0], data.num_nodes, dtype=torch.float)
-            # Normalize/Log degree to keep it in a reasonable range
-            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(batch_size, -1).unsqueeze(-1).to(device)
-            # Add to the first dimension of x (broadcast over batch)
-            x = x.clone()
-            x[:, :, 0] += deg_feature.squeeze(-1)
-
-        if self.laplacian_k > 0:
-            try:
-                data = self.le_pw_transform(data)
-                # Extract PE: shape (num_nodes, walk_length)
-                rw_pe = data.laplacian_eigenvector_pe.to(device)
-                
-                # Expand to batch size: (batch_size, num_nodes, walk_length)
-                rw_pe_expanded = rw_pe.unsqueeze(0).expand(batch_size, -1, -1)
-                
-                # Add to x, skipping the 0-th dimension used by degree
-                # Ensure we don't exceed embedding dimensions
-                dim_limit = min(self.laplacian_k, x.size(-1) - 1)
-                x[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
-            except Exception:
-                print(f"Laplacian Eigenvector PE computation failed")
-                pass # Fallback to random features if Eigendecomposition fails
-
-        x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
-
-        # Set input of nodes appearing in query based on conditioning (labelling trick)
+            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
+        
+        # 3. Seed Flag (varies per batch element)
+        feat_seed = torch.zeros(batch_size, num_nodes, 1, device=device)
         if self.conditioning != "false" and batch is not None:
-            # Indices of the nodes that appear in the query batch
             node_indices = batch.node_embedding_indices 
             valid = node_indices != -1
-            graph_idx = batch.batch[valid] # gives the batch index for the bound nodes
-            node_pos = node_indices[valid] # gives the global node ids of the bound nodes
-            rows = graph_idx * data.num_nodes + node_pos      # the indices in x of the bound nodes
-            x[rows] = 1.0   
+            graph_idx = batch.batch[valid]
+            node_pos = node_indices[valid]
+            feat_seed[graph_idx, node_pos] = 1.0
+
+        # 4. Base Features
+        if self.conditioning == 'random':
+            feat_base = torch.randn(batch_size, num_nodes, self.input_dim, device=device)
+        else:
+            feat_base = torch.ones(batch_size, num_nodes, 1, device=device) * 0.1
+
+        # Expand shared features to batch
+        feat_deg = feat_deg.unsqueeze(0).expand(batch_size, -1, -1)
+        feat_pe = feat_pe.unsqueeze(0).expand(batch_size, -1, -1)
+
+        # Combine: [Base | Degree | PE | Seed]
+        raw_x = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
         
+        # Project to hidden dimension
+        x = self.feature_encoder(raw_x)
+        x = self.input_norm(x)
+        x = F.silu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = x.view(-1, x.shape[-1])  # (batch_size * num_nodes, input_dim)
+
         # Create batched edge_index once: replicate edges for each batch element
-        num_nodes = data.num_nodes
         edge_index = data.edge_index
         # Create edge_index for batched graph: replicate edges for each batch element
         batch_edge_list = []
@@ -200,6 +206,13 @@ class RelationGNN(nn.Module):
         # 4 trainable relation embeddings
         self.rel_emb = nn.Embedding(num_relation, input_dim)
 
+        # Feature encoder to project structural features + base embeddings
+        # Input features: [BaseRelEmb(input_dim) + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
+        self.laplacian_k = laplacian_k
+        self.raw_in_dim = input_dim + 1 + self.laplacian_k + 1
+        self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
+        self.input_norm = nn.LayerNorm(input_dim)
+
         self.layers = nn.ModuleList()
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
@@ -217,9 +230,6 @@ class RelationGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = laplacian_k
-        if self.laplacian_k > 0:
-            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
     def forward(self, data, batch=None):
         """
@@ -236,46 +246,47 @@ class RelationGNN(nn.Module):
             device = batch.edge_index.device
         num_nodes = data.num_nodes
 
-        if   self.conditioning in ["false", "all"]:
-            h = torch.ones(bs, num_nodes, self.rel_emb.embedding_dim, device=device) * 0.1
-        elif self.conditioning == "random":
-            h = torch.randn(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
-        elif self.conditioning == "seed only":
-            h = torch.zeros(bs, num_nodes, self.rel_emb.embedding_dim, device=device)
+        # --- Structural Feature Construction ---
+        # 0. Base Relation Embeddings (fixed for all batch elements)
+        # Assuming nodes in RelationGraph correspond to relation types [0..num_nodes-1]
+        node_ids = torch.arange(num_nodes, device=device)
+        feat_base = self.rel_emb(node_ids) # (num_nodes, input_dim)
+
+        # 1. Log Degree
+        deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+        feat_deg = torch.log1p(deg).unsqueeze(-1) # (num_nodes, 1)
+
+        # 2. Laplacian PE
+        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
+            pe = data.laplacian_eigenvector_pe.to(device)
+            if pe.shape[-1] > self.laplacian_k:
+                pe = pe[:, :self.laplacian_k]
+            elif pe.shape[-1] < self.laplacian_k:
+                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+                pe = torch.cat([pe, padding], dim=-1)
+            feat_pe = pe
         else:
-            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
+            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
 
-        # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
-        # Inject log(degree) into the first dimension to distinguish relations structurally
-        if data.edge_index.numel() > 0:
-            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
-            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
-            h = h.clone()
-            h[:, :, 0] += deg_feature.squeeze(-1)
-
-        if self.laplacian_k > 0:
-            try:
-                data = self.le_pw_transform(data)
-                # Extract PE: shape (num_nodes, walk_length)
-                rw_pe = data.laplacian_eigenvector_pe.to(device)
-                
-                # Expand to batch size: (batch_size, num_nodes, walk_length)
-                rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
-
-                # Add to h, skipping the 0-th dimension used by degree
-                # Ensure we don't exceed embedding dimensions
-                dim_limit = min(self.laplacian_k, h.size(-1) - 1)
-                h[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
-            except Exception as e:
-                pass # Fallback to random features if Eigendecomposition fails
-
-        # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
+        # 3. Seed Flag (varies per batch element)
+        feat_seed = torch.zeros(bs, num_nodes, 1, device=device)
         if self.conditioning != "false" and batch is not None:
-            valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
-            edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
-            graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
-            rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
-            h[graph_idx, rel_idx] = 1.0
+            valid_mask   = batch.edge_embedding_indices != -1
+            edge2graph   = batch.batch[batch.edge_index[0]]
+            graph_idx    = edge2graph[valid_mask]
+            rel_idx      = batch.edge_embedding_indices[valid_mask]
+            feat_seed[graph_idx, rel_idx] = 1.0
+
+        # Expand shared features to batch
+        feat_base = feat_base.unsqueeze(0).expand(bs, -1, -1)
+        feat_deg = feat_deg.unsqueeze(0).expand(bs, -1, -1)
+        feat_pe = feat_pe.unsqueeze(0).expand(bs, -1, -1)
+
+        # Project to hidden dimension
+        h = self.feature_encoder(raw_h)
+        h = self.input_norm(h)
+        h = F.silu(h)
+        h = F.dropout(h, p=self.dropout, training=self.training)
 
         rel_edges  = data.edge_index        # (2, E)
         rel_types  = data.edge_type         # (E,)
@@ -359,6 +370,16 @@ class BipartiteGraphGNN(nn.Module):
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
 
+        # Feature encoder to project structural features to hidden dimension
+        # Input features: [Base + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
+        self.laplacian_k = laplacian_k
+        if conditioning == "random":
+            self.base_dim = input_dim
+        else:
+            self.base_dim = 1
+        self.raw_in_dim = self.base_dim + 1 + self.laplacian_k + 1
+        self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
+        self.input_norm = nn.LayerNorm(input_dim)
 
         self.layers = nn.ModuleList()
         dims = (input_dim, *hidden_dims)
@@ -376,9 +397,6 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        self.laplacian_k = laplacian_k
-        if self.laplacian_k > 0:
-            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
 
     def forward(self, data, batch=None):
         """
@@ -395,47 +413,57 @@ class BipartiteGraphGNN(nn.Module):
             device = batch.edge_index.device
         num_nodes = data.num_nodes
 
+        # --- Structural Feature Construction ---
+        # 1. Log Degree
+        deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+        feat_deg = torch.log1p(deg).unsqueeze(-1).to(device) # (num_nodes, 1)
 
-        if   self.conditioning in ["false", "all"]:
-            h = torch.ones(bs, num_nodes, self.input_dim, device=device) * 0.1
-        elif self.conditioning == "random":
-            h = torch.randn(bs, num_nodes, self.input_dim, device=device)
-        elif self.conditioning == "seed only":
-            h = torch.zeros(bs, num_nodes, self.input_dim, device=device)
+        # 2. Laplacian PE
+        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
+            pe = data.laplacian_eigenvector_pe.to(device)
+            if pe.shape[-1] > self.laplacian_k:
+                pe = pe[:, :self.laplacian_k]
+            elif pe.shape[-1] < self.laplacian_k:
+                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+                pe = torch.cat([pe, padding], dim=-1)
+            feat_pe = pe
         else:
-            raise ValueError(f"Invalid conditioning value: {self.conditioning}")
+            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
 
-        # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
-        # Inject log(degree) into the first dimension to distinguish relations structurally
-        if data.edge_index.numel() > 0:
-            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
-            deg_feature = torch.log1p(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
-            h = h.clone()
-            h[:, :, 0] += deg_feature.squeeze(-1)
-
-        if self.laplacian_k > 0:
-            try:
-                data = self.le_pw_transform(data)
-                # Extract PE: shape (num_nodes, walk_length)
-                rw_pe = data.laplacian_eigenvector_pe.to(device)
-                
-                # Expand to batch size: (batch_size, num_nodes, walk_length)
-                rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
-
-                # Add to h, skipping the 0-th dimension used by degree
-                # Ensure we don't exceed embedding dimensions
-                dim_limit = min(self.laplacian_k, h.size(-1) - 1)
-                h[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
-            except Exception as e:
-                pass # Fallback to random features if Eigendecomposition fails
-
-        # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
+        # 3. Seed Flag (varies per batch element)
+        feat_seed = torch.zeros(bs, num_nodes, 1, device=device)
         if self.conditioning != "false" and batch is not None:
-            valid_mask   = batch.edge_embedding_indices != -1       # which edges are bound (global id of the edge) and wich arenot (-1)
-            edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
-            graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
-            rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
-            h[graph_idx, rel_idx] = 1.0
+            # entities
+            valid_mask_n = batch.node_embedding_indices != -1
+            graph_idx_n  = batch.batch[valid_mask_n]
+            node_idx_n   = batch.node_embedding_indices[valid_mask_n]
+            feat_seed[graph_idx_n, node_idx_n] = 1.0
+            
+            # relations
+            valid_mask_e = batch.edge_embedding_indices != -1
+            edge2graph_e = batch.batch[batch.edge_index[0]]
+            graph_idx_e  = edge2graph_e[valid_mask_e]
+            rel_idx_e    = batch.edge_embedding_indices[valid_mask_e]
+            feat_seed[graph_idx_e, rel_idx_e] = 1.0
+
+        # 4. Base Features
+        if self.conditioning == 'random':
+            feat_base = torch.randn(bs, num_nodes, self.input_dim, device=device)
+        else:
+            feat_base = torch.ones(bs, num_nodes, 1, device=device) * 0.1
+
+        # Expand shared features to batch
+        feat_deg = feat_deg.unsqueeze(0).expand(bs, -1, -1)
+        feat_pe = feat_pe.unsqueeze(0).expand(bs, -1, -1)
+
+        # Combine: [Base | Degree | PE | Seed]
+        raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
+        
+        # Project to hidden dimension
+        h = self.feature_encoder(raw_h)
+        h = self.input_norm(h)
+        h = F.silu(h)
+        h = F.dropout(h, p=self.dropout, training=self.training)
 
         # TODO: Write without for loops (vectorize it)
         rel_edges  = data.edge_index        # (2, E)

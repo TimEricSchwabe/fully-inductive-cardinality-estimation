@@ -15,6 +15,7 @@ from fice import datasets
 from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
 logger = logging.getLogger(__name__)
 
@@ -325,9 +326,28 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         dataset_name = data_config.dataset
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
+        
+        # Apply Laplacian PE transform if requested in config
+        if isinstance(config, Config) and config.laplacian_k > 0:
+            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name}...")
+            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
+            dataset = transform(dataset)
+            
+            # Also apply to relation graph if it exists
+            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None:
+                logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} relation graph...")
+                dataset.relation_graph = transform(dataset.relation_graph)
+
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
         bipartite_graph = make_bipartit_graph(dataset)
+        
+        # Also apply Laplacian PE to bipartite graph if requested
+        if isinstance(config, Config) and config.laplacian_k > 0:
+            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} bipartite graph...")
+            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
+            bipartite_graph = transform(bipartite_graph)
+
         dataset.bipartite_graph = bipartite_graph
 
 
