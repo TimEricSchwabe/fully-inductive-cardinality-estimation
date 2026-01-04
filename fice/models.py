@@ -11,7 +11,7 @@ from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryG
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, laplacian_k=0, **kwargs):
+    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, laplacian_k=0, dropout=0.0, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -20,13 +20,16 @@ class EntityGNN(nn.Module):
         self.conditioning = conditioning
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
+        self.dropout = dropout
 
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
                 nn.SiLU(),
+                nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
+                nn.Dropout(p=self.dropout),
             )
 
         self.layers = nn.ModuleList()
@@ -144,6 +147,8 @@ class EntityGNN(nn.Module):
 
             if self.skip_connection:
                 x = x + x_in
+            
+            x = F.dropout(x, p=self.dropout, training=self.training)
        
         # Reshape once at the end: (batch_size * num_nodes, output_dim) -> (batch_size, num_nodes, output_dim)
         x = x.view(batch_size, num_nodes, -1)
@@ -171,13 +176,16 @@ class RelationGNN(nn.Module):
         layer_norm: bool = False,
         skip_connection: bool = True,
         laplacian_k: int = 0,
+        dropout: float = 0.0,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
                 nn.SiLU(),
+                nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
+                nn.Dropout(p=self.dropout),
             )
 
         super().__init__()
@@ -187,6 +195,7 @@ class RelationGNN(nn.Module):
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
         self.message_func = message_func
+        self.dropout = dropout
 
         # 4 trainable relation embeddings
         self.rel_emb = nn.Embedding(num_relation, input_dim)
@@ -299,6 +308,8 @@ class RelationGNN(nn.Module):
             # --- FIX 2: Residual Connection ---
             if self.skip_connection:
                 x = x + x_in
+            
+            x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
@@ -325,13 +336,16 @@ class BipartiteGraphGNN(nn.Module):
         layer_norm: bool = False,
         skip_connection: bool = True,
         laplacian_k: int = 0,
+        dropout: float = 0.0,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
                 nn.SiLU(), 
+                nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
+                nn.Dropout(p=self.dropout),
             )
 
         super().__init__()
@@ -340,6 +354,7 @@ class BipartiteGraphGNN(nn.Module):
         self.message_func = message_func
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
+        self.dropout = dropout
 
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
@@ -458,6 +473,8 @@ class BipartiteGraphGNN(nn.Module):
             # --- FIX 2: Residual Connection ---
             if x.shape == x_in.shape and self.skip_connection:
                 x = x + x_in
+            
+            x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
@@ -491,7 +508,9 @@ class FICE(nn.Module):
                  query_skip_connection=False,
                  query_gnn_dropout=0.0,
                  # Global params
-                 laplacian_k=0
+                 laplacian_k=0,
+                 entity_dropout=0.0,
+                 relation_dropout=0.0
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
@@ -516,7 +535,8 @@ class FICE(nn.Module):
                 layer_norm=relation_layer_norm, # Use relation norm as default for unified
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
-                laplacian_k=laplacian_k
+                laplacian_k=laplacian_k,
+                dropout=relation_dropout # Using relation_dropout as default for unified
             )
 
         else:
@@ -530,7 +550,8 @@ class FICE(nn.Module):
                     layer_norm=relation_layer_norm,
                     skip_connection=relation_skip_connection,
                     conditioning=conditioning,
-                    laplacian_k=laplacian_k
+                    laplacian_k=laplacian_k,
+                    dropout=relation_dropout
                 )
             elif self.relation_graph_mode == "bipartite":
                 # If using bipartite graph for relations, we use the unified model
@@ -541,7 +562,8 @@ class FICE(nn.Module):
                     layer_norm=relation_layer_norm,
                     skip_connection=relation_skip_connection,
                     conditioning=conditioning,
-                    laplacian_k=laplacian_k
+                    laplacian_k=laplacian_k,
+                    dropout=relation_dropout
                 )
             else:
                 raise ValueError(f"Invalid relation message function: {relation_message_func}")
@@ -555,7 +577,8 @@ class FICE(nn.Module):
                     conditioning=conditioning,
                     layer_norm=entity_layer_norm,
                     skip_connection=entity_skip_connection,
-                    laplacian_k=laplacian_k
+                    laplacian_k=laplacian_k,
+                    dropout=entity_dropout
                 )
             elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
                 raise ValueError(f"Entity graph bipartite but relation graph standard is not supported.")

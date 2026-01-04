@@ -107,12 +107,14 @@ entity_gnn:
   model: "EntityGNN"
   skip_connection: True
   layer_norm: True
+  dropout: 0.2
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
   layer_norm: True
+  dropout: 0.2
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"

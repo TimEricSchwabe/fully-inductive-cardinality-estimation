@@ -136,12 +136,14 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     entity_message_func = config.entity_gnn.message_func
     entity_layer_norm = config.entity_gnn.layer_norm
     entity_skip_connection = config.entity_gnn.skip_connection
+    entity_dropout = config.entity_gnn.dropout
     entity_graph_mode = "bipartite" if config.entity_gnn.model == "BipartiteGraphGNN" else "KG"
 
     # Relation GNN params
     relation_message_func = config.relation_gnn.message_func
     relation_layer_norm = config.relation_gnn.layer_norm
     relation_skip_connection = config.relation_gnn.skip_connection
+    relation_dropout = config.relation_gnn.dropout
     relation_graph_mode = "bipartite" if config.relation_gnn.model == "BipartiteGraphGNN" else "RelationGraph"
 
     # Query GNN params
@@ -167,11 +169,13 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
             entity_message_func=entity_message_func,
             entity_layer_norm=entity_layer_norm,
             entity_skip_connection=entity_skip_connection,
+            entity_dropout=entity_dropout,
             
             # Relation Params
             relation_message_func=relation_message_func,
             relation_layer_norm=relation_layer_norm,
             relation_skip_connection=relation_skip_connection,
+            relation_dropout=relation_dropout,
             
             # Query Params
             query_gnn_type=query_gnn_model,
