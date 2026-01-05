@@ -104,14 +104,14 @@ laplacian_k: 0
 gradient_clipping: 0.5
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT"
+  message_func: "GAT" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine"
+  message_func: "GAT" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
   layer_norm: True
