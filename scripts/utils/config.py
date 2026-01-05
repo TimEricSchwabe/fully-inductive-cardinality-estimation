@@ -28,7 +28,7 @@ class RelationGNNConfig(BaseSettings):
     dropout: float = 0.0
 
 class QueryGNNConfig(BaseSettings):
-    message_func: Literal['GAT', 'gine'] = "gine"
+    # message_func: Literal['Triple', 'gine'] = "gine"
     model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
     skip_connection: bool = False
     layer_norm: bool = True
