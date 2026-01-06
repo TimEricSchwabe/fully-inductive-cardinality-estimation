@@ -239,8 +239,8 @@ class TripleModel(torch.nn.Module):
         self.ln2 = nn.LayerNorm(200)
 
         # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
-        self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim, train_eps=True)
-        self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim, train_eps=True)
+        self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
+        self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
         # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
         # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
         self.skip_proj = Linear(self.feat_dim, 200)
@@ -683,8 +683,7 @@ class QueryTransformer(torch.nn.Module):
                 x = x + self.pe_proj(pe)
             except Exception as e:
                 raise
-                # Fallback if PE computation fails (e.g. eigendecomposition issues)
-                pass
+
 
         for conv in self.convs:
             # Pass batch.batch (the index tensor) instead of the whole batch object

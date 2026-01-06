@@ -50,7 +50,7 @@ class NTDatasets(InMemoryDataset):
         raw_file_path = pathlib.Path(self.url).name
 
         if raw_file_path is None or raw_file_path == "":
-            raw_file_path = f"raw_dataset.nt"
+            raw_file_path = "raw_dataset.nt"
 
         self.dataset_name = (
             dataset_name if dataset_name is not None else Path(self.url).stem
@@ -318,7 +318,7 @@ class NTQueries(InMemoryDataset):
         # Keep the original queries source (can be a URL or a local path)
         raw_file_name = pathlib.Path(self.url).name
         if raw_file_name is None or raw_file_name == "":
-            raw_file_name = f"raw_queries.json"
+            raw_file_name = "raw_queries.json"
 
         # The dataset expects the raw file to live in the dataset's raw/ folder
         self.raw_file_path = raw_dir / raw_file_name

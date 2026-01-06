@@ -607,7 +607,7 @@ class FICE(nn.Module):
                     dropout=entity_dropout
                 )
             elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
-                raise ValueError(f"Entity graph bipartite but relation graph standard is not supported.")
+                raise ValueError("Entity graph bipartite but relation graph standard is not supported.")
             else:
                 raise ValueError(f"Invalid entity message function: {entity_message_func}")
 

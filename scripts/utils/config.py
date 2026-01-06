@@ -36,16 +36,13 @@ class QueryGNNConfig(BaseSettings):
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True
-    mode: Literal['min', 'max'] = 'min'
-    factor: float = 0.5
-    patience: int = 5
+    min_lr: float = 1e-6
 
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use
     epochs: int = 10  # Number of training epochs
     learning_rate: float = 1e-4  # Learning rate for optimizer
-    embedding_learning_rate: float = 1e-5 # Learning rate for embedding GNNs
     train_ratio: float = 0.8  # Ratio of data used for training
     output_dir: str = "output/"  # Directory for output files
     save_every: int = 5  # Save checkpoint every N epochs

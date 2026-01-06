@@ -108,7 +108,7 @@ def setup_directories(config):
     return run_dir, log_dir, checkpoint_dir
 
 
-def initialize_model_components(context: TrainingContext, model_state_dict: dict = None, optimizer_state_dict: dict = None, scheduler_state_dict: dict = None) -> ModelComponents:
+def initialize_model_components(context: TrainingContext, total_training_steps: int, model_state_dict: dict = None, optimizer_state_dict: dict = None, scheduler_state_dict: dict = None) -> ModelComponents:
     """Initialize the FICE model and optimizer."""
     config = context.config
     device = context.device
@@ -200,14 +200,13 @@ def initialize_model_components(context: TrainingContext, model_state_dict: dict
     if optimizer_state_dict is not None:
         optimizer.load_state_dict(optimizer_state_dict)
 
-    # Initialize scheduler (ReduceLROnPlateau)
+    # Initialize scheduler (CosineAnnealingLR)
     scheduler = None
     if optimizer is not None and config.scheduler.enabled:
-        scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, 
-            mode=config.scheduler.mode, 
-            factor=config.scheduler.factor, 
-            patience=config.scheduler.patience, 
+        scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            optimizer=optimizer,
+            T_max=total_training_steps,
+            eta_min=config.scheduler.min_lr
         )
         if scheduler_state_dict is not None:
             scheduler.load_state_dict(scheduler_state_dict)
@@ -423,6 +422,9 @@ def train_epoch(state: TrainingState):
                     max_norm=state.training_context.config.gradient_clipping
                 )
                 state.model_components.optimizer.step()
+                if state.model_components.scheduler is not None:
+                    state.model_components.scheduler.step()
+                    # logger.info(f"Learning Rate after step: {state.model_components.scheduler.get_last_lr()}")
 
             # Log batch
             state.metric_logger.log_batch(
@@ -661,14 +663,6 @@ def train_model(
                     except Exception as e:
                         logger.warning(f"Failed to log best test loss metrics: {e}")
             
-            # Step scheduler
-            if state.model_components.scheduler is not None:
-                state.model_components.scheduler.step(avg_test_loss)
-                if state.model_components.optimizer is not None:
-                    current_lr = state.model_components.optimizer.param_groups[0]['lr']
-                    logging.info(f"Learning rate adjusted to: {current_lr:.6f}")
-                    if state.training_context.use_wandb:
-                        wandb_log_with_retry({"learning_rate": current_lr, "epoch": epoch})
         else:
             logger.info(
                 f"Epoch {state.training_context.current_epoch}/{state.training_context.config['epochs']} - Train Loss: {epoch_avg_train_loss:.6f}"
@@ -683,7 +677,7 @@ def train_model(
     logger.info("Training completed!")
     
     history = state.metric_logger.history
-    
+        
     return {
         "best_test_loss": state.best_test_loss,
         "train_losses": [m['loss'] for m in history['train_metrics']],
@@ -743,7 +737,7 @@ def print_final_summary(
     logger.info("=" * 60)
     logger.info("TRAINING COMPLETED SUCCESSFULLY")
     logger.info("=" * 60)
-    logger.info(f"\nTraining Results:")
+    logger.info("\nTraining Results:")
     logger.info(f"  Total epochs trained: {len(training_results['train_losses'])}")
     logger.info(f"  Best validation loss: {training_results['best_test_loss']:.6f}")
     logger.info(f"  Final train loss: {training_results['train_losses'][-1]:.6f}")
@@ -755,14 +749,14 @@ def print_final_summary(
     
     # Display final test results if available
     if training_results.get('final_test_loss') is not None:
-        logger.info(f"\nFinal Test Results (on held-out test set):")
+        logger.info("\nFinal Test Results (on held-out test set):")
         logger.info(f"  Final test loss: {training_results['final_test_loss']:.6f}")
         logger.info(f"  Final test MSE: {training_results['final_test_mse']:.6f}")
         logger.info(f"  Final test MAE: {training_results['final_test_mae']:.6f}")
         logger.info(f"  Final test RMSE: {training_results['final_test_rmse']:.6f}")
         logger.info(f"  Final test Q-Error: {training_results['final_test_q_error']:.6f}")
 
-    logger.info(f"\nSaved Artifacts:")
+    logger.info("\nSaved Artifacts:")
     logger.info(f"  Run directory: {run_dir}")
     logger.info(f"  Best model: {checkpoint_dir / 'best_model.pt'}")
     logger.info(f"  Final model: {checkpoint_dir / 'final_model.pt'}")
@@ -892,6 +886,8 @@ def main():
     data_component = prepare_data(config)
     data_component.neighbor_sampler = MultigraphNeighborSampler(num_neighbors=config.GNNNeighborhood)
 
+    total_batches_per_epoch = len(data_component.train_loader)
+    total_training_steps = config.epochs * total_batches_per_epoch
 
     # Log dataset info to wandb (updated for new prepare_data returning a single DataComponents)
     if use_wandb:
@@ -922,7 +918,13 @@ def main():
 
     # Initialize model and optimizer
     logger.info("Initializing model...")
-    model_components = initialize_model_components(context, model_state_dict=model_state_dict, optimizer_state_dict=optimizer_state_dict, scheduler_state_dict=scheduler_state_dict)
+    model_components = initialize_model_components(
+        context,
+        total_training_steps=total_training_steps,
+        model_state_dict=model_state_dict,
+        optimizer_state_dict=optimizer_state_dict,
+        scheduler_state_dict=scheduler_state_dict
+    )
 
     model_components.model = model_components.model.to(device)
 
@@ -930,7 +932,7 @@ def main():
     total_params = sum(p.numel() for p in model_components.model.parameters())
     trainable_params = sum(p.numel() for p in model_components.model.parameters() if p.requires_grad)
 
-    logger.info(f"Model initialized successfully!")
+    logger.info("Model initialized successfully!")
     logger.info(f"Model: {model_components.model.__class__.__name__}")
     logger.info(f"{model_components.model}")
     logger.info(f"Total parameters: {total_params:,}")

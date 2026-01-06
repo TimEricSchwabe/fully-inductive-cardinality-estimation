@@ -2,82 +2,82 @@
 data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "fb237_v4"
     queries: "fb237_v4_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_star_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "validation"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_path_queries"
-    batch_size: 8
+    batch_size: 32
     num_queries: 300
     type: "train-val"
 
@@ -85,7 +85,7 @@ data:
 epochs: 40
 wandb: False
 wandb_run_name: "LocalRunLukas"
-learning_rate: 1e-4
+learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
@@ -93,25 +93,25 @@ save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
 device: "cpu"
-weight_decay: null # Default from config.py defualt is 0.01
+weight_decay: 0.01 # Default from config.py defualt is 0.01
 n_embedding_layers: 2
 GNNNeighborhood: [100, 100]
-Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
+Conditioning: "all" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
 laplacian_k: 0
-gradient_clipping: 0.5
+gradient_clipping: 1.0
 
 entity_gnn:
-  message_func: "GAT" # choices are "gine" or "GAT"
+  message_func: "gine" # choices are "gine" or "GAT"
   model: "EntityGNN"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "GAT" # choices are "GAT" or "gine"
+  message_func: "gine" # choices are "GAT" or "gine"
   model: "BipartiteGraphGNN"
   skip_connection: True
   layer_norm: True
@@ -119,13 +119,11 @@ relation_gnn:
 
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: True
+  skip_connection: False
   layer_norm: True
   dropout: 0.2
 
 scheduler:
   enabled: True
-  mode: "min"
-  factor: 0.5
-  patience: 5
+  min_lr: 1.0e-6
 
