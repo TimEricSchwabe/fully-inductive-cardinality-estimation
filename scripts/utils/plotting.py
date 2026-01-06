@@ -12,12 +12,7 @@ from pathlib import Path
 from typing import List, Optional, Tuple, Union
 import torch
 import networkx as nx
-import matplotlib.pyplot as plt
-import numpy as np
-from torch_geometric.data import Data
-from torch_geometric.utils import to_networkx, to_dense_adj, to_scipy_sparse_matrix
-import scipy.sparse as sp
-import scipy.sparse.linalg as linalg
+from torch_geometric.utils import to_networkx, to_dense_adj
 
 
 

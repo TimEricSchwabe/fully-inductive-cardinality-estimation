@@ -4,7 +4,7 @@ Helper functions for logging metrics, saving CSVs, and managing training data.
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Literal
+from typing import Dict, Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +12,6 @@ import pandas as pd
 import torch
 import wandb
 from sklearn.decomposition import PCA
-from wandb.errors import AuthenticationError
 import time
 from sklearn.manifold import TSNE
 import utils.metrics as metrics

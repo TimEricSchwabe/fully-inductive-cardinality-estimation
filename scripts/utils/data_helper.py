@@ -7,12 +7,10 @@ from pathlib import Path
 from utils.config import DataConfig
 from utils.multigraph import MultigraphLoader
 from utils.models import *
-import numpy as np
 
 
 # Import project modules
 from fice import datasets
-from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
 from torch_geometric.transforms import AddLaplacianEigenvectorPE

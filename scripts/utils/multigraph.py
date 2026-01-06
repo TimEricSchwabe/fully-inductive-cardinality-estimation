@@ -1,7 +1,5 @@
 
-from torch.utils.data import Dataset, Sampler
-from typing import List, Tuple, Optional, Union
-from torch_geometric.data import Data
+from typing import List, Union
 from torch_geometric.loader import DataLoader
 import torch
 import random

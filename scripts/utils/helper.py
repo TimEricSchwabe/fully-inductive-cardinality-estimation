@@ -1,14 +1,13 @@
 from pathlib import Path
 import logging
 import random
-from typing import Union, Optional
+from typing import Union
 import torch
 import numpy as np
 from datetime import datetime
 import wandb
 import os
 import argparse
-import json
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE

@@ -4,8 +4,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv, GINEConv
 from torch_geometric.utils import degree
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from torch_geometric.data import Data
 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
 

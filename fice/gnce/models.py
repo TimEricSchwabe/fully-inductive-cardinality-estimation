@@ -1,10 +1,10 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv, GlobalAttention
-from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
+from torch_geometric.nn import Linear, GINEConv, GPSConv
+from torch_geometric.nn import global_add_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch import Tensor
 from torch_geometric.nn.inits import reset

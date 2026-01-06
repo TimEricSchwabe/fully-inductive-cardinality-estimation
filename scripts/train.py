@@ -1,36 +1,26 @@
 # Standard library imports
 import json
 import logging
-import math
-import random
 import subprocess
 import yaml
-import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Literal, Tuple, Union
+from typing import Literal
 import pprint
 
 # Third-party imports
 import matplotlib
-import matplotlib.pyplot as plt
-import numpy as np
-import pandas as pd
 import torch
 import torch.nn.functional as F
 import wandb
 from torch_geometric.data import Data
-from torch_geometric.loader import DataLoader, NeighborLoader
 from torch_geometric.utils import subgraph
 from tqdm import tqdm
 
-import networkx as nx
 
 
 # Try to import the low-level NeighborSampler (newer API)
 try:
-    from torch_geometric.sampler import NeighborSampler as PYGNeighborSampler
-    from torch_geometric.sampler import NodeSamplerInput
     HAS_PYG_SAMPLER = True
 except Exception:
     HAS_PYG_SAMPLER = False
@@ -39,11 +29,9 @@ except Exception:
 matplotlib.use('Agg')
 
 # Project imports
-from utils.plotting import compute_and_plot_laplacian_pe
-import utils.metrics as metrics
 from fice.models import FICE, FiceBinary, FiceIndependent
 from utils.checkpoint_helper import load_checkpoint, save_checkpoint
-from utils.config import Config, DataConfig, load_config_yaml
+from utils.config import Config, load_config_yaml
 from utils.data_helper import prepare_data
 from utils.helper import (
     get_device,
@@ -68,10 +56,9 @@ from utils.logging_helper import (
     PREDICTIONS_FILE_NAME,
     MetricLogger,
 )
-from utils.models import DataComponents, ModelComponents, TrainingContext, TrainingState
-from utils.multigraph import MultigraphLoader
+from utils.models import ModelComponents, TrainingContext, TrainingState
 from utils.neighborhood_sampler import MultigraphNeighborSampler
-from torch_geometric.utils import k_hop_subgraph, subgraph
+from torch_geometric.utils import k_hop_subgraph
 logger = logging.getLogger(__name__)
 
 def sample_connected_subgraph(data, num_hops=3, max_nodes=500):

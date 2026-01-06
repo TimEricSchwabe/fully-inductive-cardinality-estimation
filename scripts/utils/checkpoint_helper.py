@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Union
 from pathlib import Path
 
@@ -7,8 +6,6 @@ from utils.models import *
 import torch
 import logging
 from utils.data_helper import *
-from utils.config import Config
-import time
 from utils.helper import wandb_log_artifact_with_retry
 
 logger = logging.getLogger(__name__)

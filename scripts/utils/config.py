@@ -2,7 +2,7 @@
 import yaml
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Literal
 
 
 class DataConfig(BaseSettings):
