@@ -1,7 +1,7 @@
 import torch
 import torch.nn.functional as F
 from torch_geometric.nn import Linear, GINEConv, GPSConv
-from torch_geometric.nn import global_add_pool
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from typing import Optional, Union
@@ -62,12 +62,12 @@ class QueryGNN(torch.nn.Module):
             else:
                 x = layer(x, edge_index)
             x = bn(x)
-            x = F.relu(x)
+            x = F.silu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global add pooling over nodes -> graph embedding
         # TODO: Funktioniert, aber kein ahnung ob es das macht, was es machen soll
-        g = global_add_pool(x, batch.batch)
+        g = (x, batch.batch)
 
 
         # TODO: Adding the graph size |E| to the final MLP
@@ -255,14 +255,14 @@ class TripleModel(torch.nn.Module):
         edge_attr = batch.edge_attr
 
         x_input = x
-        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
+        x = F.silu(self.conv1(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln1(x)
         if self.skip_connection:
             x = x + x_input
 
         x_input = x
-        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
+        x = F.silu(self.conv2(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln2(x)
         if self.skip_connection:
@@ -270,8 +270,7 @@ class TripleModel(torch.nn.Module):
         x = global_add_pool(x, batch.batch)
         x = self.dropout(x)
         x = self.lin(x)
-        # x = self.dropout(x)
-        x = F.relu(x)
+        x = F.silu(x)
         x = self.lin2(x)
         
         # We did an tested it and either with or without abs works fine
