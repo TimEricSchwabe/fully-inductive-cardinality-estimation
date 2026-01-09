@@ -118,20 +118,29 @@ class EntityGNN(nn.Module):
 
         # Create batched edge_index once: replicate edges for each batch element
         edge_index = data.edge_index
-        # Create edge_index for batched graph: replicate edges for each batch element
-        batch_edge_list = []
-        # also replicate the edge types for each batch element
-        batched_edge_type_list = []
-        for b in range(batch_size):
-            offset = b * num_nodes
-            batch_edges = edge_index + offset
-            batch_edge_list.append(batch_edges)
-            batched_edge_type_list.append(data.edge_type)
-        batched_edge_index = torch.cat(batch_edge_list, dim=1)
-        batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
+        
+        # New vectorized implementation
+        offset = (torch.arange(batch_size, device=device) * num_nodes).view(-1, 1, 1)
+        edge_index_batched = edge_index.unsqueeze(0) + offset
+        batched_edge_index = edge_index_batched.permute(1, 0, 2).reshape(2, -1)
 
-        del batch_edge_list
-        del batched_edge_type_list
+        batched_edge_type = data.edge_type.repeat(batch_size)
+
+        # Old implementation
+        # # Create edge_index for batched graph: replicate edges for each batch element
+        # batch_edge_list = []
+        # # also replicate the edge types for each batch element
+        # batched_edge_type_list = []
+        # for b in range(batch_size):
+        #     offset = b * num_nodes
+        #     batch_edges = edge_index + offset
+        #     batch_edge_list.append(batch_edges)
+        #     batched_edge_type_list.append(data.edge_type)
+        # batched_edge_index = torch.cat(batch_edge_list, dim=1)
+        # batched_edge_type = torch.cat(batched_edge_type_list, dim=0)
+
+        # del batch_edge_list
+        # del batched_edge_type_list
 
         # Shape (batch_size * num_edges) - maps each edge to its batch index
         all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
@@ -280,6 +289,9 @@ class RelationGNN(nn.Module):
         feat_deg = feat_deg.unsqueeze(0).expand(bs, -1, -1)
         feat_pe = feat_pe.unsqueeze(0).expand(bs, -1, -1)
 
+         # Combine: [Base | Degree | PE | Seed]
+        raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
+
         # Project to hidden dimension
         h = self.feature_encoder(raw_h)
         h = self.input_norm(h)
@@ -288,19 +300,28 @@ class RelationGNN(nn.Module):
 
         rel_edges  = data.edge_index        # (2, E)
         rel_types  = data.edge_type         # (E,)
-        batch_edge_list  = []
-        batch_type_list  = []
-        # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
-        # to increase the edge index per batch, but leave the edge type the same.
-        for b in range(bs):                 # identical to EntityGNN lines 72-84
-            offset = b * num_nodes
-            batch_edge_list.append(rel_edges + offset)
-            batch_type_list.append(rel_types)
-        edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
-        edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+        
+        # New vectorized implementation
+        offset = (torch.arange(bs, device=device) * num_nodes).view(-1, 1, 1)
+        edge_index_batched = rel_edges.unsqueeze(0) + offset
+        edge_index = edge_index_batched.permute(1, 0, 2).reshape(2, -1)
+        
+        edge_type = rel_types.repeat(bs)
 
-        del batch_edge_list
-        del batch_type_list
+        # Old implementation
+        # batch_edge_list  = []
+        # batch_type_list  = []
+        # # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
+        # # to increase the edge index per batch, but leave the edge type the same.
+        # for b in range(bs):                 # identical to EntityGNN lines 72-84
+        #     offset = b * num_nodes
+        #     batch_edge_list.append(rel_edges + offset)
+        #     batch_type_list.append(rel_types)
+        # edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+        # edge_type  = torch.cat(batch_type_list, dim=0)   # (bs·E,)
+
+        # del batch_edge_list
+        # del batch_type_list
 
         edge_attr  = self.rel_emb(edge_type)  
 
@@ -463,25 +484,36 @@ class BipartiteGraphGNN(nn.Module):
         h = F.silu(h)
         h = F.dropout(h, p=self.dropout, training=self.training)
 
-        # TODO: Write without for loops (vectorize it)
         rel_edges  = data.edge_index        # (2, E)
         batch_edge_list  = []
         # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
         # to increase the edge index per batch, but leave the edge type the same.
-        for b in range(bs):                 # identical to EntityGNN lines 72-84
-            offset = b * num_nodes
-            batch_edge_list.append(rel_edges + offset)
-        edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
+
+        # new
+        offset = (torch.arange(bs, device=device) * num_nodes).view(-1, 1, 1) 
+        edge_index_batched = rel_edges.unsqueeze(0) + offset  # (bs, 2, E)
+        edge_index = edge_index_batched.permute(1, 0, 2).reshape(2, -1)  # (2, bs·E)
+
+        # old
+        # for b in range(bs):                 # identical to EntityGNN lines 72-84
+        #     offset = b * num_nodes
+        #     batch_edge_list.append(rel_edges + offset)
+        # edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
         del batch_edge_list
 
         # Encode edge attributes (Count, Direction)
         # 1. Replicate edge attributes for batch
-        rel_edge_attr = data.edge_attr.to(torch.float32) # Shape [E, 2]
-        batch_edge_attr_list = []
-        for b in range(bs):
-            batch_edge_attr_list.append(rel_edge_attr)
-        edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
-        del batch_edge_attr_list
+        # new
+        edge_attr_stacked = data.edge_attr.to(torch.float32).repeat(bs, 1) # Shape [bs*E, 2]
+
+        # old
+        # rel_edge_attr = data.edge_attr.to(torch.float32) # Shape [E, 2]
+        # batch_edge_attr_list = []
+        # for b in range(bs):
+        #     batch_edge_attr_list.append(rel_edge_attr)
+        # edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
+
+    # del batch_edge_attr_list
         
         # 2. Project to embedding dimension
         edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]

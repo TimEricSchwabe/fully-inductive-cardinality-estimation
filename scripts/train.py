@@ -262,16 +262,15 @@ def prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device):
 
 def prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device):
     offset = full_graph.num_nodes
-    # TODO: typo in edge_emebeddings => edge_embeddings
-    edge_emebeddings = query_batch.edge_embedding_indices.detach().cpu()
+    edge_embeddings = query_batch.edge_embedding_indices.detach().cpu()
 
-    edge_emebeddings = torch.where(
-        edge_emebeddings >= 0,
-        bipartite_graph_gloal_to_local[edge_emebeddings + offset],
-        torch.full_like(edge_emebeddings, -1),
+    edge_embeddings = torch.where(
+        edge_embeddings >= 0,
+        bipartite_graph_gloal_to_local[edge_embeddings + offset],
+        torch.full_like(edge_embeddings, -1),
     ).to(torch.long)
     query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
-    query_batch.edge_embedding_indices = edge_emebeddings.to(device)
+    query_batch.edge_embedding_indices = edge_embeddings.to(device)
 
     return bipartite_graph
 
@@ -864,7 +863,6 @@ def main():
     logger.info(f"Using device: {device}")
 
     # Initialize Weights & Biases
-    # TODO: fix
     use_wandb = config.wandb
     if use_wandb:
         initialize_wandb(config, run_dir)

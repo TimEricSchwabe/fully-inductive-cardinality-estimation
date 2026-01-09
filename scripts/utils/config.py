@@ -12,7 +12,6 @@ class DataConfig(BaseSettings):
     num_queries: int = -1  # Number of queries for debugging, -1 means all
     type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
-# # TODO: Besser für mehr Übersicht, aber erst einbauen wenn es fertig ist
 class EntityGNNConfig(BaseSettings):
     message_func: Literal['gine', 'GAT'] = "gine"
     model: Literal['EntityGNN'] = 'EntityGNN'

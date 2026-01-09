@@ -35,7 +35,6 @@ def download(url: str, dest: Union[Path, str], progress: bool = False):
                     continue
                 f.write(chunk)
 
-# TODO: Make the nt_path file optinal
 class NTDatasets(InMemoryDataset):
     def __init__(
         self,
@@ -406,7 +405,6 @@ class NTQueries(InMemoryDataset):
 
 
         # Process Edges
-        # HACK: Works for now but maybe find more beatuful solution
         query_edge_type_string = [t[1] for t in query.get('triples')]
 
         query_edge_attr = torch.zeros(

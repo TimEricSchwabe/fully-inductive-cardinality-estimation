@@ -2,8 +2,9 @@ import torch
 import json
 import random
 import logging
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 from pathlib import Path
+from torch.utils.data import Subset
 from utils.config import DataConfig
 from utils.multigraph import MultigraphLoader
 from utils.models import *
@@ -75,7 +76,7 @@ def get_dataset_processed_dir(dataset_name: str):
     dataset_name_lower = dataset_name.lower()
     return Path(datasets.DEFAULT_DATA_ROOT) / dataset_name_lower / "processed"
 
-def load_dataset(dataset_name: str) -> List:
+def load_dataset(dataset_name: str) -> datasets.NTDatasets:
     """Load the graph dataset and verify its properties."""
     DatasetClass = get_dataset_class(dataset_name)
     
@@ -126,7 +127,7 @@ def load_queries(
     return queries
 
 
-def load_data(dataset_name: str, queries_name: str):
+def load_data(dataset_name: str, queries_name: str) -> Tuple[datasets.NTDatasets, Tuple[Dict, Dict, Dict, Dict], List]:
     """Load dataset, occurrences and queries and emit consolidated logging.
 
     Parameters:
@@ -138,7 +139,7 @@ def load_data(dataset_name: str, queries_name: str):
 
     Returns the same tuple as before: (dataset, (eo, ro, em, rm), queries)
     """
-    dataset = load_dataset(dataset_name)
+    dataset: datasets.NTDatasets = load_dataset(dataset_name)
     eo, ro, em, rm = load_occurrences(dataset_name)
     queries = load_queries(
         queries_name,
@@ -187,20 +188,19 @@ def load_data(dataset_name: str, queries_name: str):
 
     return dataset, (eo, ro, em, rm), queries
 
-def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[List, List]:
-    # TODO: takes a long time for some reason fix
-    # Process and filter queries
-    queries_list = list(queries)
+def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[Subset, Subset]:
+    n = len(queries)
+    indices = list(range(n))
+    
     if shuffle:
-        random.shuffle(queries_list)
-
-    train_size = int(len(queries_list) * train_ratio)
-    test_size = len(queries_list) - train_size
-
-    train_queries = queries_list[:train_size]
-    test_queries = queries_list[train_size:]
-
-    return train_queries, test_queries
+        random.shuffle(indices)
+    
+    train_size = int(n * train_ratio)
+    train_indices = indices[:train_size]
+    test_indices = indices[train_size:]
+    
+    # Return Subset objects that lazily index into the original dataset
+    return Subset(queries, train_indices), Subset(queries, test_indices)
 
 def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: int = None) -> List[any]:
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
@@ -209,8 +209,8 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
         processed_data = [d for d in data if d.y.item() >= min_cardinality] 
 
     if num_queries is not None or num_queries > 0:
-        acutal_num_queries = min(num_queries, len(processed_data))
-        processed_data = processed_data[:acutal_num_queries]
+        actual_num_queries = min(num_queries, len(processed_data))
+        processed_data = processed_data[:actual_num_queries]
 
     
     return processed_data
@@ -388,7 +388,6 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         shuffle=True,
     )
 
-    # TODO: Besser lösunge findend
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets

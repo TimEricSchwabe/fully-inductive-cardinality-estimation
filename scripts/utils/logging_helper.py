@@ -214,7 +214,7 @@ class MetricLogger:
             qs_data['loss_sum'] += loss
             qs_data['batch_count'] += 1
     
-    # TODO:  Takes ages
+    # TODO:  Takes ages (becuase of the graph generation)
     def end_epoch(self, epoch: int, stage: str = 'train', save: bool = False) -> Dict[str, Any]:
         """
         Processes accumulated data, calculates metrics, logs to wandb, and updates history.
