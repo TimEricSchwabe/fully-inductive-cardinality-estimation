@@ -215,6 +215,7 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
     
     return processed_data
 
+# TODO: https://gemini.google.com/share/fa266d99aba4
 def make_bipartit_graph(data):
     """ Convert a homogeneous graph to a bipartite graph representation """
 
