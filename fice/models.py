@@ -146,6 +146,9 @@ class EntityGNN(nn.Module):
         all_edges = torch.repeat_interleave(torch.arange(batch_size, device=device), data.edge_index.size(1))
 
         # Since relation embeddings are different for each batch, we now use all_edges to pick the correct batch and batched_edge_type to get the global id of the relation
+        # TODO: Was wenn es hier einen boundary case gibt, dass eine relation in einem batch element nicht existiert?
+
+        # relation_representation stores the embeddings on a global scale.
         edge_attr = relation_representations[all_edges, batched_edge_type] # Shape (batch_size * num_edges, embedding_dim)
         
         del all_edges
@@ -513,7 +516,7 @@ class BipartiteGraphGNN(nn.Module):
         #     batch_edge_attr_list.append(rel_edge_attr)
         # edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
 
-    # del batch_edge_attr_list
+        # del batch_edge_attr_list
         
         # 2. Project to embedding dimension
         edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]
@@ -742,6 +745,7 @@ class FICE(nn.Module):
             if self.relation_graph_mode == "bipartite" and self.entity_graph_mode == "KG":
                 # TODO: the returned relation_represtaitons contain both entity and relation embeddings stacked
                 # We need to split them here
+
                 # TODO: extract the entities embedding on their own
                 # batch.edge_embedding_indices contains the global relation ids
                 relation_indices = batch.edge_embedding_indices
@@ -762,7 +766,6 @@ class FICE(nn.Module):
                 bound_nodes = embedding_indices >= 0
                 graph_indices = batch.batch
 
-                # HACK: not the most efficient
                 node_embeddings = node_representations[graph_indices, embedding_indices]
                 
                 del node_representations

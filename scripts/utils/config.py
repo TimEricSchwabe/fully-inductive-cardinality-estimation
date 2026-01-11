@@ -16,14 +16,14 @@ class EntityGNNConfig(BaseSettings):
     message_func: Literal['gine', 'GAT'] = "gine"
     model: Literal['EntityGNN'] = 'EntityGNN'
     skip_connection: bool = True
-    layer_norm: bool = False
+    layer_norm: bool = True
     dropout: float = 0.0
 
 class RelationGNNConfig(BaseSettings):
     message_func: Literal['GAT', 'gine'] = "gine"
     model: Literal['RelationGNN', 'BipartiteGraphGNN'] = 'RelationGNN'
     skip_connection: bool = True
-    layer_norm: bool = False
+    layer_norm: bool = True
     dropout: float = 0.0
 
 class QueryGNNConfig(BaseSettings):

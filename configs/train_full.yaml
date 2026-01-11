@@ -84,8 +84,8 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "GineRunWithRandom"
-learning_rate: 5e-4
+wandb_run_name: "SOTA FULL TRAIN"
+learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
@@ -121,7 +121,7 @@ query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
   layer_norm: True
-  dropout: 0.2
+  dropout: 0.0
 
 scheduler:
   enabled: True
