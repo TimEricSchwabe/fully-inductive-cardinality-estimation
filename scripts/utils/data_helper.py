@@ -333,7 +333,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
             dataset = transform(dataset)
             
             # Also apply to relation graph if it exists
-            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None:
+            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None and config.relation_gnn.model in ['RelationGNN']:
                 logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} relation graph...")
                 dataset.relation_graph = transform(dataset.relation_graph)
 
