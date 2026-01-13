@@ -2,7 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv, GINEConv
+from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
 from torch_geometric.utils import degree
 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
@@ -24,7 +24,7 @@ class EntityGNN(nn.Module):
         
         # Base Feature Dimension
         if conditioning == 'random':
-             self.base_dim = input_dim
+             self.base_dim = 32
         else:
              self.base_dim = 1 # Constant 0.1
              
@@ -37,6 +37,7 @@ class EntityGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
+                nn.LayerNorm(out_dim),
                 nn.SiLU(),
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
@@ -98,7 +99,7 @@ class EntityGNN(nn.Module):
 
         # 4. Base Features
         if self.conditioning == 'random':
-            feat_base = torch.randn(batch_size, num_nodes, self.input_dim, device=device)
+            feat_base = torch.randn(batch_size, num_nodes, 32, device=device)
         else:
             feat_base = torch.ones(batch_size, num_nodes, 1, device=device) * 0.1
 
@@ -375,6 +376,7 @@ class BipartiteGraphGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
+                nn.LayerNorm(out_dim),
                 nn.SiLU(), 
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
@@ -408,7 +410,7 @@ class BipartiteGraphGNN(nn.Module):
         for i in range(len(dims) - 1):
             if self.message_func == 'gine':
                 self.layers.append(
-                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                    GINConv(gine_mlp(dims[i], dims[i + 1]), train_eps=False)
                 )
             else:
                 self.layers.append(
@@ -526,7 +528,7 @@ class BipartiteGraphGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x   = layer(x, edge_index, edge_attr = edge_attr)  # edge_attr is not used in GINEConv if not provided
+            x   = layer(x, edge_index)  # edge_attr is not used in GINEConv if not provided
 
             if self.enable_layer_norm:
                  x = self.norms[i](x)
