@@ -272,6 +272,15 @@ def prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_grap
     query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices 
     query_batch.edge_embedding_indices = edge_embeddings.to(device)
 
+    node_embeddings = query_batch.node_embedding_indices.detach().cpu()
+    node_embeddings = torch.where(
+        node_embeddings >= 0,
+        bipartite_graph_gloal_to_local[node_embeddings],
+        torch.full_like(node_embeddings, -1),
+    ).to(torch.long)
+    query_batch.original_node_embedding_indices = query_batch.node_embedding_indices 
+    query_batch.node_embedding_indices = node_embeddings.to(device)
+
     return bipartite_graph
 
 
@@ -289,7 +298,7 @@ def train_epoch(state: TrainingState):
     loader = state.data_components.train_loader
     total_batches = len(loader)
 
-    plot_embeddings = False
+    plot_embeddings = True
 
     progress_bar = tqdm(
         loader, desc=f"Epoch {state.training_context.current_epoch}/{epochs}", leave=False, total=total_batches

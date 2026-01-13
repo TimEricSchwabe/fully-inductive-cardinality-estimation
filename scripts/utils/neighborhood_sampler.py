@@ -57,7 +57,7 @@ class MultigraphNeighborSampler():
         sub_data.edge_index = edge_index_local
         sub_data.num_nodes = n_id.numel()
         # sub_data.dataset_name = data_graph.dataset_name  # carry dataset name
-        # sub_data.n_id = n_id  # carry global node IDs
+        sub_data.n_id = n_id  # carry global node IDs
         
         # TODO: carry other node features in the subgraph 
         

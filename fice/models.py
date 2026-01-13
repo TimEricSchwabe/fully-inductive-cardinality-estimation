@@ -754,6 +754,21 @@ class FICE(nn.Module):
                 edge2graph = batch.batch[batch.edge_index[0]] # which batch element (query) does every edge belong to
                 # maske funktioniert nicht so wie ich es will
                 extracted_relation_representation = relation_representations[edge2graph, relation_indices]
+                extracted_relation_representation = torch.where(relation_indices.unsqueeze(-1) >=0,
+                                                                extracted_relation_representation,
+                                                                torch.zeros_like(extracted_relation_representation))
+
+                # entity_indices = batch.node_embedding_indices 
+                # graph_indices = batch.batch
+                # extracted_entity_representation = relation_representations[graph_indices, entity_indices]
+                # extracted_entity_representation =torch.where(entity_indices.unsqueeze(-1) >=0,
+                #                         extracted_entity_representation,
+                #                         torch.zeros_like(extracted_entity_representation))
+                
+                # new_entity_representations = torch.zeros((relation_representations.shape[0], relation_graph.original_num_nodes, relation_representations.shape[2]), device=device)
+                # new_entity_representations[graph_indices, batch.original_node_embedding_indices] = extracted_entity_representation
+                # entity_representations = new_entity_representations
+
 
                 num_relations = relation_graph.original_num_relations # TODO: keine ahung wie stabil das ist, Antwort überhaupt nicht stabil, besser lösung finden
             

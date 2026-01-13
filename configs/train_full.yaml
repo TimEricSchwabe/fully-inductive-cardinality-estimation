@@ -99,8 +99,8 @@ GNNNeighborhood: [30, 15] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
-embedding_dim: 64
-laplacian_k: 4
+embedding_dim: 128
+laplacian_k: 0
 gradient_clipping: 5.0
 
 entity_gnn:
