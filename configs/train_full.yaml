@@ -3,7 +3,7 @@ data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: &bs 16
-    num_queries: &nq -1
+    num_queries: &nq 10000
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
