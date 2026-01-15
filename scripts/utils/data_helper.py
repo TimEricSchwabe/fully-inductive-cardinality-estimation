@@ -325,6 +325,8 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         dataset_name = data_config.dataset
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
+
+        # add incoming and outgoing edges identifiere
         
         # Apply Laplacian PE transform if requested in config
         if isinstance(config, Config) and config.laplacian_k > 0:

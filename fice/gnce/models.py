@@ -196,7 +196,7 @@ class TripleConv(MessagePassing):
         # edge_attr = edge_attr[:, :-1]
 
 
-        return self.lin(torch.cat((x_i, edge_attr, x_j), 1)).relu()
+        return self.lin(torch.cat((x_i, edge_attr, x_j), 1)).silu()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(nn={self.nn})'
@@ -221,7 +221,7 @@ class TripleModel(torch.nn.Module):
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, self.feat_dim),
             torch.nn.Dropout(p=dropout),
-            torch.nn.ReLU(),
+            torch.nn.SiLU(),
             torch.nn.Linear(self.feat_dim, self.feat_dim),
             torch.nn.Dropout(p=dropout)
         )
@@ -230,7 +230,7 @@ class TripleModel(torch.nn.Module):
         self.mlp2 = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, 100),
             torch.nn.Dropout(p=dropout),
-            torch.nn.ReLU(),
+            torch.nn.SiLU(),
             torch.nn.Linear(100, 200),
             torch.nn.Dropout(p=dropout)
         )
