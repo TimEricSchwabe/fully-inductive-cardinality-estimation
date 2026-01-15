@@ -5,6 +5,7 @@ benchmarks/gcare/results/*
 benchmarks/gnce/GNCE/
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
+benchmarks/neuso/NeuSO/
 tensorboard_log/
 venv/
 venv*/
