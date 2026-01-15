@@ -1,3 +1,0 @@
-[submodule "benchmarks/gcare/gcare"]
-	path = benchmarks/gcare/gcare
-	url = git@github.com:yspark-dblab/gcare.git
