@@ -2,8 +2,8 @@
 data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
-    batch_size: &bs 16
-    num_queries: &nq 10000
+    batch_size: &bs 32
+    num_queries: &nq -1
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "SOTA FULL TRAIN"
+wandb_run_name: "EXPERIMENT_fb237_v4"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -120,7 +120,7 @@ relation_gnn:
 query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
-  layer_norm: False
+  layer_norm: True
   dropout: 0.2
 
 scheduler:
