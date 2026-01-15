@@ -30,8 +30,8 @@ def remove_files_in_directory(directory_path, exclude_file: Union[str, List[str]
 
 
 if __name__ == '__main__':
-    dataset = "swdf"
-    hard_reset = False
+    dataset = os.environ.get('DATASET_NAME', 'unknown_graph')
+    hard_reset = True
 
     # check if build statistics is neccessary
     data_root = Path(f"{DATA_ROOT}")
@@ -57,8 +57,9 @@ if __name__ == '__main__':
     os.chdir(f"{GCARE_HOME}/scripts")
     # Execute the building for the specific method
     gcare_home_path = Path(GCARE_HOME)
-    script_path = gcare_home_path / "scripts" / "run-build.sh"
-    subprocess.run(["bash", str(script_path)])
+    # script_path = gcare_home_path / "scripts" / "run-build.sh"
+    script_path = Path(__file__).resolve().parent / "custom-run-build.sh"
+    subprocess.run(["bash", str(script_path), dataset], check=True)
     end_time = time.time() - starting_time
 
     # # Count the number of triples in the graph at hand
