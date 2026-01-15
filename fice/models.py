@@ -37,7 +37,7 @@ class EntityGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
-                nn.LayerNorm(out_dim),
+                # nn.LayerNorm(out_dim),
                 nn.SiLU(),
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
@@ -199,6 +199,7 @@ class RelationGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
+                # nn.LayerNorm(out_dim),
                 nn.SiLU(),
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
@@ -376,7 +377,7 @@ class BipartiteGraphGNN(nn.Module):
             # The MLP used inside each GINEConv (applied after aggregation)
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
-                nn.LayerNorm(out_dim),
+                # nn.LayerNorm(out_dim),
                 nn.SiLU(), 
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
