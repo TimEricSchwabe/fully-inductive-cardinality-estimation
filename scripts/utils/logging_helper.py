@@ -4,7 +4,7 @@ Helper functions for logging metrics, saving CSVs, and managing training data.
 
 import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Any, Union, Literal
+from typing import Dict, Any, Literal
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -12,7 +12,6 @@ import pandas as pd
 import torch
 import wandb
 from sklearn.decomposition import PCA
-from wandb.errors import AuthenticationError
 import time
 from sklearn.manifold import TSNE
 import utils.metrics as metrics
@@ -215,7 +214,7 @@ class MetricLogger:
             qs_data['loss_sum'] += loss
             qs_data['batch_count'] += 1
     
-    # TODO:  Takes ages
+    # TODO:  Takes ages (becuase of the graph generation)
     def end_epoch(self, epoch: int, stage: str = 'train', save: bool = False) -> Dict[str, Any]:
         """
         Processes accumulated data, calculates metrics, logs to wandb, and updates history.
@@ -337,13 +336,19 @@ class MetricLogger:
         return overall_metrics
     
     def _wandb_log_retry(self, data):
-        for _ in range(200):
+        max_retries = 1000
+        initial_wait = 2
+        wait_time = initial_wait
+        
+        for attempt in range(max_retries):
             try:
                 wandb.log(data)
                 return
             except Exception as e:
-                logger.error(f"Error logging to wandb: {e}. Retrying...")
-                time.sleep(1)
+                # Catching generic Exception is intentional here to survive network glitches
+                logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
+                time.sleep(wait_time)
+                wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
 
     def log_embedding_similarity(self, embeddings, name: str, epoch: int, sample_size: int = 2000):
         """
@@ -388,7 +393,7 @@ class MetricLogger:
             max_sim = similarities.max().item()
             
             # Log scalar metrics
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_avg_similarity": avg_sim,
                 f"{name}_std_similarity": std_sim,
                 f"{name}_min_similarity": min_sim,
@@ -410,7 +415,7 @@ class MetricLogger:
             ax_hist.legend()
             ax_hist.grid(True, alpha=0.3)
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_similarity_hist": wandb.Image(fig_hist),
                 "epoch": epoch
             })
@@ -428,7 +433,7 @@ class MetricLogger:
             ax_pca.set_ylabel('PC2')
             ax_pca.grid(True, alpha=0.3)
             
-            wandb.log({
+            self._wandb_log_retry({
                 f"{name}_pca_projection": wandb.Image(fig_pca),
                 "epoch": epoch
             })
@@ -450,7 +455,7 @@ class MetricLogger:
                 ax_tsne.set_ylabel('Dim 2')
                 ax_tsne.grid(True, alpha=0.3)
                 
-                wandb.log({
+                self._wandb_log_retry({
                     f"{name}_tsne_projection": wandb.Image(fig_tsne),
                     "epoch": epoch
                 })

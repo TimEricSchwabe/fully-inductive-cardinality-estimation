@@ -1,10 +1,7 @@
 import torch
 from pathlib import Path
-import pandas as pd
 from torch_geometric.loader import DataLoader
-from torch_geometric.data import Data
 from dataclasses import dataclass
-from typing import List
 from .config import Config
 from utils.neighborhood_sampler import MultigraphNeighborSampler
 from .logging_helper import MetricLogger
@@ -26,6 +23,7 @@ class ModelComponents:
     """Container for model and optimizer."""
     model: torch.nn.Module
     optimizer: torch.optim.Optimizer
+    scheduler: torch.optim.lr_scheduler.LRScheduler = None
 
 
 @dataclass

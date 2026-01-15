@@ -2,7 +2,7 @@
 import yaml
 from pydantic_settings import BaseSettings
 from pathlib import Path
-from typing import List, Optional, Union, Literal
+from typing import List, Optional, Literal
 
 
 class DataConfig(BaseSettings):
@@ -12,18 +12,31 @@ class DataConfig(BaseSettings):
     num_queries: int = -1  # Number of queries for debugging, -1 means all
     type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
-# # TODO: Besser für mehr Übersicht, aber erst einbauen wenn es fertig ist
-# class EntityGNNConfig(BaseSettings):
-#     neighborhood_sizes: List[int] = [100, 100]
-#     message_func: Literal['rotate', 'distmult', 'transe',  'gine', 'GAT'] = "gine"
-#     model: Literal['EntityGNN', 'BipartiteGraphGNN', 'EntityNBFNet'] = 'EntityGNN'
-#     conditioning: Literal['seed only', 'all', 'false'] = "all"
+class EntityGNNConfig(BaseSettings):
+    message_func: Literal['gine', 'GAT'] = "gine"
+    model: Literal['EntityGNN'] = 'EntityGNN'
+    skip_connection: bool = True
+    layer_norm: bool = True
+    dropout: float = 0.0
 
-# class RelationGNNConfig(BaseSettings):
-#     neighborhood_sizes: List[int] = [100, 100]
-#     message_func: Literal['rotate', 'distmult', 'transe', 'GAT', 'gine'] = "gine"
-#     model: Literal['RelationGNN', 'BipartiteGraphGNN', 'RelNBFNet'] = 'RelationGNN'
-#     conditioning: Literal['seed only', 'all', 'false'] = "all"
+class RelationGNNConfig(BaseSettings):
+    message_func: Literal['GAT', 'gine'] = "gine"
+    model: Literal['RelationGNN', 'BipartiteGraphGNN'] = 'RelationGNN'
+    skip_connection: bool = True
+    layer_norm: bool = True
+    dropout: float = 0.0
+
+class QueryGNNConfig(BaseSettings):
+    # message_func: Literal['Triple', 'gine'] = "gine"
+    model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
+    skip_connection: bool = False
+    layer_norm: bool = True
+    dropout: float = 0.0
+
+class SchedulerConfig(BaseSettings):
+    enabled: bool = True
+    min_lr: float = 1e-6
+
 
 class Config(BaseSettings):
     data: List[DataConfig] # Name of the dataset to use
@@ -38,24 +51,24 @@ class Config(BaseSettings):
     device: str = "auto"  # Device to use ("cpu", "cuda", or "auto")
     weight_decay: Optional[float] = None  # Optional weight decay for optimizer
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
-    EntityGNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
-    EntityGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'gine', 'GAT'] = "gine"  # Message function for entity GNN
-    RelationGNNMessageFunc: Literal['rotate', 'distmult', 'transe', 'GAT', 'gine'] = "GAT"  # Message function for relation GNN
-    Conditioning: Literal['seed only', 'all', 'false'] = "all"  # Conditioning strategy for GNN
-    QueryGNN: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel' 
+    GNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
+    Conditioning: Literal['seed only', 'all', 'false', 'random'] = "false"  # Conditioning strategy for GNN
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
-    layer_norm: bool = True  # Whether to use layer normalization in GNNs
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
+    laplacian_k: int = 0  # Number of Laplacian eigenvectors for Positional Encoding
+    gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
+
+    query_gnn: QueryGNNConfig = QueryGNNConfig()
+    entity_gnn: EntityGNNConfig = EntityGNNConfig()
+    relation_gnn: RelationGNNConfig = RelationGNNConfig()
+    scheduler: SchedulerConfig = SchedulerConfig()
     
-    entity_graph: Literal['bipartite', 'KG'] = "bipartite"
-    relation_graph: Literal['bipartite', 'RelationGraph'] = "bipartite"
 
-
-    class Config:
-        extra = "allow"  # Allow extra fields if present
+    # class Config:
+    #     extra = "allow"  # Allow extra fields if present
 
 
 def load_config_yaml(config_path: str) -> Config:

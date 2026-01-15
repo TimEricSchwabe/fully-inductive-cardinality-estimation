@@ -1,10 +1,10 @@
 import torch
 import torch.nn.functional as F
-from torch_geometric.nn import HGTConv, Linear, RGCNConv, RGATConv, HEATConv, GATConv, GINEConv, GINConv, GPSConv
-from torch_geometric.nn import global_mean_pool, global_max_pool, global_add_pool
+from torch_geometric.nn import Linear, GINEConv, GPSConv
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
-from typing import Callable, Optional, Union
+from typing import Optional, Union
 from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch import Tensor
 from torch_geometric.nn.inits import reset
@@ -62,12 +62,12 @@ class QueryGNN(torch.nn.Module):
             else:
                 x = layer(x, edge_index)
             x = bn(x)
-            x = F.relu(x)
+            x = F.silu(x)
             x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Global add pooling over nodes -> graph embedding
         # TODO: Funktioniert, aber kein ahnung ob es das macht, was es machen soll
-        g = global_add_pool(x, batch.batch)
+        g = (x, batch.batch)
 
 
         # TODO: Adding the graph size |E| to the final MLP
@@ -201,7 +201,6 @@ class TripleConv(MessagePassing):
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(nn={self.nn})'
 
-
 class TripleModel(torch.nn.Module):
     """
     GNN model to predict cardinality of a query,
@@ -212,27 +211,28 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
+        self.skip_connection = skip_connection
 
 
         self.mlp = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2),
+            torch.nn.Dropout(p=dropout),
             torch.nn.ReLU(),
             torch.nn.Linear(self.feat_dim, self.feat_dim),
-            # torch.nn.Dropout(p=0.2)
+            torch.nn.Dropout(p=dropout)
         )
 
         # second MLP maps feat_dim -> 200 (via 100)
         self.mlp2 = torch.nn.Sequential(
             torch.nn.Linear(self.feat_dim, 100),
-            # torch.nn.Dropout(p=0.2),
+            torch.nn.Dropout(p=dropout),
             torch.nn.ReLU(),
             torch.nn.Linear(100, 200),
-            # torch.nn.Dropout(p=0.2)
+            torch.nn.Dropout(p=dropout)
         )
 
         self.ln1 = nn.LayerNorm(self.feat_dim)
@@ -243,28 +243,34 @@ class TripleModel(torch.nn.Module):
         self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
         # self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
         # self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        self.skip_proj = Linear(self.feat_dim, 200)
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)
 
-        # self.dropout = torch.nn.Dropout(p=0.2)
+        self.dropout = torch.nn.Dropout(p=dropout)
 
     def forward(self, batch, graph_size):
         x = batch.x
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
-
-
-        x = F.relu(self.conv1(x, edge_index, edge_attr=edge_attr))
+        x_input = x
+        x = F.silu(self.conv1(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln1(x)
-        x = F.relu(self.conv2(x, edge_index, edge_attr=edge_attr))
+        if self.skip_connection:
+            x = x + x_input
+
+        x_input = x
+        x = F.silu(self.conv2(x, edge_index, edge_attr=edge_attr))
         if self.layer_norm:
             x = self.ln2(x)
+        if self.skip_connection:
+            x = x + self.skip_proj(x_input)
         x = global_add_pool(x, batch.batch)
+        x = self.dropout(x)
         x = self.lin(x)
-        # x = self.dropout(x)
-        x = F.relu(x)
+        x = F.silu(x)
         x = self.lin2(x)
         
         # We did an tested it and either with or without abs works fine
@@ -559,7 +565,7 @@ class QueryCardinalityGNN(torch.nn.Module):
         x = batch.x # [Nodes, 3 + D]
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr # [Edges, 3 + D]
-        log_N = torch.log1p(N).to(x.device) # TODO: muss so? vorher war da torch.log(torch.tensor(N, device=x.device))
+        log_N = torch.log1p(N).to(x.device)
 
         # --- Phase 1 ---
         # c_curr: [Nodes, 1] (Log cardinality estimate per node; accounting for tp cardinalitiies and first node joins)
@@ -676,8 +682,7 @@ class QueryTransformer(torch.nn.Module):
                 x = x + self.pe_proj(pe)
             except Exception as e:
                 raise
-                # Fallback if PE computation fails (e.g. eigendecomposition issues)
-                pass
+
 
         for conv in self.convs:
             # Pass batch.batch (the index tensor) instead of the whole batch object

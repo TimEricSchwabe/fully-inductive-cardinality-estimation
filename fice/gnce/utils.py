@@ -1,20 +1,16 @@
 import os.path
 
 import torch
-from torch_geometric.data import Data, HeteroData, Dataset
-import torch_geometric.transforms as T
+from torch_geometric.data import Data, HeteroData
 
 import numpy as np
 import json
 import random
-import torch_geometric
-from torch_geometric.data.datapipes import functional_transform
 from torch_geometric.transforms import BaseTransform
 from torch_geometric.utils import to_undirected
 from typing import Union
 from torch import Tensor
 import copy
-import inspect
 
 
 class ToUndirectedCustom(BaseTransform):
@@ -245,7 +241,7 @@ def get_query_graph_data_new(query_graph, statistics, device, unknown_entity='fa
                 data["entity", p, "entity"].edge_attr = torch.tensor([feature_vector])
 
         # Adding the embeddings of s and o
-        if not s in node_mapping.keys():
+        if s not in node_mapping.keys():
             node_mapping[s] = n_entities
             n_entities += 1
             if "?" in s:
@@ -281,7 +277,7 @@ def get_query_graph_data_new(query_graph, statistics, device, unknown_entity='fa
                     feature_vector = [float(i) for i in idx_bin]
 
                 node_embeddings.append(feature_vector)
-        if not o in node_mapping.keys():
+        if o not in node_mapping.keys():
             node_mapping[o] = n_entities
             n_entities += 1
             if "?" in o:
@@ -375,7 +371,7 @@ def get_query_graph_data(query_graph, statistics, device):
                 data["entity", p, "entity"].edge_attr = torch.tensor([feature_vector])
 
         # Adding the embeddings of s and o to
-        if not s in node_mapping.keys():
+        if s not in node_mapping.keys():
             node_mapping[s] = n_entities
             n_entities += 1
             if "?" in s:
@@ -386,7 +382,7 @@ def get_query_graph_data(query_graph, statistics, device):
                 feature_vector = statistics[s]["embedding"].copy()
                 feature_vector.append(statistics[s]["occurence"] / 16018)
                 node_embeddings.append(feature_vector)
-        if not o in node_mapping.keys():
+        if o not in node_mapping.keys():
             node_mapping[o] = n_entities
             n_entities += 1
             if "?" in o:

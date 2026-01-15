@@ -7,7 +7,7 @@ from typing import Optional, Dict, List, Tuple, Union, Literal
 import requests
 from tqdm import tqdm as _tqdm
 
-from fice.ultra.tasks import build_relation_graph
+from fice.tasks import build_relation_graph
 from tqdm import tqdm
 
 DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
@@ -35,7 +35,6 @@ def download(url: str, dest: Union[Path, str], progress: bool = False):
                     continue
                 f.write(chunk)
 
-# TODO: Make the nt_path file optinal
 class NTDatasets(InMemoryDataset):
     def __init__(
         self,
@@ -50,7 +49,7 @@ class NTDatasets(InMemoryDataset):
         raw_file_path = pathlib.Path(self.url).name
 
         if raw_file_path is None or raw_file_path == "":
-            raw_file_path = f"raw_dataset.nt"
+            raw_file_path = "raw_dataset.nt"
 
         self.dataset_name = (
             dataset_name if dataset_name is not None else Path(self.url).stem
@@ -318,7 +317,7 @@ class NTQueries(InMemoryDataset):
         # Keep the original queries source (can be a URL or a local path)
         raw_file_name = pathlib.Path(self.url).name
         if raw_file_name is None or raw_file_name == "":
-            raw_file_name = f"raw_queries.json"
+            raw_file_name = "raw_queries.json"
 
         # The dataset expects the raw file to live in the dataset's raw/ folder
         self.raw_file_path = raw_dir / raw_file_name
@@ -406,7 +405,6 @@ class NTQueries(InMemoryDataset):
 
 
         # Process Edges
-        # HACK: Works for now but maybe find more beatuful solution
         query_edge_type_string = [t[1] for t in query.get('triples')]
 
         query_edge_attr = torch.zeros(

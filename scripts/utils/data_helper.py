@@ -2,19 +2,19 @@ import torch
 import json
 import random
 import logging
-from typing import List, Tuple, Union
+from typing import Dict, List, Tuple, Union
 from pathlib import Path
+from torch.utils.data import Subset
 from utils.config import DataConfig
 from utils.multigraph import MultigraphLoader
 from utils.models import *
-import numpy as np
 
 
 # Import project modules
 from fice import datasets
-from torch_geometric.loader import DataLoader
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
 logger = logging.getLogger(__name__)
 
@@ -76,7 +76,7 @@ def get_dataset_processed_dir(dataset_name: str):
     dataset_name_lower = dataset_name.lower()
     return Path(datasets.DEFAULT_DATA_ROOT) / dataset_name_lower / "processed"
 
-def load_dataset(dataset_name: str) -> List:
+def load_dataset(dataset_name: str) -> datasets.NTDatasets:
     """Load the graph dataset and verify its properties."""
     DatasetClass = get_dataset_class(dataset_name)
     
@@ -127,7 +127,7 @@ def load_queries(
     return queries
 
 
-def load_data(dataset_name: str, queries_name: str):
+def load_data(dataset_name: str, queries_name: str) -> Tuple[datasets.NTDatasets, Tuple[Dict, Dict, Dict, Dict], List]:
     """Load dataset, occurrences and queries and emit consolidated logging.
 
     Parameters:
@@ -139,7 +139,7 @@ def load_data(dataset_name: str, queries_name: str):
 
     Returns the same tuple as before: (dataset, (eo, ro, em, rm), queries)
     """
-    dataset = load_dataset(dataset_name)
+    dataset: datasets.NTDatasets = load_dataset(dataset_name)
     eo, ro, em, rm = load_occurrences(dataset_name)
     queries = load_queries(
         queries_name,
@@ -188,20 +188,19 @@ def load_data(dataset_name: str, queries_name: str):
 
     return dataset, (eo, ro, em, rm), queries
 
-def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[List, List]:
-    # TODO: takes a long time for some reason fix
-    # Process and filter queries
-    queries_list = list(queries)
+def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[Subset, Subset]:
+    n = len(queries)
+    indices = list(range(n))
+    
     if shuffle:
-        random.shuffle(queries_list)
-
-    train_size = int(len(queries_list) * train_ratio)
-    test_size = len(queries_list) - train_size
-
-    train_queries = queries_list[:train_size]
-    test_queries = queries_list[train_size:]
-
-    return train_queries, test_queries
+        random.shuffle(indices)
+    
+    train_size = int(n * train_ratio)
+    train_indices = indices[:train_size]
+    test_indices = indices[train_size:]
+    
+    # Return Subset objects that lazily index into the original dataset
+    return Subset(queries, train_indices), Subset(queries, test_indices)
 
 def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: int = None) -> List[any]:
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
@@ -210,12 +209,13 @@ def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: i
         processed_data = [d for d in data if d.y.item() >= min_cardinality] 
 
     if num_queries is not None or num_queries > 0:
-        acutal_num_queries = min(num_queries, len(processed_data))
-        processed_data = processed_data[:acutal_num_queries]
+        actual_num_queries = min(num_queries, len(processed_data))
+        processed_data = processed_data[:actual_num_queries]
 
     
     return processed_data
 
+# TODO: https://gemini.google.com/share/fa266d99aba4
 def make_bipartit_graph(data):
     """ Convert a homogeneous graph to a bipartite graph representation """
 
@@ -325,9 +325,28 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         dataset_name = data_config.dataset
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
+        
+        # Apply Laplacian PE transform if requested in config
+        if isinstance(config, Config) and config.laplacian_k > 0:
+            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name}...")
+            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
+            dataset = transform(dataset)
+            
+            # Also apply to relation graph if it exists
+            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None and config.relation_gnn.model in ['RelationGNN']:
+                logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} relation graph...")
+                dataset.relation_graph = transform(dataset.relation_graph)
+
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
         bipartite_graph = make_bipartit_graph(dataset)
+        
+        # Also apply Laplacian PE to bipartite graph if requested
+        if isinstance(config, Config) and config.laplacian_k > 0:
+            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} bipartite graph...")
+            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
+            bipartite_graph = transform(bipartite_graph)
+
         dataset.bipartite_graph = bipartite_graph
 
 
@@ -370,7 +389,6 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         shuffle=True,
     )
 
-    # TODO: Besser lösunge findend
     if len(test_dataset) == 0 or len(test_sets) == 0:
         test_dataset = validation_datasets
         test_sets = validation_sets

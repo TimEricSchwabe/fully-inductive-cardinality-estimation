@@ -1,6 +1,10 @@
 __pycache__/
 
 # Virtual environment
+benchmarks/gcare/results/*
+benchmarks/neuso/NeuSO/
+benchmarks/gnce/GNCE/
+tensorboard_log/
 venv/
 venv*/
 *venv*/
@@ -30,9 +34,9 @@ run_*.zip
 
 # VS Code
 .vscode/
-
+benchmarks/gcare/gcare
+# gcare/
 logs/
-gcare/
 
 # macOS
 .DS_Store

@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Union
 from pathlib import Path
 
@@ -7,7 +6,9 @@ from utils.models import *
 import torch
 import logging
 from utils.data_helper import *
-from utils.config import Config
+from utils.helper import wandb_log_artifact_with_retry
+
+logger = logging.getLogger(__name__)
 
 def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
     def to_cpu(obj):
@@ -39,25 +40,33 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
 
     model_state_dict = state.model_components.model.state_dict()
     optimizer_state_dict = state.model_components.optimizer.state_dict()
+    
     training_state = {
         'model_state_dict': model_state_dict,
         'optimizer_state_dict': optimizer_state_dict,
         'config': state.training_context.config.model_dump(),
     }
-
+    
+    if state.model_components.scheduler is not None:
+        training_state['scheduler_state_dict'] = state.model_components.scheduler.state_dict()
 
     torch.save(training_state, checkpoint_path)
     epoch = state.training_context.current_epoch
 
     # Log checkpoint as wandb artifact if enabled
     if getattr(state.training_context, 'use_wandb', False):
-        artifact = wandb.Artifact(
-            name=f"checkpoint_epoch_{epoch}",
-            type="model",
-            description=f"Checkpoint at epoch {epoch}"
-        )
-        artifact.add_file(str(checkpoint_path))
-        wandb.log_artifact(artifact)
+        try:
+            artifact = wandb.Artifact(
+                name=f"checkpoint_epoch_{epoch}",
+                type="model",
+                description=f"Checkpoint at epoch {epoch}"
+            )
+            artifact.add_file(str(checkpoint_path))
+            
+            wandb_log_artifact_with_retry(artifact)
+                    
+        except Exception as e:
+            logger.error(f"Failed to prepare/log checkpoint artifact: {e}")
 
 
 def load_checkpoint(checkpoint_path: Union[str, Path]) -> TrainingState:

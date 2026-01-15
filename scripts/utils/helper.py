@@ -1,18 +1,18 @@
 from pathlib import Path
 import logging
 import random
-from typing import Union, Optional
+from typing import Union
 import torch
 import numpy as np
 from datetime import datetime
 import wandb
 import os
 import argparse
-import json
 import matplotlib.pyplot as plt
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import hashlib
+import time
 
 
 logger = logging.getLogger(__name__)
@@ -50,18 +50,68 @@ def initialize_wandb(config, run_dir):
         run_name = WANDB_CONFIG['run_name']
 
 
-    run = wandb.init(   
-        project=WANDB_CONFIG['project'],
-        entity=WANDB_CONFIG['entity'],
-        name=run_name,
-        config=training_config,
-        tags=WANDB_CONFIG['tags'],
-        notes=WANDB_CONFIG['notes'],
-        mode=WANDB_CONFIG['mode'],
-        dir=str(run_dir)
-    )
+    # Retry logic for wandb.init
+    max_retries = 10000
+    initial_wait = 5
+    wait_time = initial_wait
     
-    logger.info(f"Weights & Biases initialized: {run.url}")
+    for attempt in range(max_retries):
+        try:
+            run = wandb.init(   
+                project=WANDB_CONFIG['project'],
+                entity=WANDB_CONFIG['entity'],
+                name=run_name,
+                config=training_config,
+                tags=WANDB_CONFIG['tags'],
+                notes=WANDB_CONFIG['notes'],
+                mode=WANDB_CONFIG['mode'],
+                dir=str(run_dir)
+            )
+            logger.info(f"Weights & Biases initialized: {run.url}")
+            return run
+        except Exception as e:
+            logger.warning(f"Weights & Biases initialization failed (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+            wait_time = min(wait_time * 2, 300)
+    
+    logger.error(f"Failed to initialize WandB after {max_retries} attempts. Continuing without WandB.")
+    return None
+
+
+def wandb_log_artifact_with_retry(artifact, max_retries=10000, initial_wait=5):
+    """
+    Logs a wandb artifact with exponential backoff retry logic.
+    Global helper to be used across the project.
+    """
+    wait_time = initial_wait
+    for attempt in range(max_retries):
+        try:
+            wandb.log_artifact(artifact)
+            if attempt > 0:
+                logger.info(f"WandB artifact upload succeeded after {attempt} retries.")
+            return # Success
+        except Exception as e:
+            logger.warning(f"WandB artifact upload failed (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time} seconds...")
+            time.sleep(wait_time)
+            # Cap wait time at 5 minutes
+            wait_time = min(wait_time * 2, 300)
+    
+    logger.error(f"Failed to upload artifact after {max_retries} attempts. Giving up.")
+
+
+def wandb_log_with_retry(data, max_retries=1000, initial_wait=2):
+    """
+    Logs metrics to wandb with retry logic.
+    """
+    wait_time = initial_wait
+    for attempt in range(max_retries):
+        try:
+            wandb.log(data)
+            return
+        except Exception as e:
+            logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
+            time.sleep(wait_time)
+            wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
 
 
 
@@ -224,7 +274,10 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
     
     # Optional: Downsample if too many vectors to avoid creating a massive NxN matrix
     if vecs.size(0) > sample_size:
-        perm = torch.randperm(vecs.size(0))
+        # Use a fixed generator to ensure we sample the same nodes every time (for consistent plots across epochs)
+        g = torch.Generator()
+        g.manual_seed(42)
+        perm = torch.randperm(vecs.size(0), generator=g)
         vecs = vecs[perm[:sample_size]]
     
     # 1. Normalize vectors to unit length (L2 norm)

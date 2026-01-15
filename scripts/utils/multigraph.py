@@ -1,19 +1,16 @@
 
-from torch.utils.data import Dataset, Sampler
-from typing import List, Tuple, Optional, Union
-from torch_geometric.data import Data
+from typing import List, Union
 from torch_geometric.loader import DataLoader
 import torch
 import random
 
-
+from fice.datasets import NTDatasets, NTQueries
 
 class MultigraphLoader():
-    # TODO: typing von object 
-    def __init__(self, data: Union[object, List[object]], queries: Union[object, List[object]], batch_size: Union[int, List[int]] = 1, fair_chance: bool = True, shuffle: bool = False, **kwargs):
-        if not isinstance(data, List):
+    def __init__(self, data: Union[NTDatasets, List[NTDatasets]], queries: Union[NTQueries, List[NTQueries]], batch_size: Union[int, List[int]] = 1, fair_chance: bool = True, shuffle: bool = False, **kwargs):
+        if not isinstance(data, List) and isinstance(data, NTDatasets):
             data = [data]
-        if not isinstance(queries, List):
+        if not isinstance(queries, List) and isinstance(queries, NTQueries):
             queries = [queries]
         if not isinstance(batch_size, List):
             batch_size = [batch_size] * len(data)
