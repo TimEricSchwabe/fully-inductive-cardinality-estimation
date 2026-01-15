@@ -2,8 +2,9 @@ __pycache__/
 
 # Virtual environment
 benchmarks/gcare/results/*
-benchmarks/neuso/NeuSO/
 benchmarks/gnce/GNCE/
+benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
+benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
 tensorboard_log/
 venv/
 venv*/
