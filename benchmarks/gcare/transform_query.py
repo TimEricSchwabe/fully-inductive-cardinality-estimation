@@ -3,7 +3,7 @@ import random
 from pathlib import Path
 import os
 from typing import Literal
-from benchmarks.rdf_types import *
+from rdf_types import *
 
 # Environment variables for Docker container paths
 GCARE_HOME = os.environ.get('GCARE_HOME', '/usr/src/app/gcare')
