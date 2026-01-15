@@ -6,7 +6,7 @@ services:
     environment:
       - DATASET_NAME=swdf_star
       - DATASET_TYPE=star
-      - NUM_QUERIES=120
+      - NUM_QUERIES=500
     volumes:
       # - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_path_queries/raw/:/usr/src/app/gcare/data/queryset/swdf/
       - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/queryset/swdf/:/usr/src/app/gcare/data/queryset/swdf/
