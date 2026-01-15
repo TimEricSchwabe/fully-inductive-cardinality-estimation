@@ -101,6 +101,7 @@ def predict(method: str, dataset: str):
     if method == 'bsk':
         os.environ['GCARE_BSK_BUDGET'] = '4096'
     command = f'./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}'
+    start_time = time.time()
     proc = subprocess.run(
         # f'bash -lc "{command} | grep -A 2 \"Average Time\""',
         f'bash -lc "{command}"',
@@ -109,11 +110,12 @@ def predict(method: str, dataset: str):
         stdout=subprocess.PIPE,
         cwd=Path(f'{GCARE_HOME}/scripts')
     )
+    end_time = time.time() - start_time
     result = proc.stdout.decode()
 
     lines = result.strip().split(' ')
     predicted_cardinalities = np.asarray(lines[-repeat:], dtype=float)
-    prediction_time = 0
+    prediction_time = end_time
     pred_cardinality = np.mean(predicted_cardinalities) 
 
     # predicted_cardinalities = np.asarray(lines[2].split(' ')[1:], dtype=float)

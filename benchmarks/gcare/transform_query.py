@@ -3,6 +3,7 @@ import random
 from pathlib import Path
 import os
 from typing import Literal
+from benchmarks.rdf_types import *
 
 # Environment variables for Docker container paths
 GCARE_HOME = os.environ.get('GCARE_HOME', '/usr/src/app/gcare')
@@ -39,13 +40,17 @@ def query_to_gcare(query, query_idx, id_to_id_mapping, id_to_id_mapping_predicat
         vertices.add(tp[0])
         vertices.add(tp[2])
         if dataset == 'yago' or 'yago_inductive':
-            rdf_type_uri = '<http://example.com/13000179>'
+            rdf_type_uri = rdf_type_uri_yago
         elif dataset == 'wikidata':
-            rdf_type_uri = '<http://www.wikidata.org/prop/direct/P31>'
+            rdf_type_uri = rdf_type_uri_wikidata
         elif dataset == 'swdf' or dataset == 'swdf_inductive':
-            rdf_type_uri = '<http://ex.org/03>'
+            rdf_type_uri = rdf_type_uri_swdf
         elif dataset == 'lubm':
-            rdf_type_uri = '<http://example.org/1>'
+            rdf_type_uri = rdf_type_uri_lubm
+        elif dataset == 'wn18rr' or dataset == 'wn18rr_ind':
+            rdf_type_uri = rdf_type_uri_wn18rr
+        elif dataset == 'dbpedia100k':
+            rdf_type_uri = rdf_type_uri_dbpedia100k
         else:
             raise AssertionError("rdf type uri missing !")
 
