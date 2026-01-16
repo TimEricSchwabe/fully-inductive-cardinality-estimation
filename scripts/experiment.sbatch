@@ -1,13 +1,16 @@
 #!/bin/bash
 #SBATCH -J fice_training
-#SBATCH --gres=gpu:nvidia:1        # request 1 GPU
-#SBATCH -t 24:00:00                # walltime (hh:mm:ss)
+#SBATCH -w gpu-nvidia-h100          # specify the node
+#SBATCH --gres=gpu:nvidia:1         # request 1 GPU
+#SBATCH -t 24:00:00                 # walltime (hh:mm:ss)
+
+config_file=$1
 
 # -------------------------------
 # Variables
 # -------------------------------
 PROJECT_DIR="/storage/home/lukasketzer/fully-inductive-cardinality-estimation"
-CONFIG_FILE="$PROJECT_DIR/configs/train_full.yaml"
+CONFIG_FILE="$config_file"
 SCRIPT="$PROJECT_DIR/scripts/train.py"
 CONTAINER="/storage/home/lukasketzer/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"

@@ -44,12 +44,12 @@ data:
     queries: "fb237_v4_ind_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: *bs
@@ -85,7 +85,7 @@ data:
 epochs: 100
 wandb: True
 wandb_run_name: "EXPERIMENT_fb237_v4"
-learning_rate: 1e-4
+learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
@@ -95,13 +95,13 @@ seed: 42
 device: "auto"
 weight_decay: 0.01 # Default from config.py defualt is 0.01
 n_embedding_layers: 2
-GNNNeighborhood: [25, 10] # Graph Sage numbers
+GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
 laplacian_k: 0
-gradient_clipping: 5.0
+gradient_clipping: 1.0
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT"
