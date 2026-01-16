@@ -5,8 +5,6 @@ from pathlib import Path
 import copy
 
 
-# DATASETS = [
-#     {}
 
 EXPERIMENTS = [
     {
@@ -32,6 +30,10 @@ EXPERIMENTS = [
     {
         'name': 'wn18rr_inductive',
         'validation': ['wn18rr_v4_ind_star_queries', 'wn18rr_v4_ind_path_queries'],
+    },
+    {
+        'name': 'transductive',
+        'validation': [],
     },
 ]
 
