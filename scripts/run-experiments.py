@@ -33,10 +33,6 @@ EXPERIMENTS = [
         'name': 'wn18rr_inductive',
         'validation': ['wn18rr_v4_ind_star_queries', 'wn18rr_v4_ind_path_queries'],
     },
-    {
-        'name': 'transductive_fb237',
-        'validation': [],
-    },
 ]
 
 BASE_CONFIG_PATH = Path('./configs/train_full.yaml')
@@ -103,7 +99,7 @@ def main():
     for e in EXPERIMENTS:
         config = prepare_config(experiment=e, config=base_config)
         config_path = save_temp_config(config=config, experiment=e, out=out_dir)
-        result = sbatch_run(config_path=config_path)
+        result = sbatch_run(config_path=config_path, experiment_name=e['name'])
         if result is not None:
             job_id = result.strip().split(' ')[-1]
             running_jobs[job_id] = e['name']
