@@ -36,6 +36,8 @@ def transform_ttl_to_gcare(
     if not graph_path.exists():
         raise FileNotFoundError(f"Graph file not found: {graph_path}")
     
+    is_untyped = rdf_type_uri == '0'
+    
     # Ensure output directory exists
     out_path.mkdir(parents=True, exist_ok=True)
     
@@ -79,10 +81,11 @@ def transform_ttl_to_gcare(
     
     # Pass 2: Add Vertex types (rdf:type)
     print("Pass 2: Adding vertex types...")
+    
     for line in tqdm(graph_data):
         atoms = line.split(" ")[:-1]
         # If triple has predicate rdf:type
-        if atoms and atoms[1] == rdf_type_uri:
+        if atoms and atoms[1] == rdf_type_uri and not is_untyped:
             type_id = id_to_id_mapping[atoms[2]]
             vertex_dict[atoms[0]].append(type_id)
     

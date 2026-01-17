@@ -14,6 +14,7 @@ import logging
 GCARE_HOME = os.environ.get('GCARE_HOME', '/usr/src/app/gcare')
 DATA_ROOT = os.environ.get('DATA_ROOT', '/usr/src/app/data')
 RESULTS_ROOT = os.environ.get('RESULTS_ROOT', '/usr/src/app/results')
+RDF_TYPE_URI = os.environ.get('RDF_TYPE_URI', '0')
 
 # configure logging so messages show in container logs
 logging.basicConfig(level=logging.INFO)
@@ -70,7 +71,8 @@ def run_gcare(dataset, eval_folder, query_root, dataset_root, inductive, num_que
                 old_query.unlink()
             
             query_to_gcare(query["triples"], 0, id_to_id_mapping=id_to_id_mapping,
-                           id_to_id_mapping_predicate=id_to_id_mapping_predicate, dataset=dataset, card=query["y"])
+                           id_to_id_mapping_predicate=id_to_id_mapping_predicate, dataset=dataset, 
+                           card=query["y"], rdf_type_uri=RDF_TYPE_URI)
             try:
                 y_pred, pred_time = predict(method=method, dataset=dataset)
             except subprocess.CalledProcessError as e:
