@@ -121,7 +121,7 @@ query_gnn:
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
   layer_norm: True
-  dropout: 0.2
+  dropout: 0.0
 
 scheduler:
   enabled: True
