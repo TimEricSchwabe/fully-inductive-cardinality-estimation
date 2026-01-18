@@ -40,24 +40,24 @@ experiments:
     num_queries: 500
     timeout_hours: 2
 
-  # # Wikidata Dataset
-  # - name: wikidata_path
-  #   dataset_name: wikidata
-  #   query_type: path
-  #   graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
-  #   query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_path_queries/raw/60037220?private_link=435c4febc01f57ca3b6d
-  #   rdf_type_uri: "<http://www.wikidata.org/prop/direct/P31>"
-  #   num_queries: 500
-  #   timeout_hours: 3
+  # Wikidata Dataset
+  - name: wikidata_path
+    dataset_name: wikidata
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_path_queries/raw/60037220?private_link=435c4febc01f57ca3b6d
+    rdf_type_uri: "<http://www.wikidata.org/prop/direct/P31>"
+    num_queries: 500
+    timeout_hours: 3
 
-  # - name: wikidata_star
-  #   dataset_name: wikidata
-  #   query_type: star
-  #   graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
-  #   query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_queries/raw/59320583
-  #   rdf_type_uri: "<http://www.wikidata.org/prop/direct/P31>"
-  #   num_queries: 500
-  #   timeout_hours: 3
+  - name: wikidata_star
+    dataset_name: wikidata
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_queries/raw/59320583
+    rdf_type_uri: "<http://www.wikidata.org/prop/direct/P31>"
+    num_queries: 500
+    timeout_hours: 3
 
   # DBpedia100k Dataset
   - name: dbpedia100k_path
@@ -78,25 +78,6 @@ experiments:
     num_queries: 500
     timeout_hours: 2
 
-  # FB237 v4 Dataset
-  # - name: fb237_v4_path
-  #   dataset_name: fb237_v4
-  #   query_type: path
-  #   graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4/raw/59621618?private_link=a931a2f5f4c8c39cfb22
-  #   query_path: data/fb237_v4_path_queries/raw/placeholder
-  #   rdf_type_uri: "placeholder"
-  #   num_queries: 500
-  #   timeout_hours: 2
-
-  # - name: fb237_v4_star
-  #   dataset_name: fb237_v4
-  #   query_type: star
-  #   graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4/raw/59621618?private_link=a931a2f5f4c8c39cfb22
-  #   query_path: data/fb237_v4_star_queries/raw/placeholder
-  #   rdf_type_uri: "placeholder"
-  #   num_queries: 500
-  #   timeout_hours: 2
-
   # FB237 v4 Inductive Dataset
   - name: fb237_v4_ind_path
     dataset_name: fb237_v4_ind
@@ -115,25 +96,6 @@ experiments:
     rdf_type_uri: "0"
     num_queries: 500
     timeout_hours: 2
-
-  # WN18RR v4 Dataset
-  # - name: wn18rr_v4_path
-  #   dataset_name: wn18rr_v4
-  #   query_type: path
-  #   graph_path: data/wn18rr_v4/raw/placeholder
-  #   query_path: data/wn18rr_v4_path_queries/raw/placeholder
-  #   rdf_type_uri: "<http://example.org_derivationally_related_form>"
-  #   num_queries: 500
-  #   timeout_hours: 2
-
-  # - name: wn18rr_v4_star
-  #   dataset_name: wn18rr_v4
-  #   query_type: star
-  #   graph_path: data/wn18rr_v4/raw/placeholder
-  #   query_path: data/wn18rr_v4_star_queries/raw/placeholder
-  #   rdf_type_uri: "<http://example.org_derivationally_related_form>"
-  #   num_queries: 500
-  #   timeout_hours: 2
 
   # WN18RR v4 Inductive Dataset
   - name: wn18rr_v4_ind_path
