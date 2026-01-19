@@ -1,0 +1,105 @@
+# G-Care Benchmarking Experiment Configuration
+# Each experiment defines a dataset + query type combination to evaluate
+
+experiments:
+  # LUBM Dataset
+  - name: lubm_path
+    dataset_name: lubm
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/lubm/raw/59410577
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/lubm_path_queries/raw/60037037?private_link=8e4493e070acfd065b77
+
+  - name: lubm_star
+    dataset_name: lubm
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/lubm/raw/59410577
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/lubm_queries/raw/59410580
+  # SWDF Dataset
+  - name: swdf_path
+    dataset_name: swdf
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf/raw/59320634
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_path_queries/raw/60037112?private_link=81b137c60854d11ee270
+
+  - name: swdf_star
+    dataset_name: swdf
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf/raw/59320634
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_star_queries/raw/59320652
+
+  # Wikidata Dataset
+  - name: wikidata_path
+    dataset_name: wikidata
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_path_queries/raw/60037220?private_link=435c4febc01f57ca3b6d
+
+  - name: wikidata_star
+    dataset_name: wikidata
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata/raw/59320361
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wikidata_queries/raw/59320583
+
+  # DBpedia100k Dataset
+  - name: dbpedia100k_path
+    dataset_name: dbpedia100k
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/dbpedia100k/raw/59622674?private_link=f9b1fb2716ce2814515e
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/dbpedia100k_path_queries/raw/59898644?private_link=d6411dc19831edc2f780
+
+  - name: dbpedia100k_star
+    dataset_name: dbpedia100k
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/dbpedia100k/raw/59622674?private_link=f9b1fb2716ce2814515e
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/dbpedia100k_star_queries/raw/59687708?private_link=1e23a3388a4b6b6161d1
+
+  # FB237 v4 Dataset
+  - name: fb237_v4_path
+    dataset_name: fb237_v4
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4/raw/59621618?private_link=a931a2f5f4c8c39cfb22
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_path_queries/raw/59900678?private_link=69c356b2701ace402cf9
+
+  - name: fb237_v4_star
+    dataset_name: fb237_v4
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4/raw/59621618?private_link=a931a2f5f4c8c39cfb22
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_star_queries/raw/59651327?private_link=780ccfbe4856b223d7b5
+
+  # WN18RR v4 Dataset
+  - name: wn18rr_v4_path
+    dataset_name: wn18rr_v4
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4/raw/59622641?private_link=e97f83a035f7e24bb37c
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_path_queries/raw/59898641?private_link=6a9649f116fe9d8803db
+
+  - name: wn18rr_v4_star
+    dataset_name: wn18rr_v4
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4/raw/59622641?private_link=e97f83a035f7e24bb37c
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_star_queries/raw/59731877?private_link=2b8a1c9a43910e6a2189
+
+  # FB237 v4 Inductive Dataset
+  - name: fb237_v4_ind_path
+    dataset_name: fb237_v4_ind
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_ind/raw/59621825?private_link=364494eb331e3973ecb3
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_ind_path_queries/raw/59900708?private_link=103743702bc11e9b4672
+
+  - name: fb237_v4_ind_star
+    dataset_name: fb237_v4_ind
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_ind/raw/59621825?private_link=364494eb331e3973ecb3
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/fb237_v4_ind_star_queries/raw/59731859?private_link=953281688dbdb230c09d
+
+  - name: wn18rr_v4_ind_path
+    dataset_name: wn18rr_v4_ind
+    query_type: path
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_ind/raw/59622656?private_link=49ad78ce6e253240223f
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_ind_path_queries/raw/59898623?private_link=87c951797ea81f7c43f0
+
+  - name: wn18rr_v4_ind_star
+    dataset_name: wn18rr_v4_ind
+    query_type: star
+    graph_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_ind/raw/59622656?private_link=49ad78ce6e253240223f
+    query_path: /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/wn18rr_v4_ind_star_queries/raw/59731889?private_link=ec764d8f68a39b467a60

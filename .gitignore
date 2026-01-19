@@ -3,6 +3,7 @@ __pycache__/
 # Virtual environment
 benchmarks/gcare/results/*
 benchmarks/gnce/GNCE/
+benchmarks/gnce/data/
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
 benchmarks/neuso/NeuSO/
