@@ -232,7 +232,7 @@ def build_docker_image(gcare_root):
     print("=" * 80)
     
     result = subprocess.run(
-        ["docker", "build", "-t", "gcare-benchmark:latest", "."],
+        ["docker", "build", "-f", "docker/Dockerfile", "-t", "gcare-benchmark:latest", "."],
         cwd=gcare_root,
         capture_output=False
     )

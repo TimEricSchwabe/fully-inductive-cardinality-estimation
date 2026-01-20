@@ -1,0 +1,63 @@
+Bootstrap: docker
+From: debian:stable-slim
+
+%post
+    # Update package lists and install dependencies
+    apt-get update
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        python3 \
+        python3-pip \
+        python3-numpy \
+        python3-tqdm \
+        python3-yaml \
+        cmake \
+        libboost-dev \
+        libboost-program-options-dev
+    
+    # Clean up apt cache
+    rm -rf /var/lib/apt/lists/*
+    apt-get clean
+    
+    # Working directory will be set up by %files section
+    # Python scripts and gcare source will be copied from host
+
+%files
+    # Copy G-Care source code and Python scripts from local folder
+    ../gcare /usr/src/app/gcare
+    ../*.py /usr/src/app/
+    ../rdf_types.py /usr/src/app/rdf_types.py
+
+%post
+    # Build G-Care after files are copied
+    cd /usr/src/app/gcare
+    mkdir -p build
+    cd build
+    cmake ..
+    make -j
+    
+    # Clean up build artifacts to save space
+    rm -rf *.o CMakeFiles
+    cd /usr/src/app
+    
+    # Clean up build tools (optional - uncomment to reduce image size)
+    # apt-get purge -y --auto-remove build-essential cmake
+    # rm -rf /root/.cache
+
+%runscript
+    exec "$@"
+
+%labels
+    Author lukasketzer
+    Description G-Care cardinality estimation benchmark container with libboost
+    Version 1.0
+
+%help
+    This container includes:
+    - Debian stable base
+    - Python 3 with numpy, tqdm, and yaml
+    - Boost C++ libraries (libboost-dev)
+    - G-Care compiled binary
+    
+    Usage:
+        apptainer exec gcare.sif python3 <script.py>

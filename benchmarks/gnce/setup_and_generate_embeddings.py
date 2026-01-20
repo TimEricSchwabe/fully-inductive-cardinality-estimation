@@ -58,15 +58,12 @@ def main():
                 print(f"Skipping embeddings - {len(existing)} already exist")
             else:
                 print("Generating embeddings...")
-                try:
-                    generate_embeddings_for_dataset(
-                        graph_file=str(graph_dst),
-                        query_files=query_files,
-                        output_statistics_dir=str(statistics_dir)
-                    )
-                    print("Done")
-                except Exception as e:
-                    print(f"Error: {e}")
+                generate_embeddings_for_dataset(
+                    graph_file=str(graph_dst),
+                    query_files=query_files,
+                    output_statistics_dir=str(statistics_dir)
+                )
+                print("Done")
     
     print(f"\nOutput: {base_output_dir}")
 

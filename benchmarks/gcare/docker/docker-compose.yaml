@@ -3,6 +3,8 @@ services:
   gcare-benchmark:
     build: .
     container_name: gcare-benchmark
+    mem_limit: 8g
+    memswap_limit: 8g
     environment:
       - DATASET_NAME=wikidata_path
       - DATASET_TYPE=path
