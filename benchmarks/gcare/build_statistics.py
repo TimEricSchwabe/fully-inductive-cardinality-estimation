@@ -28,8 +28,7 @@ def remove_files_in_directory(directory_path, exclude_file: Union[str, List[str]
         except Exception as e:
             print(f"Failed to delete {file_path}. Reason: {e}")
 
-
-if __name__ == '__main__':
+def main():
     dataset = os.environ.get('DATASET_NAME', 'unknown_graph')
     hard_reset = True
 
@@ -58,24 +57,11 @@ if __name__ == '__main__':
     # Execute the building for the specific method
     gcare_home_path = Path(GCARE_HOME)
     # script_path = gcare_home_path / "scripts" / "run-build.sh"
-    script_path = Path(__file__).resolve().parent / "custom-run-build.sh"
+    script_path = Path(__file__).resolve().parent / "docker" / "custom-run-build.sh"
     subprocess.run(["bash", str(script_path), dataset], check=True)
     end_time = time.time() - starting_time
 
-    # # Count the number of triples in the graph at hand
-    # try:
-    #     with open(graph_folder / f'{dataset}.txt', 'r') as f:
-    #         line_count = sum(1 for _ in f)
-    #     print(f"Number of lines in graph file: {line_count}")
-    # except FileNotFoundError:
-    #     print(f"Graph txt not found. Unable to count lines.")
-    #     raise
 
-    # # There are line_count *3 atoms in the triples (with duplicates)
-    # total_runtime_per_atom = end_time/(line_count*3) * 1000
 
-    # Path(f"{RESULTS_ROOT}/{savetag}/{method}").mkdir(parents=True, exist_ok=True)  # Create folder if it doesn't exist
-    # training_timing = {'total_training_time_per_atom': total_runtime_per_atom}
-    # with open(f"{RESULTS_ROOT}/{savetag}/{method}/training_timing.json", 'w') as file:
-    #     json.dump(training_timing, file, indent=4)
-
+if __name__ == '__main__':
+    main()

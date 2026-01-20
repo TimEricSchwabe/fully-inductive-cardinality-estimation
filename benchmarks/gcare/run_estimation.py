@@ -136,7 +136,7 @@ def predict(method: str, dataset: str):
     return pred_cardinality, prediction_time
 
 
-if __name__ == "__main__":
+def main():
     dataset_name = os.environ.get('DATASET_NAME', 'unknown_graph')
     query_type = os.environ.get('DATASET_TYPE', 'unknown_query')
     
@@ -171,3 +171,7 @@ if __name__ == "__main__":
               dataset_root=graph_path,
               inductive='full',
               num_queries=num_queries)
+
+if __name__ == "__main__":
+    pass
+    
