@@ -21,7 +21,7 @@ logging.basicConfig(level=logging.INFO)
 
 
 def run_gcare(dataset, eval_folder, query_root, dataset_root, inductive, num_queries: int = 100):
-    methods = ['wj', 'cset', 'sumrdf']
+    methods = ['wj', 'cset']
     #methods = ['impr']
     # Loading Queries and IDX transform mappings
 
@@ -173,5 +173,5 @@ def main():
               num_queries=num_queries)
 
 if __name__ == "__main__":
-    pass
+    main()
     

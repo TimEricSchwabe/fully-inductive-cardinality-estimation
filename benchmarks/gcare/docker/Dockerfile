@@ -16,9 +16,9 @@ RUN apt-get update \
 
 WORKDIR /usr/src/app
 
-COPY ../gcare ./gcare
-COPY ../*.py .
-COPY ../rdf_types.py ./rdf_types.py
+COPY gcare ./gcare
+COPY *.py .
+COPY ../custom-run-build.sh ./custom-run-build.sh
 
 RUN mkdir -p ./gcare/build \
  && cd ./gcare/build \

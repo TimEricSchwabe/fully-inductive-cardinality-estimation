@@ -103,10 +103,6 @@ def preprocess_graphs(experiments, workspace_root):
     
     print("All preprocessing completed successfully\n")
 
-def run_experiments_without_docker(experiments, results_dir, workspace_root, max_parallel=5):
-
-    pass
-
 def run_experiments(experiments, results_dir, workspace_root, max_parallel=5):
     """Run experiments in parallel using Docker containers."""
     print("=" * 80)
@@ -270,7 +266,6 @@ def main():
     results_dir = gcare_root / "results" / f"run_{timestamp}"
     results_dir.mkdir(parents=True, exist_ok=True)
 
-    use_docker = False
     
     print(f"Results directory: {results_dir}\n")
     
@@ -279,12 +274,11 @@ def main():
     print(f"Loaded {len(experiments)} experiments\n")
     
     # Build Docker image
-    if use_docker:
-        build_docker_image(gcare_root)
+    build_docker_image(gcare_root)
     
     # Clear directories and run
-    clear_gcare_directories(workspace_root)
-    preprocess_graphs(experiments, workspace_root)
+    # clear_gcare_directories(workspace_root)
+    # preprocess_graphs(experiments, workspace_root)
     run_experiments(experiments, results_dir, workspace_root, args.max_parallel)
     
     print("\n✓ All experiments completed successfully!")

@@ -3,22 +3,22 @@ seed=0
 # commit_id=$(git rev-parse HEAD)
 commit_id="12345"
 now="$(date +'%Y%m%d%H%M')"
-result_dir=../data/result/build/${now}/
+result_dir=/usr/src/app/gcare/data/result/build/${now}/
 
 mkdir -p ${result_dir}
 
 p=0.03
 
-input_dir=../data/dataset/${data}/
-data_dir=../data/dataset/${data}/
+input_dir=/usr/src/app/gcare/data/dataset/${data}/
+data_dir=/usr/src/app/gcare/data/dataset/${data}/
 
-for method in wj cset sumrdf; do
+for method in wj cset ; do
 
   if [ ${method} == cs ] || [ ${method} == bsk ]
   then
-    bin=../build/gcare_relation
+    bin=/usr/src/app/gcare/build/gcare_relation
   else
-    bin=../build/gcare_graph
+    bin=/usr/src/app/gcare/build/gcare_graph
   fi
 
   if [ ${method} == bsk ] # Bound sketch requires one more parameter: the budget of BSK

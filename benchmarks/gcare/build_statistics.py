@@ -57,7 +57,7 @@ def main():
     # Execute the building for the specific method
     gcare_home_path = Path(GCARE_HOME)
     # script_path = gcare_home_path / "scripts" / "run-build.sh"
-    script_path = Path(__file__).resolve().parent / "docker" / "custom-run-build.sh"
+    script_path = Path(__file__).resolve().parent / "custom-run-build.sh"
     subprocess.run(["bash", str(script_path), dataset], check=True)
     end_time = time.time() - starting_time
 

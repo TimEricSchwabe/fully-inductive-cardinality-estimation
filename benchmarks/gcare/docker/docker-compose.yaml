@@ -1,7 +1,9 @@
 
 services:
   gcare-benchmark:
-    build: .
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: gcare-benchmark
     mem_limit: 8g
     memswap_limit: 8g
