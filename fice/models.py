@@ -392,7 +392,7 @@ class RelationGNN(nn.Module):
         return out
         #return h
 
-class EmbeddingGNN(nn.Module):
+class EmbeddingGNNTransformer(nn.Module):
     """
         A unified embedding model that produces embeddings for both entities and relations
         on the bipartite graph of the KG.
@@ -558,7 +558,7 @@ class EmbeddingGNN(nn.Module):
         return out
         #return h
 
-class EmbeddingGNNv1(nn.Module):
+class EmbeddingGNN(nn.Module):
     """
         A unified embedding model that produces embeddings for both entities and relations
         on the bipartite graph of the KG.
@@ -606,9 +606,24 @@ class EmbeddingGNNv1(nn.Module):
         self.act = nn.SiLU()
 
 
-        self.laplacian_k = 0
-        if self.laplacian_k > 0:
-            self.le_pw_transform = AddLaplacianEigenvectorPE(k=self.laplacian_k)
+        # --- PE Configuration ---
+        self.pe_type = 'laplacian' # or 'random_walk'
+        self.pe_dim = 0
+        
+        if self.pe_dim > 0:
+            if self.pe_type == 'laplacian':
+                self.pe_transform = AddLaplacianEigenvectorPE(k=self.pe_dim)
+            elif self.pe_type == 'random_walk':
+                self.pe_transform = AddRandomWalkPE(walk_length=self.pe_dim)
+            else:
+                raise ValueError(f"Unknown PE type: {self.pe_type}")
+
+
+    def decode(self, z, edge_index):
+        # Inner-product decoder: score for each edge (logits)
+        src, dst = edge_index
+        z = F.normalize(z, p=2, dim=-1) 
+        return (z[src] * z[dst]).sum(dim=-1)
 
     def forward(self, data, batch=None):
         """
@@ -637,27 +652,49 @@ class EmbeddingGNNv1(nn.Module):
 
         # --- FIX: Symmetry Breaking with Degrees for Relation Graph ---
         # Inject log(degree) into the first dimension to distinguish relations structurally
-        if data.edge_index.numel() > 0:
+        if data.edge_index.numel() > 0 and self.conditioning == "false":
             deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
             deg_feature = torch.log(deg + 1).unsqueeze(0).expand(bs, -1).unsqueeze(-1).to(device)
             h = h.clone()
             h[:, :, 0] += deg_feature.squeeze(-1)
 
-        if self.laplacian_k > 0:
-            try:
-                data = self.le_pw_transform(data)
-                # Extract PE: shape (num_nodes, walk_length)
-                rw_pe = data.laplacian_eigenvector_pe.to(device)
-                
-                # Expand to batch size: (batch_size, num_nodes, walk_length)
-                rw_pe_expanded = rw_pe.unsqueeze(0).expand(bs, -1, -1)
+        # --- PE Injection ---
+        if self.pe_dim > 0:
+            # 1. Identify the correct attribute name based on PE type
+            if self.pe_type == 'laplacian':
+                pe_attr = 'laplacian_eigenvector_pe'
+            elif self.pe_type == 'random_walk':
+                pe_attr = 'random_walk_pe'
+            
+            # 2. Retrieve or Compute PE
+            pe_tensor = getattr(data, pe_attr, None)
+            
+            if pe_tensor is not None:
+                pe = pe_tensor.to(device)
+            else:
+                try:
+                    # Compute on the fly
+                    # Clone data to avoid in-place modification issues with gradients if any
+                    temp_data = self.pe_transform(data.clone())
+                    pe = getattr(temp_data, pe_attr).to(device)
+                except Exception as e:
+                    # Fallback if computation fails (e.g., disconnected graph for Laplacian)
+                    # Create zeros of correct shape
+                    pe = torch.zeros(num_nodes, self.pe_dim, device=device)
 
-                # Add to h, skipping the 0-th dimension used by degree
-                # Ensure we don't exceed embedding dimensions
-                dim_limit = min(self.laplacian_k, h.size(-1) - 1)
-                h[:, :, 1:1+dim_limit] = rw_pe_expanded[:, :, :dim_limit]
-            except Exception as e:
-                pass # Fallback to random features if Eigendecomposition fails
+            # 3. Add to Node Features
+            # Expand to batch size: (batch_size, num_nodes, pe_dim)
+            pe_expanded = pe.unsqueeze(0).expand(bs, -1, -1)
+
+            # Inject into h
+            # We skip dimension 0 (used by degree)
+            # Ensure we don't exceed embedding dimensions
+            # target_dim = 1 + pe_dim. We need to make sure h has enough space.
+            # h is size [bs, num_nodes, embedding_dim]
+            
+            dim_limit = min(self.pe_dim, h.size(-1) - 1)
+            if dim_limit > 0:
+                h[:, :, 1:1+dim_limit] = pe_expanded[:, :, :dim_limit]
 
         # Identify which relation IDs appear in each query and mark them as 1 (if conditioning allows)
         if self.conditioning != "false" and batch is not None:
@@ -665,7 +702,8 @@ class EmbeddingGNNv1(nn.Module):
             edge2graph   = batch.batch[batch.edge_index[0]]         # which batch element (query) does every edge belong to?
             graph_idx    = edge2graph[valid_mask]                   # batch index of the bound edges
             rel_idx      = batch.edge_embedding_indices[valid_mask] # global relation id of the bound edges
-            h[graph_idx, rel_idx] = 1.0
+            h[graph_idx, rel_idx] = torch.randn(graph_idx.size(0), self.rel_emb.embedding_dim, device=device)
+            # h[graph_idx, rel_idx] = 1.0
 
         rel_edges  = data.edge_index        # (2, E)
         # rel_types  = data.edge_type         # (E,)
@@ -737,7 +775,6 @@ class FICE(nn.Module):
                 heads=4,
                 layer_norm=layer_norm,
                 conditioning=conditioning,
-                output_dim=self.vector_dim
             )
 
         else:

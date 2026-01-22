@@ -1,17 +1,12 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)data:
 data:
   - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_star_queries"
-    batch_size: 4
-    num_queries: 10000
+    queries: "wn18rr_v4_path_queries"
+    batch_size: 8
+    num_queries: 1000
     type: "train-val"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_star_queries"
-    batch_size: 4
-    num_queries: 100
-    type: "validation"
 epochs: 200
-wandb: True
+wandb: False
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -22,11 +17,13 @@ device: "auto"
 EntityGNNNeighborhood: [100, 100]
 EntityGNNMessageFunc: "gine" # choices are "rotate", "distmult", "transe", "gine" or "GAT" ; first 3 use NBFNet, last one uses custom GNN 
 RelationGNNMessageFunc: "GAT" # choices are "rotate", "distmult", "transe", "GAT"
-Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
+Conditioning: "seed only" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null
-QueryGNN: "SimpleSumGNN" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
+QueryGNN: "QueryCardinalityGNN" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 layer_norm: False # True or False, whether to use layer normalization in the GNNs
 embedding_dim: 128
 n_embedding_layers: 2
+entity_graph: "bipartite" # choices are "bipartite", "KG"
+relation_graph: "bipartite" # choices are "bipartite", "RelationGraph"
 # weight_decay: 0.01  # Uncomment to use weight decay

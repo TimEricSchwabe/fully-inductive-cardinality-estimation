@@ -599,9 +599,7 @@ class SimpleSumGNN(torch.nn.Module):
             hidden_dim = 128
             
         self.mlp = nn.Sequential(
-            nn.Linear(input_dim, hidden_dim),
-            nn.ReLU(),
-            nn.Linear(hidden_dim, 1)
+            nn.Linear(input_dim, 1)
         )
 
     def forward(self, batch, N=None):

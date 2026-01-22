@@ -18,7 +18,8 @@ import torch.nn.functional as F
 import wandb
 from torch_geometric.data import Data
 from torch_geometric.loader import DataLoader, NeighborLoader
-from torch_geometric.utils import subgraph
+from torch_geometric.utils import subgraph, negative_sampling
+from torch_geometric.transforms import AddRandomWalkPE, AddLaplacianEigenvectorPE
 from tqdm import tqdm
 
 import networkx as nx
@@ -245,10 +246,62 @@ def train_epoch(state: TrainingState):
 
             if plot_embeddings:
                 if state.model_components.model.use_unified_bipartite_graph:
-                    edge_embeddings = state.model_components.model.embedding_model(data=relation_graph)
+                    edge_embeddings = state.model_components.model.embedding_model(data=relation_graph) #todo use sampling again !!
                     edge_embeddings = edge_embeddings.detach().cpu().squeeze()
                     state.metric_logger.log_embedding_similarity(edge_embeddings, "Embeddings", state.training_context.current_epoch)
-                    analyze_vector_similarity(edge_embeddings, "Embeddings Epoch " + str(state.training_context.current_epoch))
+                    vecs_tsne, vecs_umap = analyze_vector_similarity(edge_embeddings, "Embeddings Epoch " + str(state.training_context.current_epoch))
+
+
+
+                    # Save graph and embeddings here:
+                    try:
+                        save_dir = state.training_context.run_dir
+                        
+                        # 1. Save bipartite graph structure
+                        graph_path = save_dir / "bipartite_graph.nt"
+                        # relation_graph.edge_index is [2, num_edges]
+                        edge_index_np = relation_graph.edge_index.detach().cpu().numpy()
+                        
+                        with open(graph_path, "w") as f:
+                            for i in range(edge_index_np.shape[1]):
+                                u = int(edge_index_np[0, i])
+                                v = int(edge_index_np[1, i])
+                                f.write(f"<http://example.org/{u}> <http://example.org/-1> <http://example.org/{v}> .\n")
+                                
+                        # 2. Save embeddings as coords.json
+                        def save_coords_json(embeddings_np, filename):
+                            coords_path = save_dir / filename
+                            
+                            # Handle potential shape issues if squeeze reduced too much (e.g. single node)
+                            if embeddings_np.ndim == 1:
+                                embeddings_np = embeddings_np.reshape(1, -1)
+                                
+                            coords_data = {}
+                            for i in range(embeddings_np.shape[0]):
+                                # Take first 3 dims
+                                x = float(embeddings_np[i, 0]) if embeddings_np.shape[1] > 0 else 0.0
+                                y = float(embeddings_np[i, 1]) if embeddings_np.shape[1] > 1 else 0.0
+                                z = float(embeddings_np[i, 2]) if embeddings_np.shape[1] > 2 else 0.0
+                                
+                                coords_data[f"<http://example.org/{i}>"] = {
+                                    "x": x,
+                                    "y": y,
+                                    "z": z
+                                }
+                                
+                            with open(coords_path, "w") as f:
+                                json.dump(coords_data, f, indent=4)
+                            return coords_path
+
+                        tsne_path = save_coords_json(vecs_tsne, f"coords_tsne_{state.training_context.current_epoch}.json")
+                        umap_path = save_coords_json(vecs_umap, f"coords_umap_{state.training_context.current_epoch}.json")
+                            
+                        logger.info(f"Saved bipartite graph to {graph_path}")
+                        logger.info(f"Saved TSNE coords to {tsne_path}")
+                        logger.info(f"Saved UMAP coords to {umap_path}")
+
+                    except Exception as e:
+                        logger.error(f"Failed to save graph/embeddings: {e}")
                 else:
                     edge_embeddings = state.model_components.model.relation_model(data=relation_graph)
                     node_embeddings = state.model_components.model.entity_model(data=full_graph.to(device), relation_representations=edge_embeddings)
@@ -545,6 +598,137 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     avg_test_loss = epoch_test_loss / total_batches
     
     return avg_test_loss
+
+
+def reconstruction_loss(model, data, device="cpu"):
+    """
+    data.edge_index, data.edge_attr
+    """
+    # Make sure we are on the correct device
+    data = data.to(device)
+    
+    # Forward pass through the model to get embeddings
+    # We use batch=None to signal that we process the whole graph (bs=1)
+    # output shape: [1, num_nodes, dim] -> squeeze to [num_nodes, dim]
+    z = model(data, batch=None).squeeze(0)
+
+    edge_index = data.edge_index
+    
+    # Sample same number of negative edges as positive ones
+    neg_edge_index = negative_sampling(
+        edge_index=edge_index,
+        num_nodes=data.num_nodes,
+        num_neg_samples=edge_index.size(1),
+        method="sparse",
+    ).to(device)
+
+    # Use the decode method we added to EmbeddingGNN
+    pos_logits = model.decode(z, edge_index)
+    neg_logits = model.decode(z, neg_edge_index)
+
+    logits = torch.cat([pos_logits, neg_logits], dim=0)
+    labels = torch.cat([
+        torch.ones(pos_logits.size(0), device=device),
+        torch.zeros(neg_logits.size(0), device=device),
+    ], dim=0)
+
+    loss = F.binary_cross_entropy_with_logits(logits, labels)
+    return loss
+
+
+def pretrain_bipartite_graph(state: TrainingState, epochs=1000, lr=0.001):
+    """Pretrain the embedding model on the bipartite graph using link prediction."""
+    # Check if we are using the unified bipartite graph model
+    if not state.training_context.config.entity_graph == "bipartite":
+        logger.info("Skipping pretraining: Not using bipartite graph configuration.")
+        return
+
+    # Access the EmbeddingGNN model
+    # In FICE, it is stored as self.embedding_model
+    model = state.model_components.model
+    if not hasattr(model, 'embedding_model'):
+        logger.warning("Skipping pretraining: FICE model does not have 'embedding_model'.")
+        return
+    
+    embedding_model = model.embedding_model
+    device = state.training_context.device
+    
+    logger.info("=" * 60)
+    logger.info(f"STARTING PRETRAINING (Link Prediction on Bipartite Graph)")
+    logger.info(f"Epochs: {epochs}, LR: {lr}")
+    logger.info("=" * 60)
+    
+    # 1. Compute PE once for all graphs
+    # Access configuration from the embedding model
+    if hasattr(embedding_model, 'pe_dim') and embedding_model.pe_dim > 0:
+        pe_dim = embedding_model.pe_dim
+        pe_type = getattr(embedding_model, 'pe_type', 'random_walk')
+        
+        logger.info(f"Computing {pe_type} PE (dim={pe_dim}) for bipartite graphs...")
+        
+        # Select Transform
+        if pe_type == 'laplacian':
+            transform = AddLaplacianEigenvectorPE(k=pe_dim)
+            pe_attr = 'laplacian_eigenvector_pe'
+        elif pe_type == 'random_walk':
+            transform = AddRandomWalkPE(walk_length=pe_dim)
+            pe_attr = 'random_walk_pe'
+        else:
+            logger.warning(f"Unknown PE type: {pe_type}. Skipping pre-computation.")
+            transform = None
+
+        if transform:
+            for full_graph in state.data_components.train_loader.data:
+                if hasattr(full_graph, 'bipartite_graph'):
+                    # Apply transform
+                    # Note: Some transforms modify in-place, some return new object
+                    # PyG transforms usually modify in-place
+                    full_graph.bipartite_graph = transform(full_graph.bipartite_graph)
+                    
+                    # Move the new PE tensor to the device
+                    pe_tensor = getattr(full_graph.bipartite_graph, pe_attr, None)
+                    if pe_tensor is not None:
+                        setattr(full_graph.bipartite_graph, pe_attr, pe_tensor.to(device))
+
+    # Create a separate optimizer for pretraining
+    optimizer = torch.optim.Adam(embedding_model.parameters(), lr=lr, weight_decay=1e-4)
+    
+    # We iterate over all graphs in the training set
+    # state.data_components.train_loader.data contains the list of graphs
+    graphs = state.data_components.train_loader.data
+    
+    embedding_model.train()
+    embedding_model.to(device)
+    
+    for epoch in range(1, epochs + 1):
+        total_loss = 0.0
+        num_graphs = 0
+        
+        # Iterate over each graph (in case of multiple training graphs)
+        for full_graph in graphs:
+            if not hasattr(full_graph, 'bipartite_graph'):
+                continue
+                
+            bipartite_graph = full_graph.bipartite_graph.to(device)
+            
+            optimizer.zero_grad()
+            
+            # Compute loss for this graph
+            loss = reconstruction_loss(embedding_model, bipartite_graph, device=device)
+            
+            loss.backward()
+            optimizer.step()
+            
+            total_loss += loss.item()
+            num_graphs += 1
+            
+        avg_loss = total_loss / max(num_graphs, 1)
+        
+        if epoch % 10 == 0 or epoch == 1:
+            logger.info(f"Pretrain Epoch {epoch:03d} | Avg Loss = {avg_loss:.4f}")
+            
+    logger.info("Pretraining completed.")
+    logger.info("=" * 60)
 
 
 def train_model(
@@ -893,6 +1077,9 @@ def main():
         model_components=model_components,
         data_components=data_component,
     )
+
+    # Pretrain the model if using bipartite graph
+    #pretrain_bipartite_graph(state)
 
     # Train the model
     training_results = train_model(state)

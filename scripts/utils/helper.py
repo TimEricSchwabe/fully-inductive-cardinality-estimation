@@ -185,7 +185,7 @@ def get_device(device_arg: str) -> torch.device:
     else:
         return torch.device(device_arg)
 ### Helper Functions ###
-def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
+def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000000):
     """
     Analyzes pairwise cosine similarity of a set of vectors.
     
@@ -268,17 +268,21 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
     plt.close()
     print(f"Saved PCA plot to pca_projection_{name}.png")
 
+    vecs_tsne_3d = None
+    vecs_umap_3d = None
+
     # t-SNE Projection
     try:
         # Use a smaller perplexity if n_samples is small, typically between 5 and 50
         n_samples = vecs_np.shape[0]
         perplexity = min(30, n_samples - 1) if n_samples > 1 else 1
         
-        tsne = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
-        vecs_tsne = tsne.fit_transform(vecs_np)
+        # 2D t-SNE for visualization
+        tsne_2d = TSNE(n_components=2, perplexity=perplexity, random_state=42, init='pca', learning_rate='auto')
+        vecs_tsne_2d = tsne_2d.fit_transform(vecs_np)
         
         plt.figure(figsize=(8, 6))
-        plt.scatter(vecs_tsne[:, 0], vecs_tsne[:, 1], alpha=0.6, s=10, color='purple')
+        plt.scatter(vecs_tsne_2d[:, 0], vecs_tsne_2d[:, 1], alpha=0.6, s=10, color='purple')
         plt.title(f't-SNE Projection (2D): {name}')
         plt.xlabel('Dim 1')
         plt.ylabel('Dim 2')
@@ -287,5 +291,51 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000):
         plt.savefig(f'tsne_projection_{name}.png')
         plt.close()
         print(f"Saved t-SNE plot to tsne_projection_{name}.png")
+
+        # 3D t-SNE for return
+        tsne_3d = TSNE(n_components=3, perplexity=min(125, n_samples-1) if n_samples > 1 else 1, random_state=42, init='pca', learning_rate='auto')
+        vecs_tsne_3d = tsne_3d.fit_transform(vecs_np)
+
     except Exception as e:
         print(f"Could not compute/plot t-SNE: {e}")
+
+
+    # UMAP Projection
+    try:
+        import umap
+        
+        # 2D UMAP for visualization
+        reducer_2d = umap.UMAP(n_components=2, random_state=42)
+        vecs_umap_2d = reducer_2d.fit_transform(vecs_np)
+        
+        plt.figure(figsize=(8, 6))
+        plt.scatter(vecs_umap_2d[:, 0], vecs_umap_2d[:, 1], alpha=0.6, s=10, color='orange')
+        plt.title(f'UMAP Projection (2D): {name}')
+        plt.xlabel('Dim 1')
+        plt.ylabel('Dim 2')
+        plt.grid(True, alpha=0.3)
+        
+        plt.savefig(f'umap_projection_{name}.png')
+        plt.close()
+        print(f"Saved UMAP plot to umap_projection_{name}.png")
+
+        # 3D UMAP for return
+        reducer_3d = umap.UMAP(n_components=3, random_state=42)
+        vecs_umap_3d = reducer_3d.fit_transform(vecs_np)
+
+    except Exception as e:
+        # raise
+        print(f"Could not compute/plot UMAP: {e}")
+
+    
+    # Fallback if projections failed
+    if vecs_tsne_3d is None:
+        if vecs_np.shape[1] >= 3:
+            vecs_tsne_3d = vecs_np[:, :3]
+        else:
+            vecs_tsne_3d = np.pad(vecs_np, ((0, 0), (0, 3 - vecs_np.shape[1])))
+            
+    if vecs_umap_3d is None:
+         vecs_umap_3d = vecs_tsne_3d # Fallback to t-SNE (or raw) if UMAP fails
+
+    return vecs_tsne_3d, vecs_umap_3d
