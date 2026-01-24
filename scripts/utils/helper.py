@@ -319,10 +319,10 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
         
         # Save figure instead of showing to avoid blocking execution
         if output_dir:
-            output_path = output_dir / f'similarity_hist_{name}.png'
+            output_path = output_dir / f'similarity_hist_{name}.pdf'
         else:
-            output_path = f'similarity_hist_{name}.png'
-        plt.savefig(output_path)
+            output_path = f'similarity_hist_{name}.pdf'
+        plt.savefig(output_path, format='pdf', dpi=300)
         plt.close()
         print(f"Saved histogram to {output_path}")
     except Exception as e:
@@ -343,10 +343,10 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
     plt.grid(True, alpha=0.3)
     
     if output_dir:
-        output_path = output_dir / f'pca_projection_{name}.png'
+        output_path = output_dir / f'pca_projection_{name}.pdf'
     else:
-        output_path = f'pca_projection_{name}.png'
-    plt.savefig(output_path)
+        output_path = f'pca_projection_{name}.pdf'
+    plt.savefig(output_path, format='pdf', dpi=300)
     plt.close()
     print(f"Saved PCA plot to {output_path}")
 
@@ -367,10 +367,10 @@ def analyze_vector_similarity(embeddings, name="Embeddings", sample_size=2000, o
         plt.grid(True, alpha=0.3)
         
         if output_dir:
-            output_path = output_dir / f'tsne_projection_{name}.png'
+            output_path = output_dir / f'tsne_projection_{name}.pdf'
         else:
-            output_path = f'tsne_projection_{name}.png'
-        plt.savefig(output_path)
+            output_path = f'tsne_projection_{name}.pdf'
+        plt.savefig(output_path, format='pdf', dpi=300)
         plt.close()
         print(f"Saved t-SNE plot to {output_path}")
     except Exception as e:

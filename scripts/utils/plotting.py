@@ -93,9 +93,9 @@ def compute_and_plot_laplacian_pe(data, k_vectors=3, num_eigenvalues_to_plot=15)
         ax.set_title(f"Vector $v_{{{ev_index}}}$\n$\lambda_{{{ev_index}}}$ = {val:.4f}")
 
     plt.tight_layout()
-    plt.savefig(f"laplacian_pe_plot_{k_vectors}.png")
+    plt.savefig(f"laplacian_pe_plot_{k_vectors}.pdf", format='pdf', dpi=300)
     plt.close()
-    print(f"Saved Laplacian PE plot to laplacian_pe_plot_{k_vectors}.png")
+    print(f"Saved Laplacian PE plot to laplacian_pe_plot_{k_vectors}.pdf")
     
     return eigenvectors[:, 1:k_vectors+1]
 
@@ -188,7 +188,7 @@ def plot_training_metrics(
     
     # Save plot if path provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, format='pdf', dpi=300, bbox_inches='tight')
         print(f"Training metrics plot saved to: {save_path}")
     
     # Show plot if requested
@@ -296,7 +296,7 @@ def plot_predictions_vs_true_values(
     
     # Save plot if path provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, format='pdf', dpi=300, bbox_inches='tight')
         print(f"Predictions vs True Values plot saved to: {save_path}")
     
     # Show plot if requested
@@ -343,7 +343,7 @@ def plot_simple_training_curves(
     
     # Save plot if path provided
     if save_path:
-        plt.savefig(save_path, dpi=300, bbox_inches='tight')
+        plt.savefig(save_path, format='pdf', dpi=300, bbox_inches='tight')
         print(f"Loss curves plot saved to: {save_path}")
     
     # Show plot if requested
@@ -381,7 +381,7 @@ def load_and_plot_training_data(
     save_path = None
     if save_metrics_plot:
         csv_path = Path(csv_path)
-        save_path = csv_path.parent / f"{csv_path.stem}_metrics_plot.png"
+        save_path = csv_path.parent / f"{csv_path.stem}_metrics_plot.pdf"
     
     # Create metrics plot
     fig = plot_training_metrics(
