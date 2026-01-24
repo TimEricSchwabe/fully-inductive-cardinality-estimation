@@ -1,4 +1,3 @@
-
 from typing import List, Union
 from torch_geometric.loader import DataLoader
 import torch
@@ -6,20 +5,52 @@ import random
 
 from fice.datasets import NTDatasets, NTQueries
 
-class MultigraphLoader():
-    def __init__(self, data: Union[NTDatasets, List[NTDatasets]], queries: Union[NTQueries, List[NTQueries]], batch_size: Union[int, List[int]] = 1, fair_chance: bool = True, shuffle: bool = False, **kwargs):
-        if not isinstance(data, List) and isinstance(data, NTDatasets):
+
+class MultigraphLoader:
+    """
+    A data loader that combines multiple datasets and query sets, sampling from them
+    either uniformly or weighted by their remaining size.
+
+    This loader is useful for training on multiple datasets simultaneously, ensuring
+    that larger datasets are sampled more frequently if weighted=True.
+    """
+
+    def __init__(
+        self,
+        data: Union[NTDatasets, List[NTDatasets]],
+        queries: Union[NTQueries, List[NTQueries]],
+        batch_size: Union[int, List[int]] = 1,
+        weighted: bool = True,
+        shuffle: bool = False,
+        **kwargs,
+    ):
+        """
+        Initializes the MultigraphLoader.
+
+        Args:
+            data (Union[NTDatasets, List[NTDatasets]]): A single dataset or a list of datasets.
+            queries (Union[NTQueries, List[NTQueries]]): A single query set or a list of query sets.
+            batch_size (Union[int, List[int]], optional): Batch size for each dataset.
+                If an int, it is applied to all datasets. Defaults to 1.
+            weighted (bool, optional): If True, samples datasets based on the number of
+                remaining queries. If False, samples uniformly. Defaults to True.
+            shuffle (bool, optional): Whether to shuffle the query loaders. Defaults to False.
+            **kwargs: Additional arguments passed to the loader (unused).
+        """
+        if not isinstance(data, list) and isinstance(data, NTDatasets):
             data = [data]
-        if not isinstance(queries, List) and isinstance(queries, NTQueries):
+        if not isinstance(queries, list) and isinstance(queries, NTQueries):
             queries = [queries]
-        if not isinstance(batch_size, List):
+        if not isinstance(batch_size, list):
             batch_size = [batch_size] * len(data)
-        assert len(data) == len(queries) == len(batch_size), "All input lists must have the same length."
+        assert len(data) == len(queries) == len(batch_size), (
+            "All input lists must have the same length."
+        )
 
         self.data = data
         self.queries = queries
         self.batch_size = batch_size
-        self.fair_chance = fair_chance
+        self.weighted = weighted
         self.shuffle = shuffle
 
         self.queries_loaders = []
@@ -32,47 +63,74 @@ class MultigraphLoader():
             self.queries_loaders.append(loader)
 
         self.queries_iters = []
-        self.empty = []
+        self.remaining_counts = []
         self.length = sum([len(ql) for ql in self.queries_loaders])
 
     def _get_random_loader(self):
-        # use torch.multinomial with uniform weights to choose a loader index
-        if not self.fair_chance: 
-            weights = torch.ones(len(self.queries_iters), dtype=torch.float32)
-            idx = int(torch.multinomial(weights, 1).item())
+        """
+        Selects a random loader index from the active loaders.
+
+        Returns:
+            int: The index of the selected loader, or None if no loaders are active.
+        """
+        active_loaders = [
+            i for i, count in enumerate(self.remaining_counts) if count > 0
+        ]
+        if active_loaders == []:
+            return None
+
+        if self.weighted:
+            active_weights = [self.remaining_counts[i] for i in active_loaders]
+            weights = torch.tensor(active_weights, dtype=torch.float32)
+
+            # use torch.multinomial with uniform weights to choose a loader index
+            rel_idx = int(torch.multinomial(weights, 1).item())
+            return active_loaders[rel_idx]
         else:
-            idx = random.randint(0, len(self.queries_iters) - 1)
-
-        if self.empty[idx]:
-            idx = self._get_random_loader()
-
-        return idx
-
+            return random.choice(active_loaders)
 
     def __next__(self):
-        # if no loaders available, stop
-        if all(self.empty):
-            raise StopIteration
+        """
+        Retrieves the next batch from the sampled loader.
 
-        idx = self._get_random_loader()
+        Returns:
+            Tuple[NTDatasets, Data]: A tuple containing the dataset and the query batch.
 
-        try:
-            batch = next(self.queries_iters[idx])
-        except StopIteration:
-            # remove exhausted loader and continue
-            self.empty[idx] = True
-            if len(self.queries_iters) == 0:
+        Raises:
+            StopIteration: When all loaders are exhausted.
+        """
+        while True:
+            idx = self._get_random_loader()
+
+            if idx is None:
                 raise StopIteration
-            else:
-                return self.__next__()
 
-        return self.data[idx], batch
-    
+            try:
+                batch = next(self.queries_iters[idx])
+                self.remaining_counts[idx] -= 1
+                return self.data[idx], batch
+            except StopIteration:
+                # remove exhausted loader and continue
+                self.remaining_counts[idx] = 0
+                if sum(self.remaining_counts) == 0:
+                    raise StopIteration
 
     def __iter__(self):
+        """
+        Initializes the iterators for each query loader.
+
+        Returns:
+            MultigraphLoader: The loader instance itself.
+        """
         self.queries_iters = [iter(loader) for loader in self.queries_loaders]
-        self.empty = [False] * len(self.queries_loaders)
+        self.remaining_counts = [len(loader) for loader in self.queries_loaders]
         return self
-    
+
     def __len__(self):
+        """
+        Returns the total number of batches across all loaders.
+
+        Returns:
+            int: The total length of the loader.
+        """
         return self.length
