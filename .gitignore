@@ -1,9 +1,13 @@
 __pycache__/
 
 # Virtual environment
+notebooks/fice_runs/
+notebooks/gcare_runs/
+notebooks/plots_output/
 benchmarks/gcare/results/*
 benchmarks/gnce/GNCE/
 benchmarks/gnce/data/
+graphen.zip
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
 benchmarks/neuso/NeuSO/
