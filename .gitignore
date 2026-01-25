@@ -20,6 +20,8 @@ venv*/
 slurm*.out
 *.png
 uv.lock
+*.pdf
+notenbooks/*.pdf
 
 # Ignore everything under data
 data/*
