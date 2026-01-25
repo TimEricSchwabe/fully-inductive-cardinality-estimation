@@ -7,6 +7,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Literal
 import pprint
+import time
 
 # Third-party imports
 import matplotlib
@@ -310,7 +311,7 @@ def train_epoch(state: TrainingState):
     neighbor_sampler = state.data_components.neighbor_sampler
 
     if not isinstance(state.model_components.model, FiceBinary) and num_neighbors_cfg is not None:
-
+        start_time = time.time()
         for batch_idx, (full_graph, query_batch) in enumerate(progress_bar):
 
             graph_size = torch.tensor([full_graph.num_edges], device=device)
@@ -337,6 +338,7 @@ def train_epoch(state: TrainingState):
 
             if plot_embeddings:
                 figure_dir = state.training_context.log_dir / "figures"
+                logging.info(f"Plotting {full_graph.dataset_name} with {full_graph.num_nodes} nodes and {full_graph.num_relations} relations.")
                 with torch.no_grad():
                     if state.model_components.model.use_unified_bipartite_graph:
                         edge_embeddings = state.model_components.model.embedding_model(data=relation_graph)
@@ -462,7 +464,10 @@ def train_epoch(state: TrainingState):
             # Periodic cache cleanup
             if batch_idx % 10 == 0 and torch.cuda.is_available():
                 torch.cuda.empty_cache()
-
+        end_time = time.time()
+        epoch_duration = end_time - start_time
+        time_per_batch = epoch_duration / total_batches
+        logging.info(f"Epoch {state.training_context.current_epoch} training time: {epoch_duration:.2f}s ({time_per_batch:.2f}s per batch)")
 
 
     progress_bar.close()
@@ -490,7 +495,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
         # Prepare reusable sampler once for evaluation
         num_neighbors_eval = getattr(state.training_context.config, 'GNNNeighborhood', None)
         neighbor_sampler = state.data_components.neighbor_sampler
-
+        start_time = time.time()
         for batch_idx, (full_graph, query_batch) in tqdm(enumerate(loader), desc="Evaluating", leave=False, total=total_batches):
 
             graph_size = torch.tensor([full_graph.num_edges], device=device)
@@ -590,7 +595,10 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             )
 
             epoch_test_loss += loss.item()
-
+        end_time = time.time()
+        epoch_duration = end_time - start_time
+        time_per_batch = epoch_duration / total_batches
+        logging.info(f"Evaluation time ({mode}) at epoch {state.training_context.current_epoch}: {epoch_duration:.2f}s ({time_per_batch:.10f}s per batch)")
 
     # Clear GPU cache after evaluation
     if torch.cuda.is_available():
