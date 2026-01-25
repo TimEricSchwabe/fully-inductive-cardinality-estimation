@@ -19,6 +19,7 @@ venv*/
 .env/
 slurm*.out
 *.png
+uv.lock
 
 # Ignore everything under data
 data/*
