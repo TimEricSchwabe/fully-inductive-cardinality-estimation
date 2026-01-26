@@ -7,34 +7,34 @@ import copy
 
 
 EXPERIMENTS = [
-    {
-        'name': 'swdf_inductive',
-        'validation': ['SWDF_Star_Queries', 'swdf_path_queries'],
-    },
-    {
-        'name': 'lubm_inductive',
-        'validation': ['LUBMQueries', 'lubm_path_queries'],
-    },
-    {
-        'name': 'dbpedia100k',
-        'validation': ['dbpedia100k_star_queries', 'dbpedia100k_path_queries'],
-    },
-    {
-        'name': 'wikidata',
-        'validation': ['WIKIDATA_Star_Queries', 'wikidata_path_queries'],
-    },
+    # {
+    #     'name': 'swdf_inductive',
+    #     'validation': ['SWDF_Star_Queries', 'swdf_path_queries'],
+    # },
+    # {
+    #     'name': 'lubm_inductive',
+    #     'validation': ['LUBMQueries', 'lubm_path_queries'],
+    # },
+    # {
+    #     'name': 'dbpedia100k',
+    #     'validation': ['dbpedia100k_star_queries', 'dbpedia100k_path_queries'],
+    # },
+    # {
+    #     'name': 'wikidata',
+    #     'validation': ['WIKIDATA_Star_Queries', 'wikidata_path_queries'],
+    # },
     {
         'name': 'fb237_inductive',
         'validation': ['fb237_v4_ind_star_queries', 'fb237_v4_ind_path_queries'],
     },
-    {
-        'name': 'wn18rr_inductive',
-        'validation': ['wn18rr_v4_ind_star_queries', 'wn18rr_v4_ind_path_queries'],
-    },
-    {
-        'name': 'transductive',
-        'validation': [],
-    },
+    # {
+    #     'name': 'wn18rr_inductive',
+    #     'validation': ['wn18rr_v4_ind_star_queries', 'wn18rr_v4_ind_path_queries'],
+    # },
+    # {
+    #     'name': 'transductive',
+    #     'validation': [],
+    # },
 ]
 
 BASE_CONFIG_PATH = Path('./configs/train_full.yaml')

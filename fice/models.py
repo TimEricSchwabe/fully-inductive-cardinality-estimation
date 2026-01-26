@@ -853,10 +853,10 @@ class FiceBinary(nn.Module):
     optional (they can be ``None``).
     """
 
-    def __init__(self, vector_dim: int = 128, skip_connection: bool = True):
+    def __init__(self, vector_dim: int = 128, skip_connection: bool = True, query_layer_norm: bool = True, query_skip_connection: bool = False, query_gnn_dropout: float = 0.0):
         super().__init__()
         self.vector_dim = vector_dim
-        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, skip_connection=skip_connection)
+        self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, skip_connection=query_skip_connection, dropout=query_gnn_dropout)
 
     # --- binary encoding helper ------------------------------------------------
     def _binary_encode(self, ids: torch.Tensor) -> torch.Tensor:
@@ -922,7 +922,6 @@ class FiceBinary(nn.Module):
 
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
         return log_cardinality_pred
-
 
 
 class FiceIndependent(nn.Module):
