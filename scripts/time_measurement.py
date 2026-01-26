@@ -37,13 +37,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_PATH = Path('/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/swdf/checkpoints/best_model_19.pt')
-CONFIG_PATH = Path('/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/configs/train_full.yaml')
-
-
-
-def run_inference(loader, model, config, device, neighbor_sampler, desc="Inference"):
-    pass
+CHECKPOINT_PATH = Path('/storage/home/lukasketzer/fully-inductive-cardinality-estimation/scripts/checkpoints/best_model.pt')
+CONFIG_PATH = Path('/storage/home/lukasketzer/fully-inductive-cardinality-estimation/configs/train_full.yaml')
 
 
 
