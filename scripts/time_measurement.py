@@ -37,8 +37,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_PATH = Path('/storage/home/lukasketzer/fully-inductive-cardinality-estimation/scripts/checkpoints/best_model.pt')
-CONFIG_PATH = Path('/storage/home/lukasketzer/fully-inductive-cardinality-estimation/configs/train_full.yaml')
+CHECKPOINT_PATH = Path('/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/swdf/checkpoints/best_model_19.pt')
+CONFIG_PATH = Path('/Users/lukas/Workspace/Uni/BachelorsThesis/runtime-branch/configs/train_full.yaml')
 
 
 
@@ -182,72 +182,66 @@ def main():
         for batch_idx, (original_full_graph, original_query_batch) in enumerate(loader):
             logger.info(f"Running inference on batch {batch_idx+1}/{len(loader)}")
 
-            start_time = time.perf_counter()
-            for _ in range(repeat):
-                full_graph = original_full_graph.detach().clone()
-                query_batch = original_query_batch.detach().clone()
+            full_graph = original_full_graph.detach().clone()
+            query_batch = original_query_batch.detach().clone()
 
-                # full_graph = copy.deepcopy(original_full_graph)
-                # query_batch = copy.deepcopy(original_query_batch)
-                graph_size = torch.tensor([full_graph.num_edges], device=device)
+            # full_graph = copy.deepcopy(original_full_graph)
+            # query_batch = copy.deepcopy(original_query_batch)
+            graph_size = torch.tensor([full_graph.num_edges], device=device)
 
-                bipartite_graph = None
-                bipartite_graph_gloal_to_local = None
+            bipartite_graph = None
+            bipartite_graph_gloal_to_local = None
 
-                use_bipartite_entity = config.entity_gnn.model == "BipartiteGraphGNN"
-                use_bipartite_relation = config.relation_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_entity = config.entity_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_relation = config.relation_gnn.model == "BipartiteGraphGNN"
 
-                    # generate a sample of the bipartite graph if needed
-                if use_bipartite_entity or use_bipartite_relation:
-                    bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
+                # generate a sample of the bipartite graph if needed
+            if use_bipartite_entity or use_bipartite_relation:
+                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
 
-                if use_bipartite_relation:
-                    relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-                else: 
-                    relation_graph = full_graph.relation_graph.to(device)
+            if use_bipartite_relation:
+                relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
+            else: 
+                relation_graph = full_graph.relation_graph.to(device)
 
 
-                # "KG" mode - Standard Logic
-                num_neighbors = config.GNNNeighborhood   
-                if num_neighbors is not None:
-                    # Reusable sampler path
-                    node_indices = query_batch.node_embedding_indices
-                    seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
-                    if seeds_cpu.numel() > 0:
-                        # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
-                        # If a node is not in the subgraph, its mapped to -1
-                        graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
-                        query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                        # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
-                        # This is because now we have a subgrpah instead of the full graph and need to update the node indices
-                        mapped = torch.where(
-                            query_nodes >= 0,
-                            global_to_local[query_nodes],
-                            torch.full_like(query_nodes, -1),
-                        ).to(torch.long)
-                        # Update the graph to the sampled subgraph
-                        graph = graph_sub.to(device)
-                        # Update the node indices to the mapped indices
-                        query_batch.node_embedding_indices = mapped
-                    else:
-                        graph = None
+            # "KG" mode - Standard Logic
+            num_neighbors = config.GNNNeighborhood   
+            if num_neighbors is not None:
+                # Reusable sampler path
+                node_indices = query_batch.node_embedding_indices
+                seeds_cpu = node_indices[node_indices >= 0].unique().detach().cpu()
+                if seeds_cpu.numel() > 0:
+                    # Get subgraph for the current query nodes and how global node ids map to node ids in the subgraph
+                    # If a node is not in the subgraph, its mapped to -1
+                    graph_sub, global_to_local = neighbor_sampler.sample(full_graph, seeds_cpu)
+                    query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                    # Create a mapping that maps how nodes in the query graph map to nodes in the sampled subgraph
+                    # This is because now we have a subgrpah instead of the full graph and need to update the node indices
+                    mapped = torch.where(
+                        query_nodes >= 0,
+                        global_to_local[query_nodes],
+                        torch.full_like(query_nodes, -1),
+                    ).to(torch.long)
+                    # Update the graph to the sampled subgraph
+                    graph = graph_sub.to(device)
+                    # Update the node indices to the mapped indices
+                    query_batch.node_embedding_indices = mapped
                 else:
-                    graph = full_graph.to(device)
+                    graph = None
+            else:
+                graph = full_graph.to(device)
 
-                relation_graph_inp = relation_graph
-                log_cardinality_pred = model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size)
-                log_cardinality_pred = log_cardinality_pred.to(torch.float32)
-                
-                # Apply ReLU during evaluation (inference logic)
-                log_cardinality_pred = torch.relu(log_cardinality_pred)
+            relation_graph_inp = relation_graph
+            log_cardinality_pred, avg_time = model(data=graph, relation_graph=relation_graph_inp, batch=query_batch.to(device), graph_size=graph_size, repeat=repeat)
+            log_cardinality_pred = log_cardinality_pred.to(torch.float32)
+            
+            # Apply ReLU during evaluation (inference logic)
+            log_cardinality_pred = torch.relu(log_cardinality_pred)
 
-                true_cardinality = query_batch.y.to(torch.float32).to(device)
-                log_true_cardinality = torch.log1p(true_cardinality)
+            true_cardinality = query_batch.y.to(torch.float32).to(device)
+            log_true_cardinality = torch.log1p(true_cardinality)
 
-            if device.type == 'cuda' and torch.cuda.is_available():
-                torch.cuda.synchronize()
-            end_time = time.perf_counter()
-            avg_time = (end_time - start_time) / repeat
             true_cardinality = true_cardinality.detach().cpu().numpy()
             # should only contain one element
             true_cardinality = true_cardinality[0]
