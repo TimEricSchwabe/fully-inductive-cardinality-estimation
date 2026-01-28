@@ -23,6 +23,7 @@ uv.lock
 *.pdf
 notenbooks/*.pdf
 inference_times.csv
+scripts/inference_times.csv
 
 # Ignore everything under data
 data/*

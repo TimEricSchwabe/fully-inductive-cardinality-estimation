@@ -4,7 +4,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
 from torch_geometric.utils import degree
-
+import time 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
 
 
@@ -661,7 +661,7 @@ class FICE(nn.Module):
             raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
         
 
-    def forward(self, data, relation_graph, batch, graph_size, epoch=0):
+    def forward(self, data, relation_graph, batch, graph_size, epoch=0, repeat: int = 1):
         device = batch.x.device
         
         # Recreate query_features with correct vector_dim
@@ -832,18 +832,24 @@ class FICE(nn.Module):
 
         batch.x = torch.cat([x_counts, batch.x[:, 3:]], dim=1)
         batch.edge_attr = torch.cat([e_counts, batch.edge_attr[:, 3:]], dim=1)
-        
-        if self.query_gnn_type == 'QueryCardinalityGNN':
-            log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
-        elif self.query_gnn_type == 'TripleModel':
-            log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
-        elif self.query_gnn_type == 'QueryTransformer':
-            log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
-        elif self.query_gnn_type == 'SimpleSumGNN':
-            log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
-        else:
-            raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
 
+        start = time.perf_counter()
+        for _ in range(repeat):
+            if self.query_gnn_type == 'QueryCardinalityGNN':
+                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+            elif self.query_gnn_type == 'TripleModel':
+                log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+            elif self.query_gnn_type == 'QueryTransformer':
+                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+            elif self.query_gnn_type == 'SimpleSumGNN':
+                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+            else:
+                raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
+        end = time.perf_counter()
+        elapsed = end - start
+        avg_time = elapsed / repeat
+        if repeat > 1:
+            return log_cardinality_pred, avg_time
         return log_cardinality_pred
 
 
