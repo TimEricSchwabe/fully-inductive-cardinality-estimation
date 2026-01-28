@@ -6,7 +6,6 @@ from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
 from torch_geometric.utils import degree
 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
-from fice.ablation_models import AblationEmbeddingGNN
 
 
 class EntityGNN(nn.Module):
@@ -592,66 +591,63 @@ class FICE(nn.Module):
         self.entity_graph_mode = entity_graph_mode
 
 
-        # if self.use_unified_bipartite_graph:
-        #     self.embedding_model = BipartiteGraphGNN(
-        #         input_dim=self.vector_dim,
-        #         hidden_dims=self.hidden_dims_relnet,
-        #         message_func=relation_message_func,
-        #         layer_norm=relation_layer_norm, # Use relation norm as default for unified
-        #         skip_connection=relation_skip_connection,
-        #         conditioning=conditioning,
-        #         laplacian_k=laplacian_k,
-        #         dropout=relation_dropout # Using relation_dropout as default for unified
-        #     )
+        if self.use_unified_bipartite_graph:
+            self.embedding_model = BipartiteGraphGNN(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_relnet,
+                message_func=relation_message_func,
+                layer_norm=relation_layer_norm, # Use relation norm as default for unified
+                skip_connection=relation_skip_connection,
+                conditioning=conditioning,
+                laplacian_k=laplacian_k,
+                dropout=relation_dropout # Using relation_dropout as default for unified
+            )
 
-        # else:
+        else:
             
-        #     if relation_message_func in ['GAT', 'gine'] and self.relation_graph_mode == "RelationGraph":
-        #         self.relation_model = RelationGNN(
-        #             input_dim=self.vector_dim,
-        #             hidden_dims=self.hidden_dims_relnet,
-        #             num_relation=4,
-        #             message_func=relation_message_func,
-        #             layer_norm=relation_layer_norm,
-        #             skip_connection=relation_skip_connection,
-        #             conditioning=conditioning,
-        #             laplacian_k=laplacian_k,
-        #             dropout=relation_dropout
-        #         )
-        #     elif self.relation_graph_mode == "bipartite":
-        #         # If using bipartite graph for relations, we use the unified model
-        #         self.relation_model = BipartiteGraphGNN(
-        #             input_dim=self.vector_dim,
-        #             hidden_dims=self.hidden_dims_relnet,
-        #             message_func=relation_message_func,
-        #             layer_norm=relation_layer_norm,
-        #             skip_connection=relation_skip_connection,
-        #             conditioning=conditioning,
-        #             laplacian_k=laplacian_k,
-        #             dropout=relation_dropout
-        #         )
-        #     else:
-        #         raise ValueError(f"Invalid relation message function: {relation_message_func}")
+            if relation_message_func in ['GAT', 'gine'] and self.relation_graph_mode == "RelationGraph":
+                self.relation_model = RelationGNN(
+                    input_dim=self.vector_dim,
+                    hidden_dims=self.hidden_dims_relnet,
+                    num_relation=4,
+                    message_func=relation_message_func,
+                    layer_norm=relation_layer_norm,
+                    skip_connection=relation_skip_connection,
+                    conditioning=conditioning,
+                    laplacian_k=laplacian_k,
+                    dropout=relation_dropout
+                )
+            elif self.relation_graph_mode == "bipartite":
+                # If using bipartite graph for relations, we use the unified model
+                self.relation_model = BipartiteGraphGNN(
+                    input_dim=self.vector_dim,
+                    hidden_dims=self.hidden_dims_relnet,
+                    message_func=relation_message_func,
+                    layer_norm=relation_layer_norm,
+                    skip_connection=relation_skip_connection,
+                    conditioning=conditioning,
+                    laplacian_k=laplacian_k,
+                    dropout=relation_dropout
+                )
+            else:
+                raise ValueError(f"Invalid relation message function: {relation_message_func}")
     
             
-        #     if entity_message_func in ['gine', 'GAT'] and self.entity_graph_mode == "KG":
-        #         self.entity_model = EntityGNN(
-        #             input_dim=self.vector_dim,
-        #             hidden_dims=self.hidden_dims_entitynet,
-        #             message_func=entity_message_func,
-        #             conditioning=conditioning,
-        #             layer_norm=entity_layer_norm,
-        #             skip_connection=entity_skip_connection,
-        #             laplacian_k=laplacian_k,
-        #             dropout=entity_dropout
-        #         )
-        #     elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
-        #         raise ValueError("Entity graph bipartite but relation graph standard is not supported.")
-        #     else:
-        #         raise ValueError(f"Invalid entity message function: {entity_message_func}")
-
-        self.relation_model = AblationEmbeddingGNN(input_dim=self.vector_dim)
-        self.entity_model = AblationEmbeddingGNN(input_dim=self.vector_dim)
+            if entity_message_func in ['gine', 'GAT'] and self.entity_graph_mode == "KG":
+                self.entity_model = EntityGNN(
+                    input_dim=self.vector_dim,
+                    hidden_dims=self.hidden_dims_entitynet,
+                    message_func=entity_message_func,
+                    conditioning=conditioning,
+                    layer_norm=entity_layer_norm,
+                    skip_connection=entity_skip_connection,
+                    laplacian_k=laplacian_k,
+                    dropout=entity_dropout
+                )
+            elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
+                raise ValueError("Entity graph bipartite but relation graph standard is not supported.")
+            else:
+                raise ValueError(f"Invalid entity message function: {entity_message_func}")
 
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
