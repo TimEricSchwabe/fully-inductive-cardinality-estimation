@@ -919,12 +919,12 @@ class FiceBinary(nn.Module):
             edge_attr = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_attr
 
-        # x_counts = torch.log1p(batch.x[:, :3])
-        x_counts = torch.tensor([0,0,0])
+        x_counts = torch.log1p(batch.x[:, :3])
+        # x_counts = torch.zeros_like(x_counts)
         batch.x = torch.cat([x_counts, batch.x[:, 3:]], dim=1)
 
-        # e_counts = torch.log1p(batch.edge_attr[:, :3])
-        e_counts = torch.tensor([0,0,0])
+        e_counts = torch.log1p(batch.edge_attr[:, :3])
+        # x_counts = torch.zeros_like(e_counts)
         batch.edge_attr = torch.cat([e_counts, batch.edge_attr[:, 3:]], dim=1)
 
         log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)

@@ -151,7 +151,7 @@ def process_fice(path: Union[Path, str], dataset: str, type: str , epoch: int = 
 
     metric: Literal['loss', 'q_error'] = "loss"
     
-    if "logs" not in os.listdir(path):
+    if "logs" not in [p.name for p in path.iterdir()]:
         intermedia_step_path = list(path.glob("run_*"))[0]
     else:
         intermedia_step_path = path
@@ -450,11 +450,15 @@ def plot_cardinality_scatterplot(df: pd.DataFrame, output_dir: str = ".", displa
 
 
 if __name__ == "__main__":
-    path = "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/gcare_runs/dbpedia100k_star/star/dbpedia100k_star"
-    gcare_df = process_gcare(path)
-    path2 = "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/swdf"
-    fice_df = process_fice(path2, "swdf", "star")
-    combined_df = pd.concat([gcare_df, fice_df], ignore_index=True)
+    mappings = {
+        'WikiData': ('/Users/lukas/Desktop/fice-ablation-wikidata-gut', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/wikidata'),
+        'LUBM': ('/Users/lukas/Desktop/ablation-lubm', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/lubm'),
+        'DBPedia100k': ('/Users/lukas/Desktop/ablation-study-dbpedia', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/dbpedia100k')
+    }
 
-    plot_q_error_boxplot_per_cardinality(combined_df)
-    
+    for dataset_name, (ablation_path, run_path) in mappings.items():
+        for dtype in ['path', 'star']:
+            print(f"Processing {dataset_name} with dtype {dtype}")
+            
+            # ablation_df = process_fice(ablation_path, dataset_name, dtype)
+            run_df = process_fice(run_path, dataset_name, dtype)
