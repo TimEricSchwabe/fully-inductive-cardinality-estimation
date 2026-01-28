@@ -7,19 +7,7 @@ authors = [
 ]
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "easydict>=1.13",
-    "matplotlib",
-    "pandas",
-    "pydantic-settings>=2.8.1",
-    "rdflib>=7.4.0",
-    "scikit-learn>=1.7.2",
-    "torch==2.8.0+cpu",
-    "torch-geometric==2.7.0",
-    "torchaudio==2.8.0+cpu",
-    "torchvision==0.23.0+cpu",
-    "wandb>=0.22.3",
-]
+
 
 [[tool.uv.index]]
 url = "https://pypi.org/simple"

@@ -22,6 +22,7 @@ slurm*.out
 uv.lock
 *.pdf
 notenbooks/*.pdf
+inference_times.csv
 
 # Ignore everything under data
 data/*
