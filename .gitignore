@@ -3,6 +3,7 @@ __pycache__/
 # Virtual environment
 notebooks/fice_runs/
 notebooks/gcare_runs/
+notebooks/gnce_runs/
 notebooks/plots_output/
 benchmarks/gcare/results/*
 benchmarks/gnce/GNCE/

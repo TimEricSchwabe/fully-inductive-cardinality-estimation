@@ -123,6 +123,9 @@ def mse_loss(gt: np.ndarray, pred: np.ndarray, ax: int = None) -> float:
     mse = (np.square(gt - pred))
     return mse
 
+        
+
+
 def process_gcare(path: Union[Path, str]):
     if isinstance(path, str):
         path = Path(path)
@@ -143,6 +146,26 @@ def process_gcare(path: Union[Path, str]):
 
         df = pd.concat([df, temp_df], ignore_index=True)
     return df
+
+def process_gnce(path: Union[Path, str], dataset: str, type: str , epoch: int = None):
+    if isinstance(path, str):
+        path = Path(path)
+
+    if not path.exists():
+        raise FileNotFoundError(f"GNCE predictions file not found at {path}")
+    
+    if path.is_dir():
+        path = path / "final_predictions.csv"
+    
+    data = pd.read_csv(path)
+    data['method'] = 'gnce'
+    data = data[data['DATASET'].str.endswith(type) & (data['DATASET'].str.contains(dataset))]
+    data['q_error'] = q_error(data['GT'].to_numpy(), data['PREDICTION'].to_numpy())
+    data = data.rename(columns={'GT': 'true_value', 'PREDICTION': 'prediction'})
+    data = data[['q_error', 'prediction', 'true_value', 'method']]
+
+    return data
+
 
 
 def process_fice(path: Union[Path, str], dataset: str, type: str , epoch: int = None):
@@ -450,15 +473,17 @@ def plot_cardinality_scatterplot(df: pd.DataFrame, output_dir: str = ".", displa
 
 
 if __name__ == "__main__":
-    mappings = {
-        'WikiData': ('/Users/lukas/Desktop/fice-ablation-wikidata-gut', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/wikidata'),
-        'LUBM': ('/Users/lukas/Desktop/ablation-lubm', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/lubm'),
-        'DBPedia100k': ('/Users/lukas/Desktop/ablation-study-dbpedia', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/dbpedia100k')
-    }
+    path = "/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/gnce_runs/final_predictions_gnce.csv"
+    df = process_gnce(path, "wikidata", "path")
+    # mappings = {
+    #     'WikiData': ('/Users/lukas/Desktop/fice-ablation-wikidata-gut', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/wikidata'),
+    #     'LUBM': ('/Users/lukas/Desktop/ablation-lubm', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/lubm'),
+    #     'DBPedia100k': ('/Users/lukas/Desktop/ablation-study-dbpedia', '/Users/lukas/Workspace/Uni/BachelorsThesis/FICE/notebooks/fice_runs/dbpedia100k')
+    # }
 
-    for dataset_name, (ablation_path, run_path) in mappings.items():
-        for dtype in ['path', 'star']:
-            print(f"Processing {dataset_name} with dtype {dtype}")
+    # for dataset_name, (ablation_path, run_path) in mappings.items():
+    #     for dtype in ['path', 'star']:
+    #         print(f"Processing {dataset_name} with dtype {dtype}")
             
-            # ablation_df = process_fice(ablation_path, dataset_name, dtype)
-            run_df = process_fice(run_path, dataset_name, dtype)
+    #         # ablation_df = process_fice(ablation_path, dataset_name, dtype)
+    #         run_df = process_fice(run_path, dataset_name, dtype)
