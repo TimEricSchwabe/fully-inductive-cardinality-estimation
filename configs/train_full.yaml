@@ -44,22 +44,22 @@ data:
     queries: "fb237_v4_ind_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: *bs
@@ -74,17 +74,17 @@ data:
     queries: "wn18rr_v4_ind_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
 
 epochs: 100
 wandb: True
-wandb_run_name: "EXPERIMENT_fb237_v4"
+wandb_run_name: "FactorGraphRun"
 learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -104,20 +104,21 @@ laplacian_k: 0
 gradient_clipping: 1.0
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT"
+  message_func: "deepset" # choices are "gine" or "GAT" or "deepset"
   model: "EntityGNN"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine"
-  model: "BipartiteGraphGNN"
+  message_func: "deepset" # choices are "GAT" or "gine" or "deepset"
+  model: "FactorGraphGNN"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 query_gnn:
+  message_func: "deepset" # choices are "gine" or "deepset" or "deepset"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
   layer_norm: True
