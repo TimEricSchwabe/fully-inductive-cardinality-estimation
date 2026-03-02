@@ -165,7 +165,7 @@ class NTDatasets(InMemoryDataset):
 
         # build tensors with explicit dtypes
         if len(mapped_triplets) == 0:
-            raise ValueError(f"No valid triplets parsed from {self.nt_path}")
+            raise ValueError(f"No valid triplets parsed from {self.raw_file_path}")
 
         triplets = torch.tensor(mapped_triplets, dtype=torch.long)
         edge_index = triplets[:, [0, 2]].t().contiguous()

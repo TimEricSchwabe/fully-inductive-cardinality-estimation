@@ -83,7 +83,7 @@ data:
 
 
 epochs: 100
-wandb: True
+wandb: False
 wandb_run_name: "AblationLocalTest (without counts)"
 learning_rate: 5e-4
 train_ratio: 0.8

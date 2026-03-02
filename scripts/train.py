@@ -852,6 +852,8 @@ def main():
         logger.info(f"nvcc version: {e.stdout.strip()}")
     except FileNotFoundError as e:
         logger.error(f"Error occurred while checking CUDA version: {e}")
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Unexpected error occurred while checking CUDA version: {e}")
 
     logger.info(f"Run directory: {run_dir}")
     logger.info(f"Log directory: {log_dir}")
