@@ -1,5 +1,6 @@
 import pathlib
 from pathlib import Path
+from urllib.parse import urlparse
 import torch
 import json
 from torch_geometric.data import Data, InMemoryDataset
@@ -13,20 +14,22 @@ from tqdm import tqdm
 DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
 
 def download(url: str, dest: Union[Path, str], progress: bool = False):
-    resp = requests.get(url, stream=True, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    resp = requests.get(url, stream=True, timeout=(30, 300), allow_redirects=True)
     resp.raise_for_status()
 
     total = int(resp.headers.get('content-length', 0))
     chunk_size = 1024 * 16
+    written = 0
 
     if progress:
         with open(dest, 'wb') as f, _tqdm(
-            total=total, unit='B', unit_scale=True, desc=f"Downloading {dest.name}"
+            total=total, unit='B', unit_scale=True, desc=f"Downloading {Path(dest).name}"
         ) as pbar:
             for chunk in resp.iter_content(chunk_size=chunk_size):
                 if not chunk:
                     continue
                 f.write(chunk)
+                written += len(chunk)
                 pbar.update(len(chunk))
     else:
         with open(dest, 'wb') as f:
@@ -34,6 +37,11 @@ def download(url: str, dest: Union[Path, str], progress: bool = False):
                 if not chunk:
                     continue
                 f.write(chunk)
+                written += len(chunk)
+
+    if written == 0:
+        Path(dest).unlink(missing_ok=True)
+        raise RuntimeError(f"Downloaded file is empty (0 bytes) from {url}")
 
 class NTDatasets(InMemoryDataset):
     def __init__(
@@ -46,13 +54,13 @@ class NTDatasets(InMemoryDataset):
     ):
 
         self.url = url
-        raw_file_path = pathlib.Path(self.url).name
+        raw_file_path = Path(urlparse(self.url).path).name
 
         if raw_file_path is None or raw_file_path == "":
             raw_file_path = "raw_dataset.nt"
 
         self.dataset_name = (
-            dataset_name if dataset_name is not None else Path(self.url).stem
+            dataset_name if dataset_name is not None else Path(urlparse(self.url).path).stem
         )
 
         if root is None:
@@ -191,7 +199,7 @@ class LUBM(NTDatasets):
         self,**kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59410577",
+            url="https://api.figshare.com/v2/file/download/59410577",
             dataset_name="lubm",
             **kwargs
         )
@@ -202,7 +210,7 @@ class SWDF(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59320634",
+            url="https://api.figshare.com/v2/file/download/59320634",
             dataset_name="swdf",
             **kwargs
         )
@@ -213,7 +221,7 @@ class fb237_v4(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59621618?private_link=a931a2f5f4c8c39cfb22",
+            url="https://api.figshare.com/v2/file/download/59621618?private_link=a931a2f5f4c8c39cfb22",
             dataset_name="fb237_v4",
             **kwargs
         )
@@ -223,7 +231,7 @@ class fb237_v4_ind(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59621825?private_link=364494eb331e3973ecb3",
+            url="https://api.figshare.com/v2/file/download/59621825?private_link=364494eb331e3973ecb3",
             dataset_name="fb237_v4_ind",
             **kwargs
         )
@@ -233,7 +241,7 @@ class WN18RR_v4(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59622641?private_link=e97f83a035f7e24bb37c",
+            url="https://api.figshare.com/v2/file/download/59622641?private_link=e97f83a035f7e24bb37c",
             dataset_name="wn18rr_v4",
             **kwargs
         )
@@ -243,7 +251,7 @@ class WN18RR_v4_ind(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59622656?private_link=49ad78ce6e253240223f",
+            url="https://api.figshare.com/v2/file/download/59622656?private_link=49ad78ce6e253240223f",
             dataset_name="wn18rr_v4_ind",
             **kwargs
         )
@@ -253,7 +261,7 @@ class DBpedia100k(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59622674?private_link=f9b1fb2716ce2814515e",
+            url="https://api.figshare.com/v2/file/download/59622674?private_link=f9b1fb2716ce2814515e",
             dataset_name="dbpedia100k",
             **kwargs
         )
@@ -263,7 +271,7 @@ class Wikidata(NTDatasets):
         self, **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59320361",
+            url="https://api.figshare.com/v2/file/download/59320361",
             dataset_name="wikidata",
             **kwargs
         )
@@ -298,9 +306,8 @@ class NTQueries(InMemoryDataset):
         self.relation_occurrences = relation_occurrences
         self.global_entity_mapping = global_entity_mapping
         self.global_relation_mapping = global_relation_mapping
-        # determine dataset root and raw file locations similar to NTDatasets
         self.dataset_name = (
-            dataset_name if dataset_name is not None else pathlib.Path(self.url).stem
+            dataset_name if dataset_name is not None else Path(urlparse(self.url).path).stem
         )
 
         if root is None:
@@ -314,14 +321,11 @@ class NTQueries(InMemoryDataset):
         raw_dir = pathlib.Path(self.root) / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
 
-        # Keep the original queries source (can be a URL or a local path)
-        raw_file_name = pathlib.Path(self.url).name
+        raw_file_name = Path(urlparse(self.url).path).name
         if raw_file_name is None or raw_file_name == "":
             raw_file_name = "raw_queries.json"
 
-        # The dataset expects the raw file to live in the dataset's raw/ folder
         self.raw_file_path = raw_dir / raw_file_name
-        # For backward compatibility keep attribute used elsewhere
         self.dataset_name = (
             dataset_name if dataset_name is not None else self.raw_file_path.stem
         )
@@ -470,7 +474,7 @@ class LUBMQueries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59410580",
+            url="https://api.figshare.com/v2/file/download/59410580",
             dataset_name="lubm_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -489,7 +493,7 @@ class SWDF_Star_Queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59320652",
+            url="https://api.figshare.com/v2/file/download/59320652",
             dataset_name="swdf_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -508,7 +512,7 @@ class WIKIDATA_Star_Queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59320583",
+            url="https://api.figshare.com/v2/file/download/59320583",
             dataset_name="wikidata_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -528,7 +532,7 @@ class fb237_v4_star_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59651327?private_link=780ccfbe4856b223d7b5",
+            url="https://api.figshare.com/v2/file/download/59651327?private_link=780ccfbe4856b223d7b5",
             dataset_name="fb237_v4_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -547,7 +551,7 @@ class fb237_v4_ind_star_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59731859?private_link=953281688dbdb230c09d",
+            url="https://api.figshare.com/v2/file/download/59731859?private_link=953281688dbdb230c09d",
             dataset_name="fb237_v4_ind_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -567,7 +571,7 @@ class wn18rr_v4_star_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59731877?private_link=2b8a1c9a43910e6a2189",
+            url="https://api.figshare.com/v2/file/download/59731877?private_link=2b8a1c9a43910e6a2189",
             dataset_name="wn18rr_v4_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -586,7 +590,7 @@ class wn18rr_v4_ind_star_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59731889?private_link=ec764d8f68a39b467a60",
+            url="https://api.figshare.com/v2/file/download/59731889?private_link=ec764d8f68a39b467a60",
             dataset_name="wn18rr_v4_ind_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -606,7 +610,7 @@ class dbpedia100k_star_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59687708?private_link=1e23a3388a4b6b6161d1",
+            url="https://api.figshare.com/v2/file/download/59687708?private_link=1e23a3388a4b6b6161d1",
             dataset_name="dbpedia100k_star_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -625,7 +629,7 @@ class lubm_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/60037037?private_link=8e4493e070acfd065b77",
+            url="https://api.figshare.com/v2/file/download/60037037?private_link=8e4493e070acfd065b77",
             dataset_name="lubm_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -646,7 +650,7 @@ class swdf_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/60037112?private_link=81b137c60854d11ee270",
+            url="https://api.figshare.com/v2/file/download/60037112?private_link=81b137c60854d11ee270",
             dataset_name="swdf_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -666,7 +670,7 @@ class wikidata_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/60037220?private_link=435c4febc01f57ca3b6d",
+            url="https://api.figshare.com/v2/file/download/60037220?private_link=435c4febc01f57ca3b6d",
             dataset_name="wikidata_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -689,7 +693,7 @@ class wn18rr_v4_ind_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59898623?private_link=87c951797ea81f7c43f0",
+            url="https://api.figshare.com/v2/file/download/59898623?private_link=87c951797ea81f7c43f0",
             dataset_name="wn18rr_v4_ind_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -709,7 +713,7 @@ class wn18rr_v4_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59898641?private_link=6a9649f116fe9d8803db",
+            url="https://api.figshare.com/v2/file/download/59898641?private_link=6a9649f116fe9d8803db",
             dataset_name="wn18rr_v4_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -729,7 +733,7 @@ class dbpedia100k_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59898644?private_link=d6411dc19831edc2f780",
+            url="https://api.figshare.com/v2/file/download/59898644?private_link=d6411dc19831edc2f780",
             dataset_name="dbpedia100k_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -749,7 +753,7 @@ class fb237_v4_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59900678?private_link=69c356b2701ace402cf9",
+            url="https://api.figshare.com/v2/file/download/59900678?private_link=69c356b2701ace402cf9",
             dataset_name="fb237_v4_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
@@ -769,7 +773,7 @@ class fb237_v4_ind_path_queries(NTQueries):
         **kwargs
     ):
         super().__init__(
-            url="https://figshare.com/ndownloader/files/59900708?private_link=103743702bc11e9b4672",
+            url="https://api.figshare.com/v2/file/download/59900708?private_link=103743702bc11e9b4672",
             dataset_name="fb237_v4_ind_path_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
