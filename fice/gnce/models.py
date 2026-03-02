@@ -211,11 +211,12 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine'):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
         self.skip_connection = skip_connection
+        self.message_func = message_func
 
 
         self.mlp = torch.nn.Sequential(
@@ -238,11 +239,16 @@ class TripleModel(torch.nn.Module):
         self.ln1 = nn.LayerNorm(self.feat_dim)
         self.ln2 = nn.LayerNorm(200)
 
-        # Use feat_dim as edge_dim so TripleConv knows the true edge_attr size
-        # self.conv1 = TripleConv(nn=self.mlp, edge_dim=self.feat_dim)
-        # self.conv2 = TripleConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
-        self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        # Use feat_dim as edge_dim so message passing sees the true edge_attr size.
+        if self.message_func == 'gine':
+            self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
+            self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
+        elif self.message_func == 'deepset':
+            from fice.models import DeepSetConv
+            self.conv1 = DeepSetConv(nn_module=self.mlp, edge_dim=self.feat_dim)
+            self.conv2 = DeepSetConv(nn_module=self.mlp2, edge_dim=self.feat_dim)
+        else:
+            raise ValueError(f"Invalid query message function: {self.message_func}")
         self.skip_proj = Linear(self.feat_dim, 200)
         self.lin = Linear(200, 50)
         self.lin2 = Linear(50, 1)

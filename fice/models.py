@@ -3,9 +3,58 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
+from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import degree
 import time 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
+
+
+class DeepSetConv(MessagePassing):
+    def __init__(self, nn_module, edge_dim, eps=0.0, train_eps=False, **kwargs):
+        kwargs.setdefault('aggr', 'add')
+        super().__init__(**kwargs)
+        self.nn = nn_module
+        self.initial_eps = eps
+
+        if train_eps:
+            self.eps = torch.nn.Parameter(torch.Tensor([eps]))
+        else:
+            self.register_buffer('eps', torch.Tensor([eps]))
+
+        self.phi_with_edge = nn.Sequential(
+            nn.Linear(2 * edge_dim, edge_dim),
+            nn.SiLU(),
+            nn.Linear(edge_dim, edge_dim),
+        )
+        self.phi_no_edge = nn.Sequential(
+            nn.Linear(edge_dim, edge_dim),
+            nn.SiLU(),
+            nn.Linear(edge_dim, edge_dim),
+        )
+
+    def reset_parameters(self):
+        self.eps.data.fill_(self.initial_eps)
+        for module in self.phi_with_edge:
+            if hasattr(module, "reset_parameters"):
+                module.reset_parameters()
+        for module in self.phi_no_edge:
+            if hasattr(module, "reset_parameters"):
+                module.reset_parameters()
+
+    def forward(self, x, edge_index, edge_attr=None, size=None):
+        if isinstance(x, torch.Tensor):
+            x = (x, x)
+
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
+        x_r = x[1]
+        if x_r is not None:
+            out = out + (1 + self.eps) * x_r
+        return self.nn(out)
+
+    def message(self, x_j, edge_attr=None):
+        if edge_attr is None:
+            return self.phi_no_edge(x_j)
+        return self.phi_with_edge(torch.cat([x_j, edge_attr], dim=-1))
 
 
 class EntityGNN(nn.Module):
@@ -50,6 +99,10 @@ class EntityGNN(nn.Module):
             if message_func == 'gine':
                 self.layers.append(
                     GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
+            elif message_func == 'deepset':
+                self.layers.append(
+                    DeepSetConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 )
             else:
                 self.layers.append(
@@ -232,6 +285,10 @@ class RelationGNN(nn.Module):
                 self.layers.append(
                     GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 )
+            elif self.message_func == 'deepset':
+                self.layers.append(
+                    DeepSetConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                )
             else:
                 # GATv2Conv
                 self.layers.append(
@@ -413,6 +470,10 @@ class BipartiteGraphGNN(nn.Module):
                 self.layers.append(
                     GINConv(gine_mlp(dims[i], dims[i + 1]), train_eps=False)
                 )
+            elif self.message_func == 'deepset':
+                self.layers.append(
+                    DeepSetConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=dims[i], train_eps=False)
+                )
             else:
                 self.layers.append(
                     GATv2Conv(dims[i], dims[i + 1], heads=1, concat=False, edge_dim=input_dim)
@@ -568,6 +629,7 @@ class FICE(nn.Module):
                  relation_skip_connection=True,
                  # Query GNN params
                  query_gnn_type='TripleModel',
+                 query_message_func='gine',
                  query_layer_norm=True,
                  query_skip_connection=False,
                  query_gnn_dropout=0.0,
@@ -605,7 +667,7 @@ class FICE(nn.Module):
 
         else:
             
-            if relation_message_func in ['GAT', 'gine'] and self.relation_graph_mode == "RelationGraph":
+            if relation_message_func in ['GAT', 'gine', 'deepset'] and self.relation_graph_mode == "RelationGraph":
                 self.relation_model = RelationGNN(
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_relnet,
@@ -633,7 +695,7 @@ class FICE(nn.Module):
                 raise ValueError(f"Invalid relation message function: {relation_message_func}")
     
             
-            if entity_message_func in ['gine', 'GAT'] and self.entity_graph_mode == "KG":
+            if entity_message_func in ['gine', 'GAT', 'deepset'] and self.entity_graph_mode == "KG":
                 self.entity_model = EntityGNN(
                     input_dim=self.vector_dim,
                     hidden_dims=self.hidden_dims_entitynet,
@@ -652,7 +714,13 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
-            self.query_gnn = TripleModel(feat_dim=self.vector_dim + 3, layer_norm=query_layer_norm, skip_connection=query_skip_connection, dropout=query_gnn_dropout)
+            self.query_gnn = TripleModel(
+                feat_dim=self.vector_dim + 3,
+                layer_norm=query_layer_norm,
+                skip_connection=query_skip_connection,
+                dropout=query_gnn_dropout,
+                message_func=query_message_func,
+            )
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':

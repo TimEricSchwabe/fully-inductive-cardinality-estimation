@@ -136,6 +136,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
 
     # Query GNN params
     query_gnn_model = config.query_gnn.model
+    query_message_func = config.query_gnn.message_func
     query_gnn_skip_connection = config.query_gnn.skip_connection
     query_gnn_layer_norm = config.query_gnn.layer_norm
     query_gnn_dropout = config.query_gnn.dropout
@@ -167,6 +168,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             
             # Query Params
             query_gnn_type=query_gnn_model,
+            query_message_func=query_message_func,
             query_layer_norm=query_gnn_layer_norm,
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,

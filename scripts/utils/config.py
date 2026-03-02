@@ -13,21 +13,21 @@ class DataConfig(BaseSettings):
     type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
 class EntityGNNConfig(BaseSettings):
-    message_func: Literal['gine', 'GAT'] = "gine"
+    message_func: Literal['gine', 'GAT', 'deepset'] = "gine"
     model: Literal['EntityGNN'] = 'EntityGNN'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
 
 class RelationGNNConfig(BaseSettings):
-    message_func: Literal['GAT', 'gine'] = "gine"
+    message_func: Literal['GAT', 'gine', 'deepset'] = "gine"
     model: Literal['RelationGNN', 'BipartiteGraphGNN', 'FactorGraphGNN'] = 'RelationGNN'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
 
 class QueryGNNConfig(BaseSettings):
-    # message_func: Literal['Triple', 'gine'] = "gine"
+    message_func: Literal['gine', 'deepset'] = "gine"
     model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
     skip_connection: bool = False
     layer_norm: bool = True
