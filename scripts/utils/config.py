@@ -21,7 +21,7 @@ class EntityGNNConfig(BaseSettings):
 
 class RelationGNNConfig(BaseSettings):
     message_func: Literal['GAT', 'gine'] = "gine"
-    model: Literal['RelationGNN', 'BipartiteGraphGNN'] = 'RelationGNN'
+    model: Literal['RelationGNN', 'BipartiteGraphGNN', 'FactorGraphGNN'] = 'RelationGNN'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0

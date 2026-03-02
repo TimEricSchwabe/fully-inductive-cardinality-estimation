@@ -1,32 +1,12 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
-  - dataset: "LUBM"
-    queries: "LUBMQueries"
-    batch_size: &bs 32
-    num_queries: &nq 20000
-    type: "train-val" # current unseen validation data
-  - dataset: "LUBM"
-    queries: "lubm_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
-    batch_size: *bs
-    num_queries: *nq
+    batch_size: &bs 32
+    num_queries: &nq 5000
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "Wikidata"
-    queries: "WIKIDATA_Star_Queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "Wikidata"
-    queries: "wikidata_path_queries"
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
@@ -50,41 +30,21 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "validation"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
 
-epochs: 100
+epochs: 10
 wandb: True
-wandb_run_name: "AblationLocalTest (without counts)"
+wandb_run_name: "Tim-Bipartite"
 learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -112,7 +72,7 @@ entity_gnn:
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine"
-  model: "BipartiteGraphGNN"
+  model: "BipartiteGraphGNN" # choices are "BipartiteGraphGNN" or "FactorGraphGNN"
   skip_connection: True
   layer_norm: True
   dropout: 0.0

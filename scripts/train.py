@@ -132,7 +132,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     relation_layer_norm = config.relation_gnn.layer_norm
     relation_skip_connection = config.relation_gnn.skip_connection
     relation_dropout = config.relation_gnn.dropout
-    relation_graph_mode = "bipartite" if config.relation_gnn.model == "BipartiteGraphGNN" else "RelationGraph"
+    relation_graph_mode = "bipartite" if config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN") else "RelationGraph"
 
     # Query GNN params
     query_gnn_model = config.query_gnn.model
@@ -231,8 +231,8 @@ def log_gpu_memory_usage(step_name: str):
 
 
 
-def prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device):
-    full_bipartite_graph = full_graph.bipartite_graph.to(device)
+def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_sampler, device):
+    full_bipartite_graph = graph_to_sample.to(device)
     offset = full_graph.num_nodes
     seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
     seeds = seeds[seeds >= 0].unique().detach().cpu()
@@ -320,19 +320,21 @@ def train_epoch(state: TrainingState):
         bipartite_graph_gloal_to_local = None
         
         use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
-        use_bipartite_relation = state.training_context.config.relation_gnn.model == "BipartiteGraphGNN"
+        use_bipartite_relation = state.training_context.config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN")
+        use_factor = state.training_context.config.relation_gnn.model == "FactorGraphGNN"
 
         # generate a sample of the bipartite graph if needed
         if use_bipartite_entity or use_bipartite_relation:
-            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
+            raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
 
 
-        
+
         # Choose correct graph for relation GNN
         if use_bipartite_relation:
             relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-            
-        else: 
+
+        else:
             relation_graph = full_graph.relation_graph.to(device)
 
 
@@ -504,15 +506,17 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             bipartite_graph_gloal_to_local = None
 
             use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
-            use_bipartite_relation = state.training_context.config.relation_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_relation = state.training_context.config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN")
+            use_factor = state.training_context.config.relation_gnn.model == "FactorGraphGNN"
 
             # generate a sample of the bipartite graph if needed
             if use_bipartite_entity or use_bipartite_relation:
-                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
+                raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
 
             if use_bipartite_relation:
                 relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-            else: 
+            else:
                 relation_graph = full_graph.relation_graph.to(device)
 
 

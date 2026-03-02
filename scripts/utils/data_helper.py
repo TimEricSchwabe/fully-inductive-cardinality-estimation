@@ -296,6 +296,63 @@ def make_bipartit_graph(data):
 
     return bipartite_data
 
+def make_factor_graph(data):
+    """Convert a homogeneous graph to a factor graph representation.
+
+    Each triple (s, p, o) introduces a triple node connected to subject, predicate,
+    and object nodes. Node layout: entities [0, N), relations [N, N+R), triples [N+R, N+R+T).
+    Edge attr is [count, role] where role encodes subject(±1), predicate(±2), object(±3).
+    """
+    edge_index = data.edge_index
+    edge_type = data.edge_type
+    num_entities = data.num_nodes
+    num_relations = edge_type.max().item() + 1
+    num_triples = edge_index.size(1)
+
+    triple_node_ids = torch.arange(num_triples) + num_entities + num_relations
+
+    # 3 directed edge sets: triple→subject (role 1), triple→predicate (role 2), triple→object (role 3)
+    subject_edges = torch.vstack((triple_node_ids, edge_index[0]))
+    predicate_edges = torch.vstack((triple_node_ids, edge_type + num_entities))
+    object_edges = torch.vstack((triple_node_ids, edge_index[1]))
+
+    combined = torch.hstack((subject_edges, predicate_edges, object_edges))
+    role_types = torch.cat([
+        torch.ones(num_triples) * 1,
+        torch.ones(num_triples) * 2,
+        torch.ones(num_triples) * 3,
+    ])
+
+    total_nodes = num_entities + num_relations + num_triples
+
+    # Coalesce duplicate edges (sum counts)
+    edge_weight = torch.ones(combined.size(1))
+    unique_edges, counts = coalesce(combined, edge_weight, num_nodes=total_nodes, reduce='add')
+
+    # We need to track roles through coalesce — but since each triple node is unique,
+    # there are no duplicate (src, dst) pairs, so we can coalesce role_types too
+    _, unique_roles = coalesce(combined, role_types, num_nodes=total_nodes, reduce='add')
+
+    # Make undirected: add reverse edges with negated role
+    forward_attr = torch.stack([counts, unique_roles], dim=1)
+    reverse_edges = torch.stack([unique_edges[1], unique_edges[0]], dim=0)
+    reverse_attr = torch.stack([counts, -unique_roles], dim=1)
+
+    final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
+    final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
+
+    return Data(
+        edge_index=final_edge_index,
+        edge_attr=final_edge_attr,
+        num_nodes=total_nodes,
+        dataset_name=f"{data.dataset_name}_factor",
+        original_edge_index=data.edge_index,
+        original_edge_type=data.edge_type,
+        original_num_nodes=num_entities,
+        original_num_relations=num_relations,
+    )
+
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -349,6 +406,13 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
         dataset.bipartite_graph = bipartite_graph
 
+        # Build factor graph
+        factor_graph = make_factor_graph(dataset)
+        if isinstance(config, Config) and config.laplacian_k > 0:
+            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} factor graph...")
+            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
+            factor_graph = transform(factor_graph)
+        dataset.factor_graph = factor_graph
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
