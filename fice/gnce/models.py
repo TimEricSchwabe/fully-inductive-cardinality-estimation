@@ -250,7 +250,7 @@ class TripleModel(torch.nn.Module):
         else:
             raise ValueError(f"Invalid query message function: {self.message_func}")
         self.skip_proj = Linear(self.feat_dim, 200)
-        self.lin = Linear(200, 50)
+        self.lin = Linear(201, 50) # 1 dimension for graph size
         self.lin2 = Linear(50, 1)
 
         self.dropout = torch.nn.Dropout(p=dropout)
@@ -274,6 +274,8 @@ class TripleModel(torch.nn.Module):
         if self.skip_connection:
             x = x + self.skip_proj(x_input)
         x = global_add_pool(x, batch.batch)
+        log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
+        x = torch.cat([x, log_gs], dim=-1)
         x = self.dropout(x)
         x = self.lin(x)
         x = F.silu(x)
