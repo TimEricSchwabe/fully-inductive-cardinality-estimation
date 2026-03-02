@@ -13,7 +13,7 @@ from tqdm import tqdm
 DEFAULT_DATA_ROOT = Path(__file__).parent.parent / "data"
 
 def download(url: str, dest: Union[Path, str], progress: bool = False):
-    resp = requests.get(url, stream=True, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
+    resp = requests.get(url, stream=True, timeout=30) # headers={"User-Agent": "Mozilla/5.0"}
     resp.raise_for_status()
 
     total = int(resp.headers.get('content-length', 0))
