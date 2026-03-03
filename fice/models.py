@@ -58,7 +58,7 @@ class DeepSetConv(MessagePassing):
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, laplacian_k=0, dropout=0.0, **kwargs):
+    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, pe_dim=0, dropout=0.0, **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -69,16 +69,16 @@ class EntityGNN(nn.Module):
         self.enable_layer_norm = layer_norm
         # Feature encoder to project structural features to hidden dimension
         self.dropout = dropout
-        self.laplacian_k = laplacian_k
-        
+        self.pe_dim = pe_dim
+
         # Base Feature Dimension
         if conditioning == 'random':
              self.base_dim = 32
         else:
              self.base_dim = 1 # Constant 0.1
-             
-        # Input features: [Base + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
-        self.raw_in_dim = self.base_dim + 1 + self.laplacian_k + 1
+
+        # Input features: [Base + LogDegree(1) + PE(k) + SeedFlag(1)]
+        self.raw_in_dim = self.base_dim + 1 + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -129,22 +129,22 @@ class EntityGNN(nn.Module):
         deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
         feat_deg = torch.log1p(deg).unsqueeze(-1).to(device)  # (num_nodes, 1)
 
-        # 2. Laplacian PE (assumed pre-computed)
-        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
-            pe = data.laplacian_eigenvector_pe.to(device)
-            if pe.shape[-1] > self.laplacian_k:
-                pe = pe[:, :self.laplacian_k]
-            elif pe.shape[-1] < self.laplacian_k:
-                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+        # 2. Positional Encoding (assumed pre-computed)
+        if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
+            pe = data.random_walk_pe.to(device)
+            if pe.shape[-1] > self.pe_dim:
+                pe = pe[:, :self.pe_dim]
+            elif pe.shape[-1] < self.pe_dim:
+                padding = torch.zeros(pe.shape[0], self.pe_dim - pe.shape[-1], device=device)
                 pe = torch.cat([pe, padding], dim=-1)
             feat_pe = pe
         else:
-            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
-        
+            feat_pe = torch.zeros(num_nodes, self.pe_dim, device=device)
+
         # 3. Seed Flag (varies per batch element)
         feat_seed = torch.zeros(batch_size, num_nodes, 1, device=device)
         if self.conditioning != "false" and batch is not None:
-            node_indices = batch.node_embedding_indices 
+            node_indices = batch.node_embedding_indices
             valid = node_indices != -1
             graph_idx = batch.batch[valid]
             node_pos = node_indices[valid]
@@ -242,10 +242,10 @@ class RelationGNN(nn.Module):
         hidden_dims: tuple = (128, 128),
         num_relation: int = 4,
         message_func: str = 'gine',
-        conditioning: str = "all",      
+        conditioning: str = "all",
         layer_norm: bool = False,
         skip_connection: bool = True,
-        laplacian_k: int = 0,
+        pe_dim: int = 0,
         dropout: float = 0.0,
     ):
         def gine_mlp(in_dim, out_dim):
@@ -261,7 +261,7 @@ class RelationGNN(nn.Module):
 
         super().__init__()
         self.num_relation = num_relation
-        self.conditioning = conditioning     
+        self.conditioning = conditioning
         self.input_dim = input_dim
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
@@ -272,9 +272,9 @@ class RelationGNN(nn.Module):
         self.rel_emb = nn.Embedding(num_relation, input_dim)
 
         # Feature encoder to project structural features + base embeddings
-        # Input features: [BaseRelEmb(input_dim) + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
-        self.laplacian_k = laplacian_k
-        self.raw_in_dim = input_dim + 1 + self.laplacian_k + 1
+        # Input features: [BaseRelEmb(input_dim) + LogDegree(1) + PE(k) + SeedFlag(1)]
+        self.pe_dim = pe_dim
+        self.raw_in_dim = input_dim + 1 + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -325,17 +325,17 @@ class RelationGNN(nn.Module):
         deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
         feat_deg = torch.log1p(deg).unsqueeze(-1) # (num_nodes, 1)
 
-        # 2. Laplacian PE
-        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
-            pe = data.laplacian_eigenvector_pe.to(device)
-            if pe.shape[-1] > self.laplacian_k:
-                pe = pe[:, :self.laplacian_k]
-            elif pe.shape[-1] < self.laplacian_k:
-                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+        # 2. Positional Encoding
+        if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
+            pe = data.random_walk_pe.to(device)
+            if pe.shape[-1] > self.pe_dim:
+                pe = pe[:, :self.pe_dim]
+            elif pe.shape[-1] < self.pe_dim:
+                padding = torch.zeros(pe.shape[0], self.pe_dim - pe.shape[-1], device=device)
                 pe = torch.cat([pe, padding], dim=-1)
             feat_pe = pe
         else:
-            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
+            feat_pe = torch.zeros(num_nodes, self.pe_dim, device=device)
 
         # 3. Seed Flag (varies per batch element)
         feat_seed = torch.zeros(bs, num_nodes, 1, device=device)
@@ -424,10 +424,10 @@ class BipartiteGraphGNN(nn.Module):
         input_dim: int = 128,
         hidden_dims: tuple = (128, 128),
         message_func: str = 'gine',
-        conditioning: str = "false",      
+        conditioning: str = "false",
         layer_norm: bool = False,
         skip_connection: bool = True,
-        laplacian_k: int = 0,
+        pe_dim: int = 0,
         dropout: float = 0.0,
     ):
         def gine_mlp(in_dim, out_dim):
@@ -435,14 +435,14 @@ class BipartiteGraphGNN(nn.Module):
             return nn.Sequential(
                 nn.Linear(in_dim, out_dim),
                 # nn.LayerNorm(out_dim),
-                nn.SiLU(), 
+                nn.SiLU(),
                 nn.Dropout(p=self.dropout),
                 nn.Linear(out_dim, out_dim),
                 nn.Dropout(p=self.dropout),
             )
 
         super().__init__()
-        self.conditioning = conditioning     
+        self.conditioning = conditioning
         self.input_dim = input_dim
         self.message_func = message_func
         self.skip_connection = skip_connection
@@ -453,13 +453,13 @@ class BipartiteGraphGNN(nn.Module):
         self.edge_encoder = nn.Linear(2, input_dim)
 
         # Feature encoder to project structural features to hidden dimension
-        # Input features: [Base + LogDegree(1) + LaplacianPE(k) + SeedFlag(1)]
-        self.laplacian_k = laplacian_k
+        # Input features: [Base + LogDegree(1) + PE(k) + SeedFlag(1)]
+        self.pe_dim = pe_dim
         if conditioning == "random":
             self.base_dim = input_dim
         else:
             self.base_dim = 1
-        self.raw_in_dim = self.base_dim + 1 + self.laplacian_k + 1
+        self.raw_in_dim = self.base_dim + 1 + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -468,11 +468,11 @@ class BipartiteGraphGNN(nn.Module):
         for i in range(len(dims) - 1):
             if self.message_func == 'gine':
                 self.layers.append(
-                    GINConv(gine_mlp(dims[i], dims[i + 1]), train_eps=False)
+                    GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 )
             elif self.message_func == 'deepset':
                 self.layers.append(
-                    DeepSetConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=dims[i], train_eps=False)
+                    DeepSetConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 )
             else:
                 self.layers.append(
@@ -486,7 +486,7 @@ class BipartiteGraphGNN(nn.Module):
 
     def forward(self, data, batch=None):
         """
-        data  : PyG Data (sample) of the bipartite graph of the KG
+        data  : PyG Data (sample) of the bipartite/factor graph of the KG
         batch : batched query graph (only batch_size &  edge_embedding_indices  matter)
         """
         assert len(data.edge_index) % 2 == 0, "Bipartit graph must have even number of edges (directed pairs)."
@@ -504,17 +504,17 @@ class BipartiteGraphGNN(nn.Module):
         deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
         feat_deg = torch.log1p(deg).unsqueeze(-1).to(device) # (num_nodes, 1)
 
-        # 2. Laplacian PE
-        if self.laplacian_k > 0 and hasattr(data, 'laplacian_eigenvector_pe'):
-            pe = data.laplacian_eigenvector_pe.to(device)
-            if pe.shape[-1] > self.laplacian_k:
-                pe = pe[:, :self.laplacian_k]
-            elif pe.shape[-1] < self.laplacian_k:
-                padding = torch.zeros(pe.shape[0], self.laplacian_k - pe.shape[-1], device=device)
+        # 2. Positional Encoding
+        if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
+            pe = data.random_walk_pe.to(device)
+            if pe.shape[-1] > self.pe_dim:
+                pe = pe[:, :self.pe_dim]
+            elif pe.shape[-1] < self.pe_dim:
+                padding = torch.zeros(pe.shape[0], self.pe_dim - pe.shape[-1], device=device)
                 pe = torch.cat([pe, padding], dim=-1)
             feat_pe = pe
         else:
-            feat_pe = torch.zeros(num_nodes, self.laplacian_k, device=device)
+            feat_pe = torch.zeros(num_nodes, self.pe_dim, device=device)
 
         # 3. Seed Flag (varies per batch element)
         feat_seed = torch.zeros(bs, num_nodes, 1, device=device)
@@ -524,7 +524,7 @@ class BipartiteGraphGNN(nn.Module):
             graph_idx_n  = batch.batch[valid_mask_n]
             node_idx_n   = batch.node_embedding_indices[valid_mask_n]
             feat_seed[graph_idx_n, node_idx_n] = 1.0
-            
+
             # relations
             valid_mask_e = batch.edge_embedding_indices != -1
             edge2graph_e = batch.batch[batch.edge_index[0]]
@@ -544,7 +544,7 @@ class BipartiteGraphGNN(nn.Module):
 
         # Combine: [Base | Degree | PE | Seed]
         raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
-        
+
         # Project to hidden dimension
         h = self.feature_encoder(raw_h)
         h = self.input_norm(h)
@@ -552,37 +552,14 @@ class BipartiteGraphGNN(nn.Module):
         h = F.dropout(h, p=self.dropout, training=self.training)
 
         rel_edges  = data.edge_index        # (2, E)
-        batch_edge_list  = []
-        # Since GAT etc. dont accept an explicit batch dimension, we need to reshape the batch_size different relation graphs into a large single graph. hence we need
-        # to increase the edge index per batch, but leave the edge type the same.
 
-        # new
-        offset = (torch.arange(bs, device=device) * num_nodes).view(-1, 1, 1) 
+        # Batch edge indices
+        offset = (torch.arange(bs, device=device) * num_nodes).view(-1, 1, 1)
         edge_index_batched = rel_edges.unsqueeze(0) + offset  # (bs, 2, E)
         edge_index = edge_index_batched.permute(1, 0, 2).reshape(2, -1)  # (2, bs·E)
 
-        # old
-        # for b in range(bs):                 # identical to EntityGNN lines 72-84
-        #     offset = b * num_nodes
-        #     batch_edge_list.append(rel_edges + offset)
-        # edge_index = torch.cat(batch_edge_list, dim=1)   # (2, bs·E)
-        del batch_edge_list
-
-        # Encode edge attributes (Count, Direction)
-        # 1. Replicate edge attributes for batch
-        # new
+        # Encode edge attributes (Count, Direction/Role) -> input_dim
         edge_attr_stacked = data.edge_attr.to(torch.float32).repeat(bs, 1) # Shape [bs*E, 2]
-
-        # old
-        # rel_edge_attr = data.edge_attr.to(torch.float32) # Shape [E, 2]
-        # batch_edge_attr_list = []
-        # for b in range(bs):
-        #     batch_edge_attr_list.append(rel_edge_attr)
-        # edge_attr_stacked = torch.cat(batch_edge_attr_list, dim=0) # Shape [bs*E, 2]
-
-        # del batch_edge_attr_list
-        
-        # 2. Project to embedding dimension
         edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]
 
         x = h.view(bs * num_nodes, -1)
@@ -590,35 +567,34 @@ class BipartiteGraphGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x   = layer(x, edge_index)  # edge_attr is not used in GINEConv if not provided
+            x = layer(x, edge_index, edge_attr=edge_attr)
 
             if self.enable_layer_norm:
                  x = self.norms[i](x)
-           
-            # --- FIX 2: Residual Connection ---
+
             if x.shape == x_in.shape and self.skip_connection:
                 x = x + x_in
-            
+
             x = F.dropout(x, p=self.dropout, training=self.training)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
-        
+
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
-        
+
         return out
 
 
 class FICE(nn.Module):
 
-    def __init__(self, 
-                 vector_dim=128, 
-                 n_embedding_layers=2, 
+    def __init__(self,
+                 vector_dim=128,
+                 n_embedding_layers=2,
                  conditioning='all',
-                 entity_graph_mode: Literal['bipartite', 'KG'] = "KG", 
-                 relation_graph_mode: Literal['bipartite', 'RelationGraph'] = "RelationGraph",
+                 entity_graph_mode: Literal['bipartite', 'KG'] = "KG",
+                 relation_graph_mode: Literal['bipartite'] = "bipartite",
                  # Entity GNN params
                  entity_message_func='gine',
                  entity_layer_norm=False,
@@ -634,17 +610,17 @@ class FICE(nn.Module):
                  query_skip_connection=False,
                  query_gnn_dropout=0.0,
                  # Global params
-                 laplacian_k=0,
+                 pe_dim=0,
                  entity_dropout=0.0,
                  relation_dropout=0.0
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
-        self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite" and relation_graph_mode == "bipartite")
+        self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite")
         # Use n_embedding_layers to create the list of hidden dimensions
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
-        
+
         self.entity_message_func = entity_message_func
         self.relation_message_func = relation_message_func
         self.conditioning = conditioning
@@ -661,55 +637,32 @@ class FICE(nn.Module):
                 layer_norm=relation_layer_norm, # Use relation norm as default for unified
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
-                laplacian_k=laplacian_k,
+                pe_dim=pe_dim,
                 dropout=relation_dropout # Using relation_dropout as default for unified
             )
 
         else:
-            
-            if relation_message_func in ['GAT', 'gine', 'deepset'] and self.relation_graph_mode == "RelationGraph":
-                self.relation_model = RelationGNN(
-                    input_dim=self.vector_dim,
-                    hidden_dims=self.hidden_dims_relnet,
-                    num_relation=4,
-                    message_func=relation_message_func,
-                    layer_norm=relation_layer_norm,
-                    skip_connection=relation_skip_connection,
-                    conditioning=conditioning,
-                    laplacian_k=laplacian_k,
-                    dropout=relation_dropout
-                )
-            elif self.relation_graph_mode == "bipartite":
-                # If using bipartite graph for relations, we use the unified model
-                self.relation_model = BipartiteGraphGNN(
-                    input_dim=self.vector_dim,
-                    hidden_dims=self.hidden_dims_relnet,
-                    message_func=relation_message_func,
-                    layer_norm=relation_layer_norm,
-                    skip_connection=relation_skip_connection,
-                    conditioning=conditioning,
-                    laplacian_k=laplacian_k,
-                    dropout=relation_dropout
-                )
-            else:
-                raise ValueError(f"Invalid relation message function: {relation_message_func}")
-    
-            
-            if entity_message_func in ['gine', 'GAT', 'deepset'] and self.entity_graph_mode == "KG":
-                self.entity_model = EntityGNN(
-                    input_dim=self.vector_dim,
-                    hidden_dims=self.hidden_dims_entitynet,
-                    message_func=entity_message_func,
-                    conditioning=conditioning,
-                    layer_norm=entity_layer_norm,
-                    skip_connection=entity_skip_connection,
-                    laplacian_k=laplacian_k,
-                    dropout=entity_dropout
-                )
-            elif self.entity_graph_mode == "bipartite" and self.relation_graph_mode == "RelationGraph":
-                raise ValueError("Entity graph bipartite but relation graph standard is not supported.")
-            else:
-                raise ValueError(f"Invalid entity message function: {entity_message_func}")
+            self.relation_model = BipartiteGraphGNN(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_relnet,
+                message_func=relation_message_func,
+                layer_norm=relation_layer_norm,
+                skip_connection=relation_skip_connection,
+                conditioning=conditioning,
+                pe_dim=pe_dim,
+                dropout=relation_dropout
+            )
+
+            self.entity_model = EntityGNN(
+                input_dim=self.vector_dim,
+                hidden_dims=self.hidden_dims_entitynet,
+                message_func=entity_message_func,
+                conditioning=conditioning,
+                layer_norm=entity_layer_norm,
+                skip_connection=entity_skip_connection,
+                pe_dim=pe_dim,
+                dropout=entity_dropout
+            )
 
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
@@ -776,9 +729,7 @@ class FICE(nn.Module):
             if bound_nodes.any():
                 valid_graph_idx = graph_indices[bound_nodes]
                 valid_node_idx  = embedding_indices[bound_nodes]
-                node_embeddings_gathered[bound_nodes] = F.normalize(
-                    all_embeddings[valid_graph_idx, valid_node_idx], p=2, dim=-1
-                )
+                node_embeddings_gathered[bound_nodes] = all_embeddings[valid_graph_idx, valid_node_idx]
 
             # Merge with query features
             last = torch.where(bound_nodes.unsqueeze(-1),          
@@ -796,9 +747,7 @@ class FICE(nn.Module):
             if bound_edges.any():
                 valid_edge_graph_idx = edge2graph[bound_edges]
                 valid_edge_node_idx  = edge_embedding_indices[bound_edges]
-                edge_embeddings_gathered[bound_edges] = F.normalize(
-                    all_embeddings[valid_edge_graph_idx, valid_edge_node_idx], p=2, dim=-1
-                )
+                edge_embeddings_gathered[bound_edges] = all_embeddings[valid_edge_graph_idx, valid_edge_node_idx]
 
             edge_embeddings = edge_embeddings_gathered # For plotting variable name consistency
             node_embeddings = node_embeddings_gathered # For plotting variable name consistency
@@ -857,9 +806,7 @@ class FICE(nn.Module):
                 bound_nodes = embedding_indices >= 0
                 graph_indices = batch.batch
 
-                node_embeddings = F.normalize(
-                    node_representations[graph_indices, embedding_indices], p=2, dim=-1
-                )
+                node_embeddings = node_representations[graph_indices, embedding_indices]
                 
                 del node_representations
 
@@ -879,9 +826,7 @@ class FICE(nn.Module):
                 # edge_embedding_indices contains the local bipartite graph indices
                 edge_embedding_indices = batch.original_edge_embedding_indices
 
-            edge_embeddings = F.normalize(
-                relation_representations[edge2graph, edge_embedding_indices], p=2, dim=-1
-            )
+            edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
 
             del relation_representations
 

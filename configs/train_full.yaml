@@ -100,19 +100,19 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-laplacian_k: 0
+random_walk_pe: 0
 gradient_clipping: 1.0
 
 entity_gnn:
   message_func: "deepset" # choices are "gine" or "GAT" or "deepset"
-  model: "EntityGNN"
+  source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
   message_func: "deepset" # choices are "GAT" or "gine" or "deepset"
-  model: "FactorGraphGNN"
+  source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
   dropout: 0.0

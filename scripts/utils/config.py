@@ -1,6 +1,7 @@
 
 import yaml
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from pathlib import Path
 from typing import List, Optional, Literal
 
@@ -14,14 +15,14 @@ class DataConfig(BaseSettings):
 
 class EntityGNNConfig(BaseSettings):
     message_func: Literal['gine', 'GAT', 'deepset'] = "gine"
-    model: Literal['EntityGNN'] = 'EntityGNN'
+    source: Literal['KG', 'bipartite', 'factor'] = 'KG'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
 
 class RelationGNNConfig(BaseSettings):
     message_func: Literal['GAT', 'gine', 'deepset'] = "gine"
-    model: Literal['RelationGNN', 'BipartiteGraphGNN', 'FactorGraphGNN'] = 'RelationGNN'
+    source: Literal['bipartite', 'factor'] = 'bipartite'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
@@ -58,14 +59,19 @@ class Config(BaseSettings):
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
-    laplacian_k: int = 0  # Number of Laplacian eigenvectors for Positional Encoding
+    random_walk_pe: int = 0  # Random walk PE walk length (0 = disabled)
     gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
     relation_gnn: RelationGNNConfig = RelationGNNConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
-    
+
+    @model_validator(mode='after')
+    def validate_gnn_sources(self):
+        if self.entity_gnn.source != 'KG' and self.entity_gnn.source != self.relation_gnn.source:
+            raise ValueError(f"entity source '{self.entity_gnn.source}' must match relation source '{self.relation_gnn.source}'")
+        return self
 
     # class Config:
     #     extra = "allow"  # Allow extra fields if present

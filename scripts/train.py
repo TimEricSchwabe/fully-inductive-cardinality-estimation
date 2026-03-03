@@ -125,14 +125,14 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     entity_layer_norm = config.entity_gnn.layer_norm
     entity_skip_connection = config.entity_gnn.skip_connection
     entity_dropout = config.entity_gnn.dropout
-    entity_graph_mode = "bipartite" if config.entity_gnn.model == "BipartiteGraphGNN" else "KG"
+    entity_graph_mode = "bipartite" if config.entity_gnn.source in ("bipartite", "factor") else "KG"
 
     # Relation GNN params
     relation_message_func = config.relation_gnn.message_func
     relation_layer_norm = config.relation_gnn.layer_norm
     relation_skip_connection = config.relation_gnn.skip_connection
     relation_dropout = config.relation_gnn.dropout
-    relation_graph_mode = "bipartite" if config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN") else "RelationGraph"
+    relation_graph_mode = "bipartite"
 
     # Query GNN params
     query_gnn_model = config.query_gnn.model
@@ -172,7 +172,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_layer_norm=query_gnn_layer_norm,
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
-            laplacian_k=config.laplacian_k,
+            pe_dim=config.random_walk_pe,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
@@ -321,23 +321,17 @@ def train_epoch(state: TrainingState):
         bipartite_graph = None
         bipartite_graph_gloal_to_local = None
         
-        use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
-        use_bipartite_relation = state.training_context.config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN")
-        use_factor = state.training_context.config.relation_gnn.model == "FactorGraphGNN"
+        entity_source = state.training_context.config.entity_gnn.source
+        relation_source = state.training_context.config.relation_gnn.source
+        use_bipartite_entity = entity_source in ("bipartite", "factor")
+        use_factor = relation_source == "factor"
 
-        # generate a sample of the bipartite graph if needed
-        if use_bipartite_entity or use_bipartite_relation:
-            raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
-            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
+        # generate a sample of the bipartite/factor graph
+        raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+        bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
 
-
-
-        # Choose correct graph for relation GNN
-        if use_bipartite_relation:
-            relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-
-        else:
-            relation_graph = full_graph.relation_graph.to(device)
+        # Relation GNN always uses bipartite/factor graph
+        relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
 
 
         if plot_embeddings and not isinstance(state.model_components.model, FiceBinary):
@@ -507,19 +501,17 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             bipartite_graph = None
             bipartite_graph_gloal_to_local = None
 
-            use_bipartite_entity = state.training_context.config.entity_gnn.model == "BipartiteGraphGNN"
-            use_bipartite_relation = state.training_context.config.relation_gnn.model in ("BipartiteGraphGNN", "FactorGraphGNN")
-            use_factor = state.training_context.config.relation_gnn.model == "FactorGraphGNN"
+            entity_source = state.training_context.config.entity_gnn.source
+            relation_source = state.training_context.config.relation_gnn.source
+            use_bipartite_entity = entity_source in ("bipartite", "factor")
+            use_factor = relation_source == "factor"
 
-            # generate a sample of the bipartite graph if needed
-            if use_bipartite_entity or use_bipartite_relation:
-                raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
-                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
+            # generate a sample of the bipartite/factor graph
+            raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
 
-            if use_bipartite_relation:
-                relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-            else:
-                relation_graph = full_graph.relation_graph.to(device)
+            # Relation GNN always uses bipartite/factor graph
+            relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
 
 
 

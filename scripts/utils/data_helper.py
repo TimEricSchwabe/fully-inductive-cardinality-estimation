@@ -14,7 +14,7 @@ from utils.models import *
 from fice import datasets
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
+from torch_geometric.transforms import AddRandomWalkPE
 
 logger = logging.getLogger(__name__)
 
@@ -353,6 +353,24 @@ def make_factor_graph(data):
     )
 
 
+def get_or_build_graph(dataset, dataset_name, graph_type, random_walk_pe=0):
+    """Build or load cached bipartite/factor graph for a dataset."""
+    suffix = f"_rwpe{random_walk_pe}" if random_walk_pe > 0 else ""
+    processed_dir = get_dataset_processed_dir(dataset_name)
+    cache_path = processed_dir / f"{dataset_name}_{graph_type}{suffix}.pt"
+    if cache_path.exists():
+        logger.info(f"Loading cached {graph_type} graph from {cache_path}")
+        return torch.load(cache_path, weights_only=False)
+    logger.info(f"Building {graph_type} graph for {dataset_name}...")
+    graph = make_factor_graph(dataset) if graph_type == "factor" else make_bipartit_graph(dataset)
+    if random_walk_pe > 0:
+        logger.info(f"Computing RandomWalkPE (walk_length={random_walk_pe}) for {dataset_name} {graph_type} graph...")
+        graph = AddRandomWalkPE(walk_length=random_walk_pe)(graph)
+    torch.save(graph, cache_path)
+    logger.info(f"Cached {graph_type} graph to {cache_path}")
+    return graph
+
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -383,36 +401,20 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         
-        # Apply Laplacian PE transform if requested in config
-        if isinstance(config, Config) and config.laplacian_k > 0:
-            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name}...")
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            dataset = transform(dataset)
-            
-            # Also apply to relation graph if it exists
-            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None and config.relation_gnn.model in ['RelationGNN']:
-                logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} relation graph...")
-                dataset.relation_graph = transform(dataset.relation_graph)
+        # Apply RandomWalkPE to KG entity graph if requested and entity source is KG
+        random_walk_pe = config.random_walk_pe if isinstance(config, Config) else 0
+        if random_walk_pe > 0 and isinstance(config, Config) and config.entity_gnn.source == 'KG':
+            logger.info(f"Computing RandomWalkPE (walk_length={random_walk_pe}) for {dataset_name}...")
+            dataset = AddRandomWalkPE(walk_length=random_walk_pe)(dataset)
 
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
-        bipartite_graph = make_bipartit_graph(dataset)
-        
-        # Also apply Laplacian PE to bipartite graph if requested
-        if isinstance(config, Config) and config.laplacian_k > 0:
-            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} bipartite graph...")
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            bipartite_graph = transform(bipartite_graph)
-
-        dataset.bipartite_graph = bipartite_graph
-
-        # Build factor graph
-        factor_graph = make_factor_graph(dataset)
-        if isinstance(config, Config) and config.laplacian_k > 0:
-            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} factor graph...")
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            factor_graph = transform(factor_graph)
-        dataset.factor_graph = factor_graph
+        # Build only the graph type needed by relation_gnn.source
+        relation_source = config.relation_gnn.source if isinstance(config, Config) else 'bipartite'
+        if relation_source == 'factor':
+            dataset.factor_graph = get_or_build_graph(dataset, dataset_name, 'factor', random_walk_pe)
+        else:
+            dataset.bipartite_graph = get_or_build_graph(dataset, dataset_name, 'bipartite', random_walk_pe)
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
