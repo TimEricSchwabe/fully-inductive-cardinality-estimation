@@ -173,6 +173,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
             pe_dim=config.random_walk_pe,
+            prediction_mode=config.prediction_mode,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")

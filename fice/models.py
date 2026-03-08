@@ -612,10 +612,12 @@ class FICE(nn.Module):
                  # Global params
                  pe_dim=0,
                  entity_dropout=0.0,
-                 relation_dropout=0.0
+                 relation_dropout=0.0,
+                 prediction_mode='log-cardinality',
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
+        self.prediction_mode = prediction_mode
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
         self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite")
         # Use n_embedding_layers to create the list of hidden dimensions
@@ -667,12 +669,16 @@ class FICE(nn.Module):
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
         elif self.query_gnn_type == 'TripleModel':
+            use_gs = (prediction_mode != 'log-selectivity')
+            use_sp = (prediction_mode == 'log-selectivity')
             self.query_gnn = TripleModel(
                 feat_dim=self.vector_dim + 3,
                 layer_norm=query_layer_norm,
                 skip_connection=query_skip_connection,
                 dropout=query_gnn_dropout,
                 message_func=query_message_func,
+                use_graph_size=use_gs,
+                use_softplus=use_sp,
             )
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
@@ -842,12 +848,39 @@ class FICE(nn.Module):
         x_counts = torch.log1p(batch.x[:, :3])
         e_counts = torch.log1p(batch.edge_attr[:, :3])
 
+        if self.prediction_mode == 'log-selectivity':
+            src = batch.edge_index[0]  # subject nodes
+            tgt = batch.edge_index[1]  # object nodes
+
+            log_N = torch.log(graph_size.float().clamp(min=1))
+
+            # Per-triple counts: pick the role-appropriate dimension
+            count_s = batch.x[src, 0]       # head count of subject
+            count_p = batch.edge_attr[:, 1]  # relation count of predicate
+            count_t = batch.x[tgt, 2]       # tail count of object
+
+            # Unbound (variable) nodes/edges have count=0 → use N
+            count_s = torch.where(count_s > 0, count_s, graph_size.float())
+            count_p = torch.where(count_p > 0, count_p, graph_size.float())
+            count_t = torch.where(count_t > 0, count_t, graph_size.float())
+
+            # Independence cardinality per triple pattern (in log space)
+            log_card_per_triple = torch.log(count_s) + torch.log(count_p) + torch.log(count_t) - 2 * log_N
+
+            # Sum across triples per query
+            edge2graph = batch.batch[src]
+            count_upper_bound = torch.zeros(batch.num_graphs, device=device)
+            count_upper_bound.scatter_add_(0, edge2graph, log_card_per_triple)
+
+            x_counts = torch.zeros_like(x_counts)
+            e_counts = torch.zeros_like(e_counts)
+
         if self.query_gnn_type == 'QueryCardinalityGNN':
             log_graph_size = torch.log1p(graph_size.float())
-            
+
             unbound_nodes = batch.node_embedding_indices < 0
             x_counts = torch.where(unbound_nodes.unsqueeze(-1), log_graph_size, x_counts)
-            
+
             unbound_edges = batch.edge_embedding_indices < 0
             e_counts = torch.where(unbound_edges.unsqueeze(-1), log_graph_size, e_counts)
 
@@ -857,18 +890,24 @@ class FICE(nn.Module):
         start = time.perf_counter()
         for _ in range(repeat):
             if self.query_gnn_type == 'QueryCardinalityGNN':
-                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+                querygnn_output = self.query_gnn(batch=batch, N=graph_size)
             elif self.query_gnn_type == 'TripleModel':
-                log_cardinality_pred = self.query_gnn(graph_size=graph_size, batch=batch)
+                querygnn_output = self.query_gnn(graph_size=graph_size, batch=batch)
             elif self.query_gnn_type == 'QueryTransformer':
-                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+                querygnn_output = self.query_gnn(batch=batch, N=graph_size)
             elif self.query_gnn_type == 'SimpleSumGNN':
-                log_cardinality_pred = self.query_gnn(batch=batch, N=graph_size)
+                querygnn_output = self.query_gnn(batch=batch, N=graph_size)
             else:
                 raise ValueError(f"Invalid query GNN type: {self.query_gnn_type}")
         end = time.perf_counter()
         elapsed = end - start
         avg_time = elapsed / repeat
+
+        if self.prediction_mode == 'log-selectivity':
+            log_cardinality_pred = count_upper_bound + F.logsigmoid(querygnn_output)
+        else:
+            log_cardinality_pred = querygnn_output
+
         if repeat > 1:
             return log_cardinality_pred, avg_time
         return log_cardinality_pred

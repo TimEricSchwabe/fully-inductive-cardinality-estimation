@@ -211,12 +211,14 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine'):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
         self.skip_connection = skip_connection
         self.message_func = message_func
+        self.use_graph_size = use_graph_size
+        self.use_softplus = use_softplus
 
 
         self.mlp = torch.nn.Sequential(
@@ -250,7 +252,8 @@ class TripleModel(torch.nn.Module):
         else:
             raise ValueError(f"Invalid query message function: {self.message_func}")
         self.skip_proj = Linear(self.feat_dim, 200)
-        self.lin = Linear(201, 50) # 1 dimension for graph size
+        lin_input_dim = 201 if use_graph_size else 200
+        self.lin = Linear(lin_input_dim, 50)
         self.lin2 = Linear(50, 1)
 
         self.dropout = torch.nn.Dropout(p=dropout)
@@ -274,18 +277,17 @@ class TripleModel(torch.nn.Module):
         if self.skip_connection:
             x = x + self.skip_proj(x_input)
         x = global_add_pool(x, batch.batch)
-        log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
-        x = torch.cat([x, log_gs], dim=-1)
+        if self.use_graph_size:
+            log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
+            x = torch.cat([x, log_gs], dim=-1)
         x = self.dropout(x)
         x = self.lin(x)
         x = F.silu(x)
         x = self.lin2(x)
-        
-        # We did an tested it and either with or without abs works fine
-        # also x = troch.where(x<0, torch.zeros_like(x), x) works fine as well 
-        # all produce similar results
 
-        # return x.squeeze(-1)
+        if self.use_softplus:
+            #return F.softplus(x.squeeze(-1))
+            return x.squeeze(-1)
         return torch.abs(x.squeeze(-1))
 
 ############Independent Query GNN ############
