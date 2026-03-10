@@ -252,7 +252,26 @@
 
 ---
 
-## Experiment 16: More Data + Longer Training (Slurm pending)
+## Experiment 16: More Data + Longer Training (Slurm 331682)
 **Hypothesis:** All capacity-adding experiments show underfitting patterns (better mean, worse median). More queries (8K vs 4K) and more epochs (20 vs 10) should give the model enough data and training time to converge properly.
 **Changes:** num_queries: 4000→8000, epochs: 10→20. Otherwise same as Exp 5 (Huber, GINE 4 layers).
 **Note:** Test set changes with more queries, so direct comparison with previous experiments is approximate.
+
+**Results:**
+| Metric | Exp 5 (Huber, 4K/10ep) | Exp 16 (8K/20ep) | Change |
+|---|---|---|---|
+| overall/loss | ~2.0 | 1.293 | much better |
+| overall/median_q_error | 5.196 | **2.746** | **-47% better** |
+| overall/mean_q_error | 2201.756 | **1679.889** | **-24% better** |
+| dbpedia100k/median_q_error | 13.387 | **4.794** | **-64% better** |
+| dbpedia100k/mean_q_error | ~4186 | 1738.516 | -58% better |
+| wn18rr_v4_ind/median_q_error | 3.752 | **1.860** | **-50% better** |
+| wn18rr_v4_ind/mean_q_error | 59.427 | **27.149** | **-54% better** |
+
+**Conclusion:** Massive improvement across ALL metrics. The model was severely underfitting at 4K queries / 10 epochs. This is now the new baseline for all future experiments. Opens the door to re-test capacity-adding changes (GPS, attention, more layers, dropout) that previously failed due to underfitting.
+
+---
+
+## Experiment 17: 3-Layer Query GNN (Slurm pending)
+**Hypothesis:** Path queries have 2-3 edges, so 3 message passing layers match the query graph diameter. With 2 layers, endpoints of a 3-edge path can't communicate. Previously (exp 4, 4K/10ep), 3 layers showed -35% mean but +5% median — the underfitting pattern. With 8K/20ep, the extra capacity should now converge properly.
+**Changes:** query_gnn.num_layers: 2→3. Otherwise same as Exp 16 (8K/20ep, Huber, GINE 4 layers).
