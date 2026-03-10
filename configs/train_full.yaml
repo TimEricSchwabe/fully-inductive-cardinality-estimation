@@ -2,7 +2,7 @@
 data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
-    batch_size: &bs 8
+    batch_size: &bs 32
     num_queries: &nq 4000
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
@@ -94,8 +94,8 @@ save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
 device: "auto"
-weight_decay: 0.01 # Default from config.py defualt is 0.01
-n_embedding_layers: 2
+weight_decay: 0.001 # Reduced from 0.01 to help convergence in 10 epochs
+n_embedding_layers: 4
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
@@ -106,14 +106,14 @@ gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 
 entity_gnn:
-  message_func: "gps" # choices are "gine" or "GAT" or "deepset" or "gps"
+  message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
   source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "gps" # choices are "GAT" or "gine" or "deepset" or "gps"
+  message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True

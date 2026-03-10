@@ -202,3 +202,19 @@
 | overall/mean_q_error | 2201.756 | 2409.873 | +9% worse |
 
 **Conclusion:** Entity attention doesn't help — adding capacity that doesn't converge. Smaller batch size may also hurt optimization dynamics (fewer samples per gradient step). The attention approach is consistently harmful to median q-error.
+
+---
+
+## Experiment 13: Clean GPS Encoder, batch_size=8 (Slurm 331667)
+**Hypothesis:** GPS with smaller batch avoids OOM. Clean test of GPS without relation transformer.
+**Changes:** GPS encoder (2 layers), no attention, batch_size=8. Huber loss + LR 5e-4.
+
+**Results:**
+| Metric | Exp 5 (Huber, bs=32) | Exp 13 (GPS, bs=8) | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 6.146 | +18% worse |
+| dbpedia100k/median_q_error | 13.387 | 13.841 | +3% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.703 | -1% better |
+| wn18rr_v4_ind/mean_q_error | 59.427 | 41.353 | -30% better |
+
+**Conclusion:** GPS doesn't improve median q-errors. Same pattern: extra capacity helps mean/outliers but hurts median. Also confounded by batch_size=8 vs baseline's 32.
