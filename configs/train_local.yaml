@@ -1,25 +1,10 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
-  - dataset: "Wikidata"
-    queries: "WIKIDATA_Star_Queries"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_star_queries"
     batch_size: &bs 32
     num_queries: &nq 100
     type: "train-val"
-  - dataset: "Wikidata"
-    queries: "wikidata_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
 
 
 epochs: 10

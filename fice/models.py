@@ -471,7 +471,7 @@ class BipartiteGraphGNN(nn.Module):
                 # GPS: local GINEConv + global self-attention in each layer
                 local_conv = GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 self.layers.append(
-                    GPSConv(dims[i + 1], local_conv, heads=4, attn_dropout=0.0)
+                    GPSConv(dims[i + 1], local_conv, heads=4, dropout=0.0)
                 )
             elif self.message_func == 'gine':
                 self.layers.append(
@@ -489,18 +489,6 @@ class BipartiteGraphGNN(nn.Module):
         self.norms = nn.ModuleList(
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
-
-        # Relation-level Transformer: global self-attention over relation nodes only
-        # This gives every relation a global view of all other relations (tractable: typically 50-200 nodes)
-        out_dim = hidden_dims[-1]
-        self.rel_attn = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
-        self.rel_attn_norm = nn.LayerNorm(out_dim)
-        self.rel_ffn = nn.Sequential(
-            nn.Linear(out_dim, out_dim * 2),
-            nn.SiLU(),
-            nn.Linear(out_dim * 2, out_dim),
-        )
-        self.rel_ffn_norm = nn.LayerNorm(out_dim)
 
 
     def forward(self, data, batch=None):
@@ -606,23 +594,6 @@ class BipartiteGraphGNN(nn.Module):
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
-
-        # Relation-level Transformer: apply global self-attention over relation nodes
-        # Relations are the last `original_num_relations` nodes in the factor graph
-        if hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
-            n_ent = data.original_num_nodes
-            n_rel = data.original_num_relations
-            # Extract relation embeddings: shape (bs, n_rel, hidden_dim)
-            rel_embs = out[:, n_ent:n_ent + n_rel, :]
-            # Self-attention over relations (pre-norm transformer block)
-            rel_normed = self.rel_attn_norm(rel_embs)
-            rel_attn_out, _ = self.rel_attn(rel_normed, rel_normed, rel_normed)
-            rel_embs = rel_embs + rel_attn_out  # Residual
-            rel_normed = self.rel_ffn_norm(rel_embs)
-            rel_embs = rel_embs + self.rel_ffn(rel_normed)  # FFN + Residual
-            # Put enriched relation embeddings back
-            out = out.clone()
-            out[:, n_ent:n_ent + n_rel, :] = rel_embs
 
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
