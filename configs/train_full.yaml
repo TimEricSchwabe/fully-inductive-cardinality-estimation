@@ -83,9 +83,9 @@ data:
 
 
 epochs: 10
-wandb: True
+wandb: False
 wandb_run_name: "FactorGraphRun"
-wandb_run_id: "7a5d2a00"
+wandb_run_id: "b9588a2d"
 learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
