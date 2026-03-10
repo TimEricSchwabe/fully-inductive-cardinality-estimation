@@ -130,6 +130,21 @@
 
 ---
 
-## Experiment 8: Huber Loss + Higher LR 1e-3 (Slurm pending)
-**Hypothesis:** Huber loss produces smaller gradients than MSE for large errors. With only 10 epochs, the model may need a higher LR (1e-3 vs 5e-4) to compensate and converge faster.
-**Changes:** learning_rate: 5e-4 → 1e-3. JK reverted. Huber loss kept.
+## Experiment 8: Huber Loss + Higher LR 1e-3 (Slurm 331644)
+**Hypothesis:** Higher LR compensates for Huber's smaller gradients.
+**Changes:** learning_rate: 5e-4 → 1e-3.
+
+**Results:**
+| Metric | Exp 5 (Huber, 5e-4) | Exp 8 (1e-3) | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.310 | +2% worse |
+| dbpedia100k/median_q_error | 13.387 | 14.532 | +9% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.726 | -1% marginal |
+
+**Conclusion:** LR 1e-3 too high, overshoots. Reverted to 5e-4.
+
+---
+
+## Experiment 9: Huber Loss + Relation-level Transformer (Slurm pending)
+**Hypothesis:** With 4 GINE layers, relations only see 4 hops. For long path queries, relations at opposite ends can't see each other. A full GraphTransformer is intractable on large factor graphs (100K+ nodes), but applying self-attention ONLY over relation nodes (typically 50-200) is cheap and gives every relation a global view of all other relations. This enables long-range co-occurrence reasoning without stacking many GNN layers.
+**Changes:** Code — BipartiteGraphGNN gets a post-GINE transformer block (MultiheadAttention + FFN with pre-norm) applied only to relation nodes. Uses original_num_nodes/original_num_relations from factor graph data. Huber loss + LR 5e-4.
