@@ -82,7 +82,7 @@ data:
     type: "validation"
 
 
-epochs: 10
+epochs: 1
 wandb: False
 wandb_run_name: "FactorGraphRun"
 wandb_run_id: "b9588a2d"
