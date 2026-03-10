@@ -307,6 +307,22 @@
 
 ---
 
-## Experiment 19: Query GNN Skip Connections (Slurm pending)
+## Experiment 19: Query GNN Skip Connections (Slurm 331696)
 **Hypothesis:** Skip connections in the query GNN preserve raw embedding info alongside GNN-learned interactions. Previously (exp 2, 4K/10ep), skip helped overall median (-5%) and mean (-26%) but hurt individual datasets slightly. With 8K/20ep, the model should converge properly. Unlike dropout/capacity changes that show a dbpedia-vs-wn18rr tradeoff, skip connections add information without removing capacity.
 **Changes:** query_gnn.skip_connection: False→True. All dropout reverted to 0.0. Otherwise same as Exp 16.
+
+**Results:**
+| Metric | Exp 16 (no skip) | Exp 19 (skip) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 3.017 | +9.9% worse |
+| dbpedia100k/median_q_error | 4.794 | 4.471 | -6.7% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.456 | +32% worse |
+| overall/mean_q_error | 1679.9 | 48676.5 | exploded |
+
+**Conclusion:** Skip connections in query GNN are harmful. Raw embeddings bypassing learned transformations create extreme outliers (mean explodes). wn18rr significantly degraded. Reverted.
+
+---
+
+## Experiment 20: Larger Embedding Dimension 192 (Slurm pending)
+**Hypothesis:** 128-dim may bottleneck representation quality. Increasing to 192 gives 50% more capacity to encode structural information. Unlike regularization/architecture changes (exps 17-19) that show a dbpedia-vs-wn18rr tradeoff, wider embeddings improve expressiveness for ALL graphs without changing the learning dynamics.
+**Changes:** embedding_dim: 128→192. Otherwise same as Exp 16.
