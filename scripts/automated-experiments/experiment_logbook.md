@@ -145,12 +145,34 @@
 
 ---
 
-## Experiment 9: Huber Loss + Relation-level Transformer (Slurm pending)
-**Hypothesis:** With 4 GINE layers, relations only see 4 hops. For long path queries, relations at opposite ends can't see each other. A full GraphTransformer is intractable on large factor graphs (100K+ nodes), but applying self-attention ONLY over relation nodes (typically 50-200) is cheap and gives every relation a global view of all other relations. This enables long-range co-occurrence reasoning without stacking many GNN layers.
-**Changes:** Code — BipartiteGraphGNN gets a post-GINE transformer block (MultiheadAttention + FFN with pre-norm) applied only to relation nodes. Uses original_num_nodes/original_num_relations from factor graph data. Huber loss + LR 5e-4.
+## Experiment 9: Huber Loss + GPS + Relation-level Transformer (Slurm 331649)
+**Hypothesis:** GPS (local GINE + global self-attention per layer) replaces GINE for encoders. Relation-level transformer (post-GNN) still active from earlier code.
+**Changes:** GPS encoder (2 layers), relation transformer still present. Huber loss + LR 5e-4.
+**Note:** This was intended as GPS-only but the relation transformer code from a previous experiment was still active, making this GPS + relation transformer combined.
+
+**Results:**
+| Metric | Exp 5 (Huber) | Exp 9 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.962 | +15% worse |
+| dbpedia100k/median_q_error | 13.387 | 13.143 | -2% better |
+| wn18rr_v4_ind/median_q_error | 3.752 | 4.115 | +10% worse |
+| overall/loss | ~11.8 (baseline) | 2.081 | much lower |
+| overall/mean_q_error | 2201.756 | 2853.724 | +30% worse |
+
+**Conclusion:** GPS helps dbpedia100k (best dbpedia result so far) but significantly hurts wn18rr and overall. Very slow: ~25 min/epoch vs ~1 min with GINE. Lower loss but higher median q-error suggests overfitting on training distribution.
 
 ---
 
-## Experiment 10: Huber Loss + GPS (Graph Transformer) Encoder (Slurm pending)
-**Hypothesis:** Replace GINE with GPS (General, Powerful, Scalable) transformer for the encoder. GPS combines local GINEConv + global multi-head self-attention in each layer. This gives both neighborhood aggregation AND global attention, enabling long-range co-occurrence patterns (e.g., relations 8 hops apart) to be captured without stacking many layers. With 2 GPS layers (each = local GINE + global attention), we get equivalent or better receptive field than 4 GINE layers.
-**Changes:** Code — added 'gps' message_func option using PyG GPSConv. Config: entity/relation message_func='gps', n_embedding_layers=2 (down from 4). Huber loss + LR 5e-4.
+## Experiment 10: Clean GPS (no relation transformer) (Slurm 331651)
+**Hypothesis:** Isolate the GPS effect without the relation transformer confound.
+**Changes:** Removed relation transformer from BipartiteGraphGNN. GPS encoder (2 layers). Huber loss + LR 5e-4.
+
+**Results:** OOM — tried to allocate 158.89 GiB for attention matrix on 140 GiB H200. GPS global self-attention over all nodes in sampled neighborhoods is too expensive for larger graphs like dbpedia100k.
+
+**Conclusion:** GPS is intractable even on sampled neighborhoods for large graphs. Need targeted attention on subsets of nodes instead.
+
+---
+
+## Experiment 11: GINE + Separate Entity/Relation Self-Attention (Slurm pending)
+**Hypothesis:** Instead of GPS over ALL nodes (intractable), apply self-attention separately over entity nodes and relation nodes after GINE message passing. This gives each node type a global view within its class while being cheap (O(n_ent²) + O(n_rel²) << O(n_total²)). Entity attention captures entity co-occurrence, relation attention captures relation co-occurrence.
+**Changes:** BipartiteGraphGNN: 4 GINE layers + post-GNN transformer blocks (MultiheadAttention + FFN, pre-norm) applied separately to entity and relation nodes using mapped_entity_indices/mapped_relation_indices. Huber loss + LR 5e-4.
