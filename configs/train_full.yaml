@@ -3,7 +3,7 @@ data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: &bs 32
-    num_queries: &nq 4000
+    num_queries: &nq 8000
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
@@ -82,7 +82,7 @@ data:
     type: "validation"
 
 
-epochs: 10
+epochs: 20
 wandb: False
 wandb_run_name: "AutoResearch"
 wandb_run_id: "b9588a2d"

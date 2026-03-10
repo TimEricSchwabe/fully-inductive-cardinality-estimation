@@ -234,3 +234,25 @@
 | overall/mean_q_error | 2201.756 | 1850.713 | -16% better |
 
 **Conclusion:** Lower WD helps mean but hurts dbpedia inductive generalization. WD=0.01 is a good regularizer. Reverted.
+
+---
+
+## Experiment 15: Huber Loss beta=0.5 (Slurm 331681)
+**Hypothesis:** Smaller Huber beta shifts loss toward pure L1, focusing more on typical cases.
+**Changes:** smooth_l1_loss beta: 1.0→0.5. GINE 4 layers, LR 5e-4, WD 0.01.
+
+**Results:**
+| Metric | Exp 5 (beta=1) | Exp 15 (beta=0.5) | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.891 | +13% worse |
+| dbpedia100k/median_q_error | 13.387 | 16.113 | +20% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.929 | +5% worse |
+
+**Conclusion:** Smaller beta hurts. The quadratic region for small errors provides better gradient signal. beta=1 is the right default. Reverted.
+
+---
+
+## Experiment 16: More Data + Longer Training (Slurm pending)
+**Hypothesis:** All capacity-adding experiments show underfitting patterns (better mean, worse median). More queries (8K vs 4K) and more epochs (20 vs 10) should give the model enough data and training time to converge properly.
+**Changes:** num_queries: 4000→8000, epochs: 10→20. Otherwise same as Exp 5 (Huber, GINE 4 layers).
+**Note:** Test set changes with more queries, so direct comparison with previous experiments is approximate.

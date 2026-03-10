@@ -423,7 +423,7 @@ def train_epoch(state: TrainingState):
         log_true_cardinality = torch.log1p(true_cardinality)
         
         # Compute loss
-        loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality, beta=0.5)
+        loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
 
         # Backward pass
         if state.model_components.optimizer is not None:
@@ -583,7 +583,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             log_true_cardinality = torch.log1p(true_cardinality)
             
             # Compute loss
-            loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality, beta=0.5)
+            loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
             
             # Log batch
             state.metric_logger.log_batch(
