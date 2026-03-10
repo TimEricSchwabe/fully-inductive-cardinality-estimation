@@ -14,7 +14,7 @@ Your goal is now to improve on the current baseline (as currently in configs/tra
 
 Do the following in a loop:
 
-1. To run a experiment go into the scripts/automated-experiments folder and run source .venv/bin/activate and then python run_experiment.py. This will push the new changes to git, connect to the compute cluster, pull the changes and run the experiment. it then polls every 30s slurm and wandb and when the experiment is finished, will return the lowest metrics.
+1. To run a experiment go into the scripts/automated-experiments folder and run source .venv/bin/activate and then python run_experiment.py. This will push the new changes to git, connect to the compute cluster, pull the changes and run the experiment. it then polls every 30s slurm and when the experiment is finished, will return the lowest metrics.
 
 2. The tracked metrics are overall loss, median and mean q-error and those metrics for the 2 inductive datasets dbpedia100k and wn18 inductive. The goal is ideally to improve an all of those, but the overall most important are the 3 median q-errors
 
@@ -30,7 +30,7 @@ Do the following in a loop:
 1. You are on the autoresearch branch (and the cluster also). Never change this.
 2. never change the evaluation of the model, this needs to stay fixed.
 3. never change the execution code for automated research on the cluster.
-4. Never change the number of queries and the epochs (as per the configs); they are configured so each experiment runs in about X minutes, so we can iterate fast.
+4. Never change the number of queries and the epochs (as per the configs); they are configured so each experiment runs in about 5 minutes, so we can iterate fast.
 5. NEVER change the used datasets and specific combination of them. This must always be fixed.
 6. Never use things like the conditioning of the embeddings on the query. the vision is that for a new graph/real database, we once compute the embeddings with the learned gnn, and then can estimate any query super fast by just pulling in the needed embeddings and running query gnn
 7. NEVER change something on the compute cluster, this should only be accessed via the FIXED run_experiment.py
