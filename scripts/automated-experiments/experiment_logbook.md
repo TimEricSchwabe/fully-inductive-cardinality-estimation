@@ -218,3 +218,19 @@
 | wn18rr_v4_ind/mean_q_error | 59.427 | 41.353 | -30% better |
 
 **Conclusion:** GPS doesn't improve median q-errors. Same pattern: extra capacity helps mean/outliers but hurts median. Also confounded by batch_size=8 vs baseline's 32.
+
+---
+
+## Experiment 14: Huber Loss + Lower Weight Decay 0.001 (Slurm 331680)
+**Hypothesis:** WD=0.01 may be too aggressive, preventing convergence in 10 epochs.
+**Changes:** weight_decay: 0.01→0.001. GINE 4 layers, Huber loss, LR 5e-4.
+
+**Results:**
+| Metric | Exp 5 (Huber, wd=0.01) | Exp 14 (wd=0.001) | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.567 | +7% worse |
+| dbpedia100k/median_q_error | 13.387 | 15.024 | +12% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.739 | flat |
+| overall/mean_q_error | 2201.756 | 1850.713 | -16% better |
+
+**Conclusion:** Lower WD helps mean but hurts dbpedia inductive generalization. WD=0.01 is a good regularizer. Reverted.
