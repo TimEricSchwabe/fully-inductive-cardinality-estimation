@@ -272,6 +272,24 @@
 
 ---
 
-## Experiment 17: 3-Layer Query GNN (Slurm pending)
+## Experiment 17: 3-Layer Query GNN (Slurm 331684)
 **Hypothesis:** Path queries have 2-3 edges, so 3 message passing layers match the query graph diameter. With 2 layers, endpoints of a 3-edge path can't communicate. Previously (exp 4, 4K/10ep), 3 layers showed -35% mean but +5% median — the underfitting pattern. With 8K/20ep, the extra capacity should now converge properly.
 **Changes:** query_gnn.num_layers: 2→3. Otherwise same as Exp 16 (8K/20ep, Huber, GINE 4 layers).
+
+**Results:**
+| Metric | Exp 16 (2 layers) | Exp 17 (3 layers) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.741 | flat |
+| dbpedia100k/median_q_error | 4.794 | **4.147** | **-13.5% better** |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.001 | +7.6% worse |
+| overall/mean_q_error | 1679.889 | 1668.547 | flat |
+| dbpedia100k/mean_q_error | 1738.516 | 3004.192 | +73% worse |
+| wn18rr_v4_ind/mean_q_error | 27.149 | **16.340** | **-40% better** |
+
+**Conclusion:** Mixed. 3 layers significantly helps dbpedia100k median (-13.5%) but hurts wn18rr_v4_ind median (+7.6%). The extra receptive field helps larger/more complex graphs (dbpedia) but may overfit smaller ones (wn18rr). wn18rr mean improves dramatically suggesting outlier handling is better. Reverted to 2 layers for now — need a different approach to help both datasets.
+
+---
+
+## Experiment 18: Dropout 0.1 All GNNs (Slurm pending)
+**Hypothesis:** With 20 epochs, the model trains long enough to benefit from regularization. Previously (exp 1, 4K/10ep), dropout hurt median but improved mean — the classic underfitting pattern. With sufficient data and training, dropout should help inductive generalization by preventing the model from memorizing training graph structure.
+**Changes:** entity_gnn.dropout: 0.0→0.1, relation_gnn.dropout: 0.0→0.1, query_gnn.dropout: 0.0→0.1. Otherwise same as Exp 16.
