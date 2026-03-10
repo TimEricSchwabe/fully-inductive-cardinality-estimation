@@ -59,6 +59,7 @@ class Config(BaseSettings):
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
+    wandb_run_id: Optional[str] = None  # W&B run ID (auto-generated if None)
     random_walk_pe: int = 0  # Random walk PE walk length (0 = disabled)
     gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
     prediction_mode: Literal['log-cardinality', 'log-selectivity'] = 'log-cardinality'

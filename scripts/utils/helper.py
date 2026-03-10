@@ -60,6 +60,7 @@ def initialize_wandb(config, run_dir):
             run = wandb.init(   
                 project=WANDB_CONFIG['project'],
                 entity=WANDB_CONFIG['entity'],
+                id=config.wandb_run_id,
                 name=run_name,
                 config=training_config,
                 tags=WANDB_CONFIG['tags'],
