@@ -3,7 +3,7 @@ data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: &bs 32
-    num_queries: &nq 20000
+    num_queries: &nq 100
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
@@ -82,7 +82,7 @@ data:
     type: "validation"
 
 
-epochs: 100
+epochs: 2
 wandb: True
 wandb_run_name: "FactorGraphRun"
 learning_rate: 5e-4
