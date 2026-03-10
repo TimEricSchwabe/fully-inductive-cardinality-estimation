@@ -110,21 +110,21 @@ entity_gnn:
   source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.1
+  dropout: 0.0
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine" or "deepset"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.1
+  dropout: 0.0
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "deepset"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
-  skip_connection: False
+  skip_connection: True
   layer_norm: True
-  dropout: 0.1
+  dropout: 0.0
 
 scheduler:
   enabled: True

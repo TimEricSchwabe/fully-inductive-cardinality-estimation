@@ -18,6 +18,22 @@
 
 ---
 
-## Experiment 1: Dropout Regularization (0.1 on all GNNs)
-**Hypothesis:** Adding dropout to encoder and query GNNs improves inductive generalization by preventing overfitting to training graph statistics.
+## Experiment 1: Dropout Regularization 0.1 (Slurm 331602)
+**Hypothesis:** Adding dropout to encoder and query GNNs improves inductive generalization.
 **Changes:** entity_gnn.dropout: 0.0→0.1, relation_gnn.dropout: 0.0→0.1, query_gnn.dropout: 0.0→0.1
+
+**Results:**
+| Metric | Baseline | Exp 1 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.707 | 6.405 | +12% worse |
+| dbpedia100k/median_q_error | 13.346 | 14.656 | +10% worse |
+| wn18rr_v4_ind/median_q_error | 3.859 | 4.487 | +16% worse |
+| overall/mean_q_error | 2201.756 | 1840.046 | -16% better |
+
+**Conclusion:** Dropout 0.1 hurts median q-errors but reduces extreme outliers. With only 10 epochs, the regularization is too aggressive — the model underfits.
+
+---
+
+## Experiment 2: Query GNN Skip Connections (Slurm pending)
+**Hypothesis:** Skip connections in the query GNN preserve raw embedding info alongside GNN-learned interactions, helping the readout use both local statistics and structural patterns.
+**Changes:** query_gnn.skip_connection: False→True, all dropout reverted to 0.0
