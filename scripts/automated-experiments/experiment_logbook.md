@@ -67,6 +67,23 @@
 
 ---
 
-## Experiment 4: 3-Layer Query GNN (Slurm pending)
-**Hypothesis:** For path queries spanning 3+ triples, 2 message passing hops aren't enough for information to flow end-to-end across the query. A 3rd layer increases receptive field to cover full query structure.
-**Changes:** Code — TripleModel refactored to support configurable num_layers. Config: query_gnn.num_layers=3. L2 norm reverted.
+## Experiment 4: 3-Layer Query GNN (Slurm 331630)
+**Hypothesis:** 3rd message passing layer covers full path query structure.
+**Changes:** TripleModel refactored to support configurable num_layers. query_gnn.num_layers=3.
+
+**Results:**
+| Metric | Baseline | Exp 4 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.707 | 5.980 | +5% worse |
+| dbpedia100k/median_q_error | 13.346 | 15.642 | +17% worse |
+| wn18rr_v4_ind/median_q_error | 3.859 | 4.431 | +15% worse |
+| overall/mean_q_error | 2201.756 | 1426.083 | -35% better |
+| dbpedia100k/mean_q_error | 4186.632 | 1207.079 | -71% better |
+
+**Conclusion:** 3 layers dramatically reduces extreme outliers but hurts median. Extra parameters overfit with limited 10-epoch training budget. Reverted to 2 layers.
+
+---
+
+## Experiment 5: Huber Loss (Smooth L1) Instead of MSE (Slurm pending)
+**Hypothesis:** MSE's quadratic penalty on large errors forces the model to focus on outlier queries at the expense of typical predictions. Huber loss (smooth L1) is linear for large errors, quadratic for small — robust to outliers while preserving good gradients for typical cases. This directly targets median q-error, which is our key metric.
+**Changes:** Training flow — F.mse_loss → F.smooth_l1_loss in both train and eval steps. Config reverted to baseline (2 layers).
