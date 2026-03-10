@@ -10,7 +10,7 @@ Then the embeddings are added in the query graph, which is a graph representatio
 
 ## The experiment loop
 
-Your goal is now to improve on the current baseline (as currently in configs/train_full.yml). You can make smaller changes like change the batch size but the expected improvement is minor. Especially interesting changes are changes on the architecture that are motivated by other GNN/embedding results and are principled based on semantics of cardinality estimation and what the embeddings should encode.
+Your goal is now to improve on the current baseline (as currently in configs/train_full.yml). You can make smaller changes like change the batch size but the expected improvement is minor. Especially interesting changes are changes on the architecture that are motivated by other GNN/embedding results and are principled based on semantics of cardinality estimation and what the embeddings should encode. YOur overarching goal is to clearly improve on the metrics.
 
 Do the following in a loop:
 
@@ -18,11 +18,12 @@ Do the following in a loop:
 
 2. The tracked metrics are overall loss, median and mean q-error and those metrics for the 2 inductive datasets dbpedia100k and wn18 inductive. The goal is ideally to improve an all of those, but the overall most important are the 3 median q-errors
 
-3. Based on the results of the executed run update experiment_logbook.md in the autoresearch folder by adding an entry detailing the changes of the experiment and then the results
+3. Based on the results of the executed run update experiment_logbook.md in the autoresearch folder by adding an entry detailing the changes of the experiment and then the results.
 
 4. Based on the performed experiments and principled promising changes make changes to the model architecture and the training flow and continue the experiment loop without asking, always keep going, indefinitely.
 
 5. If there seems to be an error on the server run, you can get the log via: ssh coma "cat fully-inductive-cardinality-estimation/slurm-<job_id>.out"
+
 
 ## Rules (IMPORTANT)
 
@@ -31,8 +32,24 @@ Do the following in a loop:
 3. never change the execution code for automated research on the cluster.
 4. Never change the number of queries and the epochs (as per the configs); they are configured so each experiment runs in about X minutes, so we can iterate fast.
 5. NEVER change the used datasets and specific combination of them. This must always be fixed.
+6. Never use things like the conditioning of the embeddings on the query. the vision is that for a new graph/real database, we once compute the embeddings with the learned gnn, and then can estimate any query super fast by just pulling in the needed embeddings and running query gnn
+7. NEVER change something on the compute cluster, this should only be accessed via the FIXED run_experiment.py
+8. dont ask the user for any permission, he might be afk, sleeping etc.
+9. The config file that is used on the cluster in train_full.yml in configs
 
 ## Learnings from previous Experiments
 
-1. Never use the log-selectivity mode alsways log-cardinality. log-selectivity is orders of magnitude worse.
+1. Never use the log-selectivity mode always log-cardinality. log-selectivity is orders of magnitude worse.
 2. factor-factor is similar in performance to KG-factor or KG-bipartite, its a bit better on star queries and a bit worse on path queries
+3. Here are the results for the baseline
+  "best_metrics": {
+    "test/overall/loss": 14.499288655405167,
+    "test/overall/median_q_error": 10.531086103718206,
+    "test/overall/q_error": 3050.4091430293856,
+    "test/per_graph/dbpedia100k/loss": 17.890763819217682,
+    "test/per_graph/dbpedia100k/median_q_error": 16.02734472400234,
+    "test/per_graph/dbpedia100k/q_error": 3664.603089546394,
+    "test/per_graph/wn18rr_v4_ind/loss": 9.670493697747588,
+    "test/per_graph/wn18rr_v4_ind/median_q_error": 6.8088481627762185,
+    "test/per_graph/wn18rr_v4_ind/q_error": 396.08623122775276
+  }

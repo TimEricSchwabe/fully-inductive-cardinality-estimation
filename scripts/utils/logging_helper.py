@@ -255,7 +255,8 @@ class MetricLogger:
                 'mse': graph_metrics_results['mse'],
                 'mae': graph_metrics_results['mae'],
                 'rmse': graph_metrics_results['rmse'],
-                'q_error': graph_metrics_results['q_error']
+                'q_error': graph_metrics_results['q_error'],
+                'median_q_error': graph_metrics_results['median_q_error']
             })
         
         # Process per-query-type data
@@ -281,7 +282,8 @@ class MetricLogger:
                 'mse': qt_metrics_results['mse'],
                 'mae': qt_metrics_results['mae'],
                 'rmse': qt_metrics_results['rmse'],
-                'q_error': qt_metrics_results['q_error']
+                'q_error': qt_metrics_results['q_error'],
+                'median_q_error': qt_metrics_results['median_q_error']
             })
         
         # Process per-query-set-name data
@@ -307,7 +309,8 @@ class MetricLogger:
                 'mse': qs_metrics_results['mse'],
                 'mae': qs_metrics_results['mae'],
                 'rmse': qs_metrics_results['rmse'],
-                'q_error': qs_metrics_results['q_error']
+                'q_error': qs_metrics_results['q_error'],
+                'median_q_error': qs_metrics_results['median_q_error']
             })
 
         # Calculate overall metrics
@@ -322,7 +325,8 @@ class MetricLogger:
             'mse': overall_metrics['mse'],
             'mae': overall_metrics['mae'],
             'rmse': overall_metrics['rmse'],
-            'q_error': overall_metrics['q_error']
+            'q_error': overall_metrics['q_error'],
+            'median_q_error': overall_metrics['median_q_error']
         })
         
         # Log to WandB (only when saving to reduce overhead)
