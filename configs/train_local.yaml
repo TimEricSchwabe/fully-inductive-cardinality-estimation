@@ -1,49 +1,29 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
-  - dataset: "SWDF"
-    queries: "SWDF_Star_Queries"
+  - dataset: "Wikidata"
+    queries: "WIKIDATA_Star_Queries"
     batch_size: &bs 32
     num_queries: &nq 100
     type: "train-val"
-  - dataset: "SWDF"
-    queries: "swdf_path_queries"
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries"
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
-  - dataset: "fb237_v4"
-    queries: "fb237_v4_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "fb237_v4"
-    queries: "fb237_v4_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_star_queries"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries"
     batch_size: *bs
     num_queries: *nq
     type: "validation"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_path_queries"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries"
     batch_size: *bs
     num_queries: *nq
     type: "validation"
 
 
 epochs: 10
-wandb: True
+wandb: False
 wandb_run_name: "Tim-local-selectivity-raw"
 learning_rate: 5e-4
 train_ratio: 0.8

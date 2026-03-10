@@ -2,7 +2,7 @@ from typing import Literal
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GATv2Conv, GINEConv, GINConv
+from torch_geometric.nn import GATv2Conv, GINEConv, GINConv, GPSConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import degree
 import time 
@@ -464,9 +464,16 @@ class BipartiteGraphGNN(nn.Module):
         self.input_norm = nn.LayerNorm(input_dim)
 
         self.layers = nn.ModuleList()
+        self.use_gps = (message_func == 'gps')
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
-            if self.message_func == 'gine':
+            if self.message_func == 'gps':
+                # GPS: local GINEConv + global self-attention in each layer
+                local_conv = GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                self.layers.append(
+                    GPSConv(dims[i + 1], local_conv, heads=4, attn_dropout=0.0)
+                )
+            elif self.message_func == 'gine':
                 self.layers.append(
                     GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 )
@@ -576,15 +583,22 @@ class BipartiteGraphGNN(nn.Module):
 
         x = h.view(bs * num_nodes, -1)
 
+        # Batch vector for GPS (maps each node to its graph in the batch)
+        if self.use_gps:
+            batch_vec = torch.arange(bs, device=device).repeat_interleave(num_nodes)
+
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            x = layer(x, edge_index, edge_attr=edge_attr)
+            if self.use_gps:
+                x = layer(x, edge_index, batch_vec, edge_attr=edge_attr)
+            else:
+                x = layer(x, edge_index, edge_attr=edge_attr)
 
-            if self.enable_layer_norm:
+            if self.enable_layer_norm and not self.use_gps:  # GPS has its own internal norms
                  x = self.norms[i](x)
 
-            if x.shape == x_in.shape and self.skip_connection:
+            if x.shape == x_in.shape and self.skip_connection and not self.use_gps:  # GPS has its own residual
                 x = x + x_in
 
             x = F.dropout(x, p=self.dropout, training=self.training)

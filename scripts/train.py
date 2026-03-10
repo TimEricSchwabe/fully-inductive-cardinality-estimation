@@ -820,7 +820,7 @@ def main():
         optimizer_state_dict = checkpoint['optimizer_state_dict']
         scheduler_state_dict = checkpoint.get('scheduler_state_dict')
     else:
-        default_config_path = "configs/train_full.yaml"
+        default_config_path = "configs/train_local.yaml"
         config = load_config_yaml(args.config or default_config_path)
         model_state_dict = None
         optimizer_state_dict = None

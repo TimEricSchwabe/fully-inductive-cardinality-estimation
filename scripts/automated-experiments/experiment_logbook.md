@@ -148,3 +148,9 @@
 ## Experiment 9: Huber Loss + Relation-level Transformer (Slurm pending)
 **Hypothesis:** With 4 GINE layers, relations only see 4 hops. For long path queries, relations at opposite ends can't see each other. A full GraphTransformer is intractable on large factor graphs (100K+ nodes), but applying self-attention ONLY over relation nodes (typically 50-200) is cheap and gives every relation a global view of all other relations. This enables long-range co-occurrence reasoning without stacking many GNN layers.
 **Changes:** Code — BipartiteGraphGNN gets a post-GINE transformer block (MultiheadAttention + FFN with pre-norm) applied only to relation nodes. Uses original_num_nodes/original_num_relations from factor graph data. Huber loss + LR 5e-4.
+
+---
+
+## Experiment 10: Huber Loss + GPS (Graph Transformer) Encoder (Slurm pending)
+**Hypothesis:** Replace GINE with GPS (General, Powerful, Scalable) transformer for the encoder. GPS combines local GINEConv + global multi-head self-attention in each layer. This gives both neighborhood aggregation AND global attention, enabling long-range co-occurrence patterns (e.g., relations 8 hops apart) to be captured without stacking many layers. With 2 GPS layers (each = local GINE + global attention), we get equivalent or better receptive field than 4 GINE layers.
+**Changes:** Code — added 'gps' message_func option using PyG GPSConv. Config: entity/relation message_func='gps', n_embedding_layers=2 (down from 4). Huber loss + LR 5e-4.

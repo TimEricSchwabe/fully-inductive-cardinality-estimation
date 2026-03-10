@@ -14,14 +14,14 @@ class DataConfig(BaseSettings):
     type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
 class EntityGNNConfig(BaseSettings):
-    message_func: Literal['gine', 'GAT', 'deepset'] = "gine"
+    message_func: Literal['gine', 'GAT', 'deepset', 'gps'] = "gine"
     source: Literal['KG', 'bipartite', 'factor'] = 'KG'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
 
 class RelationGNNConfig(BaseSettings):
-    message_func: Literal['GAT', 'gine', 'deepset'] = "gine"
+    message_func: Literal['GAT', 'gine', 'deepset', 'gps'] = "gine"
     source: Literal['bipartite', 'factor'] = 'bipartite'
     skip_connection: bool = True
     layer_norm: bool = True
