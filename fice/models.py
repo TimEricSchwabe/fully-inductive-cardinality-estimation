@@ -735,25 +735,29 @@ class FICE(nn.Module):
             if bound_nodes.any():
                 valid_graph_idx = graph_indices[bound_nodes]
                 valid_node_idx  = embedding_indices[bound_nodes]
-                node_embeddings_gathered[bound_nodes] = all_embeddings[valid_graph_idx, valid_node_idx]
+                node_embeddings_gathered[bound_nodes] = F.normalize(
+                    all_embeddings[valid_graph_idx, valid_node_idx], p=2, dim=-1
+                )
 
             # Merge with query features
-            last = torch.where(bound_nodes.unsqueeze(-1),          
+            last = torch.where(bound_nodes.unsqueeze(-1),
                                 node_embeddings_gathered,
-                                query_features[:, 3:])         
+                                query_features[:, 3:])
             query_features = torch.cat([query_features[:, :3], last], dim=1)
             batch.x = query_features
 
             # 2. Extract Relation Embeddings (for edges)
             bound_edges = (edge_embedding_indices >= 0)
             edge2graph = batch.batch[batch.edge_index[0]]
-            
+
             edge_embeddings_gathered = torch.zeros(edge_embedding_indices.size(0), self.vector_dim, device=device)
-            
+
             if bound_edges.any():
                 valid_edge_graph_idx = edge2graph[bound_edges]
                 valid_edge_node_idx  = edge_embedding_indices[bound_edges]
-                edge_embeddings_gathered[bound_edges] = all_embeddings[valid_edge_graph_idx, valid_edge_node_idx]
+                edge_embeddings_gathered[bound_edges] = F.normalize(
+                    all_embeddings[valid_edge_graph_idx, valid_edge_node_idx], p=2, dim=-1
+                )
 
             edge_embeddings = edge_embeddings_gathered # For plotting variable name consistency
             node_embeddings = node_embeddings_gathered # For plotting variable name consistency
@@ -812,12 +816,14 @@ class FICE(nn.Module):
                 bound_nodes = embedding_indices >= 0
                 graph_indices = batch.batch
 
-                node_embeddings = node_representations[graph_indices, embedding_indices]
-                
+                node_embeddings = F.normalize(
+                    node_representations[graph_indices, embedding_indices], p=2, dim=-1
+                )
+
                 del node_representations
 
                 # Selectively replace last x dims for non-variable nodes and keeping  first 3 dims for all
-                last = torch.where(bound_nodes.unsqueeze(-1),          
+                last = torch.where(bound_nodes.unsqueeze(-1),
                                     node_embeddings,
                                     query_features[:, 3:])         
 
@@ -832,7 +838,9 @@ class FICE(nn.Module):
                 # edge_embedding_indices contains the local bipartite graph indices
                 edge_embedding_indices = batch.original_edge_embedding_indices
 
-            edge_embeddings = relation_representations[edge2graph, edge_embedding_indices]
+            edge_embeddings = F.normalize(
+                relation_representations[edge2graph, edge_embedding_indices], p=2, dim=-1
+            )
 
             del relation_representations
 

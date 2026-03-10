@@ -34,6 +34,23 @@
 
 ---
 
-## Experiment 2: Query GNN Skip Connections (Slurm pending)
-**Hypothesis:** Skip connections in the query GNN preserve raw embedding info alongside GNN-learned interactions, helping the readout use both local statistics and structural patterns.
+## Experiment 2: Query GNN Skip Connections (Slurm 331607)
+**Hypothesis:** Skip connections in the query GNN preserve raw embedding info alongside GNN-learned interactions.
 **Changes:** query_gnn.skip_connection: False→True, all dropout reverted to 0.0
+
+**Results:**
+| Metric | Baseline | Exp 2 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.707 | 5.423 | -5% better |
+| dbpedia100k/median_q_error | 13.346 | 13.763 | +3% worse |
+| wn18rr_v4_ind/median_q_error | 3.859 | 4.127 | +7% worse |
+| overall/loss | 11.862 | 10.472 | -12% better |
+| overall/mean_q_error | 2201.756 | 1631.529 | -26% better |
+
+**Conclusion:** Skip connections help overall/training metrics significantly but hurt inductive generalization. The model fits training distributions better but doesn't transfer as well.
+
+---
+
+## Experiment 3: L2-Normalize Embeddings Before Query Injection (Slurm pending)
+**Hypothesis:** L2-normalizing encoder embeddings to unit vectors before injecting into the query graph makes embeddings scale-invariant across graphs. Direction encodes structural role (transferable), magnitude (graph-dependent) is discarded. Counts already carry magnitude info separately.
+**Changes:** Code change in FICE.forward() — F.normalize(embeddings, p=2, dim=-1) applied to both node and edge embeddings after extraction from encoder. Config reverted to baseline (query skip_connection=False).
