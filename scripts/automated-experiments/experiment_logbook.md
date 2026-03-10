@@ -100,6 +100,21 @@
 
 ---
 
-## Experiment 6: Huber Loss + Encoder Output LayerNorm (Slurm pending)
-**Hypothesis:** The encoder's skip connections bypass internal LayerNorm, leaving final embeddings with graph-dependent distributions. Adding a final LayerNorm standardizes embeddings (zero mean, unit var) across graphs — softer than L2 norm (preserves relative magnitude between dimensions) while improving cross-graph transfer.
-**Changes:** Code — added self.output_norm = LayerNorm to BipartiteGraphGNN, applied after final reshape. Huber loss kept.
+## Experiment 6: Huber Loss + Encoder Output LayerNorm (Slurm 331637)
+**Hypothesis:** Final LayerNorm standardizes embeddings across graphs.
+**Changes:** Added output_norm LayerNorm to BipartiteGraphGNN. Huber loss kept.
+
+**Results:**
+| Metric | Exp 5 (Huber) | Exp 6 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.412 | +4% worse |
+| dbpedia100k/median_q_error | 13.387 | 15.854 | +18% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.701 | -1% better |
+
+**Conclusion:** Output LayerNorm hurts dbpedia100k badly. Extra normalization is too aggressive. Reverted.
+
+---
+
+## Experiment 7: Huber Loss + Jumping Knowledge in Encoder (Slurm pending)
+**Hypothesis:** Different query patterns need different scales of neighborhood info. Star queries need 1-hop, path queries need multi-hop. Current encoder only outputs final (4th) layer. JK concatenates ALL layer outputs (0-hop input through 4-hop) and learns to combine them — giving adaptive multi-scale representations.
+**Changes:** Code — BipartiteGraphGNN collects layer_outputs at each hop, concatenates, and projects via learned linear (jk_proj). Output LayerNorm removed. Huber loss kept.

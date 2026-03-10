@@ -483,8 +483,10 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        # Final output normalization for cross-graph embedding standardization
-        self.output_norm = nn.LayerNorm(hidden_dims[-1])
+        # Jumping Knowledge: project concatenated multi-scale representations back to hidden dim
+        # +1 for input layer, then one per hidden layer
+        jk_input_dim = input_dim + sum(hidden_dims)
+        self.jk_proj = nn.Linear(jk_input_dim, hidden_dims[-1])
 
 
     def forward(self, data, batch=None):
@@ -567,6 +569,9 @@ class BipartiteGraphGNN(nn.Module):
 
         x = h.view(bs * num_nodes, -1)
 
+        # Jumping Knowledge: collect representations at each scale
+        layer_outputs = [x]  # Input layer (0-hop features)
+
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
@@ -579,13 +584,15 @@ class BipartiteGraphGNN(nn.Module):
                 x = x + x_in
 
             x = F.dropout(x, p=self.dropout, training=self.training)
+            layer_outputs.append(x)
+
+        # JK: concatenate all scales and project back to hidden_dim
+        x = torch.cat(layer_outputs, dim=-1)
+        x = self.jk_proj(x)
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
-
-        # Normalize output embeddings for cross-graph standardization
-        out = self.output_norm(out)
 
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
