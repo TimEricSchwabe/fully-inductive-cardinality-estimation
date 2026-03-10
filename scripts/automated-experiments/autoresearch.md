@@ -30,7 +30,7 @@ Do the following in a loop:
 1. You are on the autoresearch branch (and the cluster also). Never change this.
 2. never change the evaluation of the model, this needs to stay fixed.
 3. never change the execution code for automated research on the cluster.
-4. Never change the number of queries and the epochs (as per the configs); they are configured so each experiment runs in about 5 minutes, so we can iterate fast.
+4. Never change the number of queries and the epochs (as per the configs); they are configured so each experiment runs in about 10 minutes, so we can iterate fast.
 5. NEVER change the used datasets and specific combination of them. This must always be fixed.
 6. Never use things like the conditioning of the embeddings on the query. the vision is that for a new graph/real database, we once compute the embeddings with the learned gnn, and then can estimate any query super fast by just pulling in the needed embeddings and running query gnn
 7. NEVER change something on the compute cluster, this should only be accessed via the FIXED run_experiment.py
