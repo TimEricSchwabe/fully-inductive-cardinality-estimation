@@ -173,6 +173,16 @@
 
 ---
 
-## Experiment 11: GINE + Separate Entity/Relation Self-Attention (Slurm pending)
-**Hypothesis:** Instead of GPS over ALL nodes (intractable), apply self-attention separately over entity nodes and relation nodes after GINE message passing. This gives each node type a global view within its class while being cheap (O(n_ent²) + O(n_rel²) << O(n_total²)). Entity attention captures entity co-occurrence, relation attention captures relation co-occurrence.
-**Changes:** BipartiteGraphGNN: 4 GINE layers + post-GNN transformer blocks (MultiheadAttention + FFN, pre-norm) applied separately to entity and relation nodes using mapped_entity_indices/mapped_relation_indices. Huber loss + LR 5e-4.
+## Experiment 11: GINE + Relation-only Self-Attention (Slurm 331658)
+**Hypothesis:** Post-GINE self-attention over relation nodes gives relations a global view of all other relations. Entity attention OOM'd (sampled subgraphs have ~12K entity nodes), so relation-only.
+**Changes:** BipartiteGraphGNN: 4 GINE layers + post-GNN transformer block (MultiheadAttention + FFN, pre-norm) over relation nodes using mapped_relation_indices. Huber loss + LR 5e-4.
+
+**Results:**
+| Metric | Exp 5 (Huber) | Exp 11 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.962 | +15% worse |
+| dbpedia100k/median_q_error | 13.387 | 15.860 | +18% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.868 | +3% worse |
+| wn18rr_v4_ind/mean_q_error | 59.427 | 33.110 | -44% better |
+
+**Conclusion:** Relation attention hurts median across the board but dramatically reduces wn18rr extreme outliers. Extra attention params don't converge in 10 epochs — same pattern as other capacity-adding changes.

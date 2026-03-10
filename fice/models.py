@@ -490,9 +490,13 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-        # Post-GNN self-attention over relation nodes only
-        # (entity nodes are too many in sampled subgraphs for dense attention)
+        # Post-GNN self-attention: separate for entity and relation nodes
         out_dim = hidden_dims[-1]
+        self.ent_attn = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
+        self.ent_attn_norm = nn.LayerNorm(out_dim)
+        self.ent_ffn = nn.Sequential(nn.Linear(out_dim, out_dim * 2), nn.SiLU(), nn.Linear(out_dim * 2, out_dim))
+        self.ent_ffn_norm = nn.LayerNorm(out_dim)
+
         self.rel_attn = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
         self.rel_attn_norm = nn.LayerNorm(out_dim)
         self.rel_ffn = nn.Sequential(nn.Linear(out_dim, out_dim * 2), nn.SiLU(), nn.Linear(out_dim * 2, out_dim))
@@ -603,9 +607,21 @@ class BipartiteGraphGNN(nn.Module):
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
 
-        # Self-attention over relation nodes only (cheap: typically 50-200 relations)
-        if hasattr(data, 'mapped_relation_indices'):
+        # Separate self-attention over entity and relation nodes
+        if hasattr(data, 'mapped_entity_indices') and hasattr(data, 'mapped_relation_indices'):
+            ent_ids = data.mapped_entity_indices[data.mapped_entity_indices >= 0]
             rel_ids = data.mapped_relation_indices[data.mapped_relation_indices >= 0]
+            out = out.clone()
+
+            if ent_ids.numel() > 0:
+                ent_embs = out[:, ent_ids, :]
+                ent_normed = self.ent_attn_norm(ent_embs)
+                ent_attn_out, _ = self.ent_attn(ent_normed, ent_normed, ent_normed)
+                ent_embs = ent_embs + ent_attn_out
+                ent_normed = self.ent_ffn_norm(ent_embs)
+                ent_embs = ent_embs + self.ent_ffn(ent_normed)
+                out[:, ent_ids, :] = ent_embs
+
             if rel_ids.numel() > 0:
                 rel_embs = out[:, rel_ids, :]
                 rel_normed = self.rel_attn_norm(rel_embs)
@@ -613,7 +629,6 @@ class BipartiteGraphGNN(nn.Module):
                 rel_embs = rel_embs + rel_attn_out
                 rel_normed = self.rel_ffn_norm(rel_embs)
                 rel_embs = rel_embs + self.rel_ffn(rel_normed)
-                out = out.clone()
                 out[:, rel_ids, :] = rel_embs
 
         # Clean up large batched tensors
