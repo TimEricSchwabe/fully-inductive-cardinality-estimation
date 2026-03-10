@@ -115,6 +115,21 @@
 
 ---
 
-## Experiment 7: Huber Loss + Jumping Knowledge in Encoder (Slurm pending)
-**Hypothesis:** Different query patterns need different scales of neighborhood info. Star queries need 1-hop, path queries need multi-hop. Current encoder only outputs final (4th) layer. JK concatenates ALL layer outputs (0-hop input through 4-hop) and learns to combine them — giving adaptive multi-scale representations.
-**Changes:** Code — BipartiteGraphGNN collects layer_outputs at each hop, concatenates, and projects via learned linear (jk_proj). Output LayerNorm removed. Huber loss kept.
+## Experiment 7: Huber Loss + Jumping Knowledge in Encoder (Slurm 331642)
+**Hypothesis:** JK gives adaptive multi-scale representations for different query types.
+**Changes:** BipartiteGraphGNN collects all layer outputs, concatenates, and projects via jk_proj.
+
+**Results:**
+| Metric | Exp 5 (Huber) | Exp 7 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 6.031 | +16% worse |
+| dbpedia100k/median_q_error | 13.387 | 15.439 | +15% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 4.077 | +9% worse |
+
+**Conclusion:** JK adds too many params (~82K in jk_proj) that don't converge in 10 epochs. Reverted.
+
+---
+
+## Experiment 8: Huber Loss + Higher LR 1e-3 (Slurm pending)
+**Hypothesis:** Huber loss produces smaller gradients than MSE for large errors. With only 10 epochs, the model may need a higher LR (1e-3 vs 5e-4) to compensate and converge faster.
+**Changes:** learning_rate: 5e-4 → 1e-3. JK reverted. Huber loss kept.
