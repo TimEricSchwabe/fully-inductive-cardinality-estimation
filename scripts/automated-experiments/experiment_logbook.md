@@ -84,6 +84,22 @@
 
 ---
 
-## Experiment 5: Huber Loss (Smooth L1) Instead of MSE (Slurm pending)
-**Hypothesis:** MSE's quadratic penalty on large errors forces the model to focus on outlier queries at the expense of typical predictions. Huber loss (smooth L1) is linear for large errors, quadratic for small — robust to outliers while preserving good gradients for typical cases. This directly targets median q-error, which is our key metric.
-**Changes:** Training flow — F.mse_loss → F.smooth_l1_loss in both train and eval steps. Config reverted to baseline (2 layers).
+## Experiment 5: Huber Loss (Smooth L1) Instead of MSE (Slurm 331633)
+**Hypothesis:** MSE's quadratic penalty forces the model to focus on outliers. Huber loss is robust to outliers while preserving good gradients for typical cases.
+**Changes:** F.mse_loss → F.smooth_l1_loss in train and eval. Config reverted to baseline (2 layers).
+
+**Results:**
+| Metric | Baseline | Exp 5 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.707 | **5.196** | **-9% better** |
+| dbpedia100k/median_q_error | 13.346 | 13.387 | flat |
+| wn18rr_v4_ind/median_q_error | 3.859 | **3.752** | **-3% better** |
+| wn18rr_v4_ind/mean_q_error | 93.384 | **59.427** | **-36% better** |
+
+**Conclusion:** Clear win. Huber loss improves overall and wn18rr median q-errors. dbpedia100k flat. **Keeping Huber loss going forward.**
+
+---
+
+## Experiment 6: Huber Loss + Encoder Output LayerNorm (Slurm pending)
+**Hypothesis:** The encoder's skip connections bypass internal LayerNorm, leaving final embeddings with graph-dependent distributions. Adding a final LayerNorm standardizes embeddings (zero mean, unit var) across graphs — softer than L2 norm (preserves relative magnitude between dimensions) while improving cross-graph transfer.
+**Changes:** Code — added self.output_norm = LayerNorm to BipartiteGraphGNN, applied after final reshape. Huber loss kept.

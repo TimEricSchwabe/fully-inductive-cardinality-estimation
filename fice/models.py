@@ -483,6 +483,9 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
+        # Final output normalization for cross-graph embedding standardization
+        self.output_norm = nn.LayerNorm(hidden_dims[-1])
+
 
     def forward(self, data, batch=None):
         """
@@ -580,6 +583,9 @@ class BipartiteGraphGNN(nn.Module):
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
+
+        # Normalize output embeddings for cross-graph standardization
+        out = self.output_norm(out)
 
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
