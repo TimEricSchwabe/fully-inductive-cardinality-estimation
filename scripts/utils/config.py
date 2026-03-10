@@ -33,6 +33,7 @@ class QueryGNNConfig(BaseSettings):
     skip_connection: bool = False
     layer_norm: bool = True
     dropout: float = 0.0
+    num_layers: int = 2
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True

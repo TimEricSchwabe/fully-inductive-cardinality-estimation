@@ -140,6 +140,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     query_gnn_skip_connection = config.query_gnn.skip_connection
     query_gnn_layer_norm = config.query_gnn.layer_norm
     query_gnn_dropout = config.query_gnn.dropout
+    query_gnn_num_layers = config.query_gnn.num_layers
     
     
     if model_type == 'FiceBinary':
@@ -172,6 +173,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_layer_norm=query_gnn_layer_norm,
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
+            query_gnn_num_layers=query_gnn_num_layers,
             pe_dim=config.random_walk_pe,
             prediction_mode=config.prediction_mode,
         )

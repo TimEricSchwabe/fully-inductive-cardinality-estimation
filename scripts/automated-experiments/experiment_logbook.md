@@ -51,6 +51,22 @@
 
 ---
 
-## Experiment 3: L2-Normalize Embeddings Before Query Injection (Slurm pending)
-**Hypothesis:** L2-normalizing encoder embeddings to unit vectors before injecting into the query graph makes embeddings scale-invariant across graphs. Direction encodes structural role (transferable), magnitude (graph-dependent) is discarded. Counts already carry magnitude info separately.
-**Changes:** Code change in FICE.forward() — F.normalize(embeddings, p=2, dim=-1) applied to both node and edge embeddings after extraction from encoder. Config reverted to baseline (query skip_connection=False).
+## Experiment 3: L2-Normalize Embeddings Before Query Injection (Slurm 331626)
+**Hypothesis:** L2-normalizing encoder embeddings makes them scale-invariant across graphs.
+**Changes:** Code change in FICE.forward() — F.normalize(embeddings, p=2, dim=-1) on node/edge embeddings. Config reverted to baseline.
+
+**Results:**
+| Metric | Baseline | Exp 3 | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.707 | 5.467 | -4% better |
+| dbpedia100k/median_q_error | 13.346 | 14.906 | +12% worse |
+| wn18rr_v4_ind/median_q_error | 3.859 | 3.660 | -5% better |
+| wn18rr_v4_ind/mean_q_error | 93.384 | 65.325 | -30% better |
+
+**Conclusion:** L2 norm significantly helps wn18rr (smaller graph) but hurts dbpedia100k (larger graph). Magnitude information matters for complex graphs. Reverted.
+
+---
+
+## Experiment 4: 3-Layer Query GNN (Slurm pending)
+**Hypothesis:** For path queries spanning 3+ triples, 2 message passing hops aren't enough for information to flow end-to-end across the query. A 3rd layer increases receptive field to cover full query structure.
+**Changes:** Code — TripleModel refactored to support configurable num_layers. Config: query_gnn.num_layers=3. L2 norm reverted.

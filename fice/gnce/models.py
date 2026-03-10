@@ -211,7 +211,7 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
@@ -219,74 +219,67 @@ class TripleModel(torch.nn.Module):
         self.message_func = message_func
         self.use_graph_size = use_graph_size
         self.use_softplus = use_softplus
+        self.num_layers = num_layers
 
+        readout_dim = 200
 
-        self.mlp = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, self.feat_dim),
-            torch.nn.Dropout(p=dropout),
-            torch.nn.SiLU(),
-            torch.nn.Linear(self.feat_dim, self.feat_dim),
-            torch.nn.Dropout(p=dropout)
-        )
+        def make_conv(in_dim, out_dim):
+            mlp = torch.nn.Sequential(
+                torch.nn.Linear(in_dim, out_dim),
+                torch.nn.Dropout(p=dropout),
+                torch.nn.SiLU(),
+                torch.nn.Linear(out_dim, out_dim),
+                torch.nn.Dropout(p=dropout)
+            )
+            if self.message_func == 'gine':
+                return GINEConv(nn=mlp, edge_dim=self.feat_dim)
+            elif self.message_func == 'deepset':
+                from fice.models import DeepSetConv
+                return DeepSetConv(nn_module=mlp, edge_dim=self.feat_dim)
+            else:
+                raise ValueError(f"Invalid query message function: {self.message_func}")
 
-        # second MLP maps feat_dim -> 200 (via 100)
-        self.mlp2 = torch.nn.Sequential(
-            torch.nn.Linear(self.feat_dim, 100),
-            torch.nn.Dropout(p=dropout),
-            torch.nn.SiLU(),
-            torch.nn.Linear(100, 200),
-            torch.nn.Dropout(p=dropout)
-        )
+        # Build layers: all feat_dim→feat_dim except last which is feat_dim→readout_dim
+        self.convs = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        for i in range(num_layers):
+            out_dim = readout_dim if i == num_layers - 1 else feat_dim
+            self.convs.append(make_conv(feat_dim if i == 0 else feat_dim, out_dim))
+            self.norms.append(nn.LayerNorm(out_dim))
 
-        self.ln1 = nn.LayerNorm(self.feat_dim)
-        self.ln2 = nn.LayerNorm(200)
-
-        # Use feat_dim as edge_dim so message passing sees the true edge_attr size.
-        if self.message_func == 'gine':
-            self.conv1 = GINEConv(nn=self.mlp, edge_dim=self.feat_dim)
-            self.conv2 = GINEConv(nn=self.mlp2, edge_dim=self.feat_dim)
-        elif self.message_func == 'deepset':
-            from fice.models import DeepSetConv
-            self.conv1 = DeepSetConv(nn_module=self.mlp, edge_dim=self.feat_dim)
-            self.conv2 = DeepSetConv(nn_module=self.mlp2, edge_dim=self.feat_dim)
-        else:
-            raise ValueError(f"Invalid query message function: {self.message_func}")
-        self.skip_proj = Linear(self.feat_dim, 200)
-        lin_input_dim = 201 if use_graph_size else 200
+        self.skip_proj = Linear(self.feat_dim, readout_dim)
+        lin_input_dim = readout_dim + 1 if use_graph_size else readout_dim
         self.lin = Linear(lin_input_dim, 50)
         self.lin2 = Linear(50, 1)
 
-        self.dropout = torch.nn.Dropout(p=dropout)
+        self.dropout_layer = torch.nn.Dropout(p=dropout)
 
     def forward(self, batch, graph_size):
         x = batch.x
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
 
-        x_input = x
-        x = F.silu(self.conv1(x, edge_index, edge_attr=edge_attr))
-        if self.layer_norm:
-            x = self.ln1(x)
-        if self.skip_connection:
-            x = x + x_input
+        for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+            x_input = x
+            x = F.silu(conv(x, edge_index, edge_attr=edge_attr))
+            if self.layer_norm:
+                x = norm(x)
+            if self.skip_connection:
+                if x.size(-1) != x_input.size(-1):
+                    x = x + self.skip_proj(x_input)
+                else:
+                    x = x + x_input
 
-        x_input = x
-        x = F.silu(self.conv2(x, edge_index, edge_attr=edge_attr))
-        if self.layer_norm:
-            x = self.ln2(x)
-        if self.skip_connection:
-            x = x + self.skip_proj(x_input)
         x = global_add_pool(x, batch.batch)
         if self.use_graph_size:
             log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
             x = torch.cat([x, log_gs], dim=-1)
-        x = self.dropout(x)
+        x = self.dropout_layer(x)
         x = self.lin(x)
         x = F.silu(x)
         x = self.lin2(x)
 
         if self.use_softplus:
-            #return F.softplus(x.squeeze(-1))
             return x.squeeze(-1)
         return torch.abs(x.squeeze(-1))
 
