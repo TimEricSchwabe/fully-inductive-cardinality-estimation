@@ -3,7 +3,7 @@ data:
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: &bs 32
-    num_queries: &nq 5000
+    num_queries: &nq 100
     type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
@@ -44,7 +44,7 @@ data:
 
 epochs: 10
 wandb: True
-wandb_run_name: "Tim-Bipartite"
+wandb_run_name: "Tim-local-selectivity-raw"
 learning_rate: 5e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -54,30 +54,34 @@ eval_every: 1
 seed: 42
 device: "cpu"
 weight_decay: 0.01 # Default from config.py defualt is 0.01
+
+
 n_embedding_layers: 2
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-laplacian_k: 0
+random_walk_pe: 0
 gradient_clipping: 1.0
+prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT"
-  model: "EntityGNN"
+  message_func: "gine" # choices are "gine" or "GAT" or "deepset"
+  source: "factor" # choices are "KG", "bipartite", "factor" ## Note that if bipartite/factor, the relation gnn source needs to be the same
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine"
-  model: "BipartiteGraphGNN" # choices are "BipartiteGraphGNN" or "FactorGraphGNN"
+  message_func: "gine" # choices are "GAT" or "gine" or "deepset"
+  source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 query_gnn:
+  message_func: "gine" # choices are "gine" or "deepset" or "deepset"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
   layer_norm: True
