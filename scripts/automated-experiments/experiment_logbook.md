@@ -186,3 +186,19 @@
 | wn18rr_v4_ind/mean_q_error | 59.427 | 33.110 | -44% better |
 
 **Conclusion:** Relation attention hurts median across the board but dramatically reduces wn18rr extreme outliers. Extra attention params don't converge in 10 epochs — same pattern as other capacity-adding changes.
+
+---
+
+## Experiment 12: GINE + Entity & Relation Attention, batch_size=8 (Slurm 331661)
+**Hypothesis:** Entity attention OOM'd at bs=32. Smaller batch_size=8 enables entity + relation attention. Entity attention captures entity co-occurrence globally.
+**Changes:** Both entity and relation post-GINE attention. batch_size: 32→8. 4 GINE layers. Huber loss + LR 5e-4.
+
+**Results:**
+| Metric | Exp 5 (Huber, bs=32) | Exp 12 (bs=8) | Change |
+|---|---|---|---|
+| overall/median_q_error | 5.196 | 5.919 | +14% worse |
+| dbpedia100k/median_q_error | 13.387 | 16.366 | +22% worse |
+| wn18rr_v4_ind/median_q_error | 3.752 | 3.743 | flat |
+| overall/mean_q_error | 2201.756 | 2409.873 | +9% worse |
+
+**Conclusion:** Entity attention doesn't help — adding capacity that doesn't converge. Smaller batch size may also hurt optimization dynamics (fewer samples per gradient step). The attention approach is consistently harmful to median q-error.
