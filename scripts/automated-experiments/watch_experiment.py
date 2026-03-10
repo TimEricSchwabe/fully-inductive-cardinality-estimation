@@ -182,7 +182,25 @@ def extract_best_metrics(run_dir: str) -> Dict[str, float]:
 # Main polling loop
 # ---------------------------------------------------------------------------
 
+def _try_extract_results(job_id: str, slurm: SlurmStatus) -> Dict[str, Any]:
+    """Extract run_dir and metrics from the Slurm log. Returns a result payload."""
+    run_dir = extract_run_dir(job_id)
+    metrics = extract_best_metrics(run_dir) if run_dir else {}
+    status = "success" if run_dir else "failed"
+    return {
+        "status": status,
+        "message": "Slurm job completed." if run_dir else "Job finished but could not locate run directory.",
+        "job_id": job_id,
+        "slurm": asdict(slurm),
+        "run_dir": run_dir,
+        "best_metrics": metrics,
+    }
+
+
 def wait_for_completion(*, job_id: str) -> Dict[str, Any]:
+    was_running = False
+    unknown_since: Optional[float] = None
+
     while True:
         slurm = get_slurm_status(job_id)
 
@@ -194,24 +212,18 @@ def wait_for_completion(*, job_id: str) -> Dict[str, Any]:
         state_upper = (slurm.state or "UNKNOWN").upper()
 
         if state_upper in PENDING_SLURM_STATES:
+            unknown_since = None
             time.sleep(POLL_PENDING)
             continue
 
         if state_upper in RUNNING_SLURM_STATES:
+            was_running = True
+            unknown_since = None
             time.sleep(POLL_RUNNING)
             continue
 
         if state_upper == "COMPLETED":
-            run_dir = extract_run_dir(job_id)
-            metrics = extract_best_metrics(run_dir) if run_dir else {}
-            return {
-                "status": "success",
-                "message": "Slurm job completed.",
-                "job_id": job_id,
-                "slurm": asdict(slurm),
-                "run_dir": run_dir,
-                "best_metrics": metrics,
-            }
+            return _try_extract_results(job_id, slurm)
 
         if state_upper in TERMINAL_SLURM_STATES:
             return {
@@ -221,6 +233,12 @@ def wait_for_completion(*, job_id: str) -> Dict[str, Any]:
                 "slurm": asdict(slurm),
                 "best_metrics": {},
             }
+
+        # UNKNOWN: job disappeared from squeue and sacct returned nothing.
+        if unknown_since is None:
+            unknown_since = time.time()
+        if was_running or (time.time() - unknown_since) > 60:
+            return _try_extract_results(job_id, slurm)
 
         time.sleep(POLL_RUNNING)
 
