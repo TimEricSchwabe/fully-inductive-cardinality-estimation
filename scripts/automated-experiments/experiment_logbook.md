@@ -290,6 +290,23 @@
 
 ---
 
-## Experiment 18: Dropout 0.1 All GNNs (Slurm pending)
+## Experiment 18: Dropout 0.1 All GNNs (Slurm 331692)
 **Hypothesis:** With 20 epochs, the model trains long enough to benefit from regularization. Previously (exp 1, 4K/10ep), dropout hurt median but improved mean — the classic underfitting pattern. With sufficient data and training, dropout should help inductive generalization by preventing the model from memorizing training graph structure.
 **Changes:** entity_gnn.dropout: 0.0→0.1, relation_gnn.dropout: 0.0→0.1, query_gnn.dropout: 0.0→0.1. Otherwise same as Exp 16.
+
+**Results:**
+| Metric | Exp 16 (no dropout) | Exp 18 (dropout 0.1) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.930 | +6.7% worse |
+| dbpedia100k/median_q_error | 4.794 | **3.985** | **-16.9% better** |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.267 | +21.9% worse |
+| overall/mean_q_error | 1679.889 | **1302.546** | **-22.5% better** |
+| wn18rr_v4_ind/mean_q_error | 27.149 | 25.154 | -7% better |
+
+**Conclusion:** Same pattern as exp 17: helps dbpedia100k significantly (best dbpedia median yet) but hurts wn18rr_v4_ind. Regularization helps the truly unseen graph (dbpedia) but hurts transfer from related training graph (wn18rr_v4→wn18rr_v4_ind). Reverted.
+
+---
+
+## Experiment 19: Query GNN Skip Connections (Slurm pending)
+**Hypothesis:** Skip connections in the query GNN preserve raw embedding info alongside GNN-learned interactions. Previously (exp 2, 4K/10ep), skip helped overall median (-5%) and mean (-26%) but hurt individual datasets slightly. With 8K/20ep, the model should converge properly. Unlike dropout/capacity changes that show a dbpedia-vs-wn18rr tradeoff, skip connections add information without removing capacity.
+**Changes:** query_gnn.skip_connection: False→True. All dropout reverted to 0.0. Otherwise same as Exp 16.
