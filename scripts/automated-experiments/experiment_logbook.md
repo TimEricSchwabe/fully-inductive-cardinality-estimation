@@ -424,3 +424,19 @@
 ## Experiment 26: lr=1e-4 + Weight Decay 0.0 (Slurm TBD)
 **Hypothesis:** lr=1e-4 is confirmed as the best lr. Weight decay=0.01 with low lr may over-regularize — the model is already learning more conservatively with low lr, so the wd penalty may be shrinking weights too aggressively. Removing wd (0.0) lets the model retain learned representations better, potentially improving both overall and reducing the wn18rr degradation.
 **Changes:** learning_rate: 5e-4→1e-4, weight_decay: 0.01→0.0. n_embedding_layers stays at 4 (isolate wd effect).
+
+**Results:**
+| Metric | Exp 23 (lr=1e-4, wd=0.01) | Exp 26 (lr=1e-4, wd=0.0) | Change vs Exp 16 |
+|---|---|---|---|
+| overall/median_q_error | 2.455 | 2.439 | -11.2% better |
+| dbpedia100k/median_q_error | 3.967 | 3.527 | -26.4% better |
+| wn18rr_v4_ind/median_q_error | 2.355 | 2.502 | +34.5% worse |
+| overall/mean_q_error | 488.6 | 378.2 | -77.5% better |
+
+**Conclusion:** NEW BEST dbpedia median (3.527)! Removing weight decay at low lr lets the model retain more learned features, especially benefiting the unseen dbpedia graph. Mean q-error drops another 22.6% from Exp 23 (overall 77.5% reduction from baseline). The wn18rr tradeoff is slightly worse than Exp 23 (2.50 vs 2.36). The pattern is clear: every change that helps generalization to truly unseen graphs (dbpedia) hurts transfer from related training graphs (wn18rr).
+
+---
+
+## Experiment 27: lr=1e-4 + wd=0.0 + 6 Encoder Layers (Slurm TBD)
+**Hypothesis:** Combine the three best individual improvements: lr=1e-4 (Exp 23, massive overall improvement), wd=0.0 (Exp 26, best dbpedia), and 6 layers (Exp 25, compounded with lr). Each targets a different axis: optimization landscape, regularization strength, and encoder capacity. Together they should push overall and dbpedia even further.
+**Changes:** learning_rate: 5e-4→1e-4, weight_decay: 0.01→0.0, n_embedding_layers: 4→6.
