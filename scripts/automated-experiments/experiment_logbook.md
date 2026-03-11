@@ -323,6 +323,22 @@
 
 ---
 
-## Experiment 20: Larger Embedding Dimension 192 (Slurm pending)
+## Experiment 20: Larger Embedding Dimension 192 (Slurm 331702)
 **Hypothesis:** 128-dim may bottleneck representation quality. Increasing to 192 gives 50% more capacity to encode structural information. Unlike regularization/architecture changes (exps 17-19) that show a dbpedia-vs-wn18rr tradeoff, wider embeddings improve expressiveness for ALL graphs without changing the learning dynamics.
 **Changes:** embedding_dim: 128→192. Otherwise same as Exp 16.
+
+**Results:**
+| Metric | Exp 16 (128-dim) | Exp 20 (192-dim) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.696 | -1.8% better |
+| dbpedia100k/median_q_error | 4.794 | 5.036 | +5% worse |
+| wn18rr_v4_ind/median_q_error | 1.860 | 1.954 | +5% worse |
+| overall/mean_q_error | 1679.9 | 2806.4 | +67% worse |
+
+**Conclusion:** Wider embeddings marginally help overall but hurt both inductive test sets and increase outliers. 192-dim adds ~350K extra params that don't converge in 20 epochs. Reverted to 128.
+
+---
+
+## Experiment 21: 3-Layer Query GNN + Dropout 0.1 Combined (Slurm pending)
+**Hypothesis:** Exp 17 (3 layers) and Exp 18 (dropout) both significantly improved dbpedia median (-13.5% and -16.9%) while targeting different aspects: receptive field vs regularization. Combining them may compound the dbpedia gains. Both hurt wn18rr individually, but wn18rr at 1.86 is already very good — even at 2.0-2.3 it's still excellent for a fully inductive model.
+**Changes:** query_gnn.num_layers: 2→3, all dropout: 0.0→0.1. Otherwise same as Exp 16.
