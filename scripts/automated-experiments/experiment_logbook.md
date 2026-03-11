@@ -487,7 +487,24 @@
 
 ---
 
-## Summary of Best Configurations (as of Exp 29)
+## Experiment 30: Relation Attention + 6 Encoder Layers (Slurm 331808)
+**Hypothesis:** Combine Exp 29's relation attention (best overall) with 6 encoder layers. Deeper encoder + attention should compound — attention captures global relation interactions while deeper layers capture higher-order structural motifs.
+**Changes:** n_embedding_layers: 4→6. Otherwise identical to Exp 29 (lr=1e-4, wd=0.01, relAttn=True).
+
+**Results:**
+| Metric | Exp 29 (4L+relAttn) | Exp 30 (6L+relAttn) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.388 | 2.441 | +2.2% worse |
+| dbpedia100k/median_q_error | 3.928 | 4.077 | +3.8% worse |
+| wn18rr_v4_ind/median_q_error | 2.334 | 2.412 | +3.3% worse |
+| overall/mean_q_error | 775.1 | 488.0 | -37.1% better |
+| overall/loss | 0.984 | 0.979 | -0.5% better |
+
+**Conclusion:** 6 layers + relAttn doesn't compound. All three medians regress while mean improves (fewer outliers). Same pattern as Exp 25 vs 23: adding layers reduces extreme predictions but hurts typical-case accuracy. The relation attention already provides global relation interaction — deeper encoder adds redundant capacity. Exp 29 (4L+relAttn) remains the best balanced configuration.
+
+---
+
+## Summary of Best Configurations (as of Exp 30)
 
 | Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med |
 |---|---|---|---|---|
@@ -495,3 +512,5 @@
 | DBpedia | Exp 26 (lr=1e-4, wd=0.0, 4L) | 2.439 | **3.527** | 2.502 |
 | WN18RR | Exp 16 (lr=5e-4, wd=0.01, 4L) | 2.746 | 4.794 | **1.860** |
 | Balanced | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 |
+
+**Key insight:** Adding depth (6L) consistently reduces mean q-error but hurts medians. The attention in Exp 29 already captures global interactions — deeper layers add redundant capacity that slightly overfits.

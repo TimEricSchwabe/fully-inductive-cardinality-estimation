@@ -57,6 +57,57 @@ class DeepSetConv(MessagePassing):
         return self.phi_with_edge(torch.cat([x_j, edge_attr], dim=-1))
 
 
+class RelationalGINELayer(nn.Module):
+    """Per-edge-type GINE: separate message MLPs for subject, predicate, object roles."""
+
+    def __init__(self, in_dim, out_dim, edge_dim, num_roles=3, dropout=0.0):
+        super().__init__()
+        self.num_roles = num_roles
+
+        # Per-role message transforms: (source_feat || edge_feat) → in_dim
+        self.msg_mlps = nn.ModuleList([
+            nn.Sequential(
+                nn.Linear(in_dim + edge_dim, in_dim),
+                nn.SiLU(),
+            )
+            for _ in range(num_roles)
+        ])
+
+        # Shared update MLP (GINE-style)
+        self.update_mlp = nn.Sequential(
+            nn.Linear(in_dim, out_dim),
+            nn.SiLU(),
+            nn.Dropout(p=dropout),
+            nn.Linear(out_dim, out_dim),
+            nn.Dropout(p=dropout),
+        )
+        self.eps = nn.Parameter(torch.zeros(1))
+
+    def forward(self, x, edge_index, edge_attr, edge_roles):
+        """
+        x: (N, in_dim), edge_index: (2, E), edge_attr: (E, edge_dim),
+        edge_roles: (E,) absolute role values (1, 2, 3).
+        """
+        num_nodes = x.size(0)
+        agg = torch.zeros(num_nodes, x.size(1), device=x.device)
+
+        for role_idx in range(self.num_roles):
+            role = role_idx + 1
+            mask = (edge_roles == role)
+            if not mask.any():
+                continue
+            src_idx = edge_index[0, mask]
+            dst_idx = edge_index[1, mask]
+            src_feats = x[src_idx]
+            e_feats = edge_attr[mask]
+
+            msg = self.msg_mlps[role_idx](torch.cat([src_feats, e_feats], dim=-1))
+            agg.scatter_add_(0, dst_idx.unsqueeze(-1).expand_as(msg), msg)
+
+        out = self.update_mlp((1 + self.eps) * x + agg)
+        return out
+
+
 class EntityGNN(nn.Module):
     def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, pe_dim=0, dropout=0.0, **kwargs):
         super(EntityGNN, self).__init__()
@@ -430,6 +481,7 @@ class BipartiteGraphGNN(nn.Module):
         pe_dim: int = 0,
         dropout: float = 0.0,
         relation_attention: bool = False,
+        relational: bool = False,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -449,9 +501,14 @@ class BipartiteGraphGNN(nn.Module):
         self.skip_connection = skip_connection
         self.enable_layer_norm = layer_norm
         self.dropout = dropout
+        self.relational = relational
 
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
+
+        # Node type embeddings for factor graph (entity=0, relation=1, triple=2)
+        if relational:
+            self.node_type_emb = nn.Embedding(3, input_dim)
 
         # Feature encoder to project structural features to hidden dimension
         # Input features: [Base + LogDegree(1) + PE(k) + SeedFlag(1)]
@@ -468,7 +525,11 @@ class BipartiteGraphGNN(nn.Module):
         self.use_gps = (message_func == 'gps')
         dims = (input_dim, *hidden_dims)
         for i in range(len(dims) - 1):
-            if self.message_func == 'gps':
+            if relational:
+                self.layers.append(
+                    RelationalGINELayer(dims[i], dims[i + 1], edge_dim=input_dim, dropout=dropout)
+                )
+            elif self.message_func == 'gps':
                 # GPS: local GINEConv + global self-attention in each layer
                 local_conv = GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 self.layers.append(
@@ -571,6 +632,15 @@ class BipartiteGraphGNN(nn.Module):
         h = F.silu(h)
         h = F.dropout(h, p=self.dropout, training=self.training)
 
+        # Add node type embeddings for relational mode (entity=0, relation=1, triple=2)
+        if self.relational and hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
+            node_types = torch.zeros(num_nodes, dtype=torch.long, device=device)
+            n_ent = data.original_num_nodes
+            n_rel = data.original_num_relations
+            node_types[n_ent:n_ent + n_rel] = 1
+            node_types[n_ent + n_rel:] = 2
+            h = h + self.node_type_emb(node_types).unsqueeze(0)
+
         rel_edges  = data.edge_index        # (2, E)
 
         # Batch edge indices
@@ -582,6 +652,10 @@ class BipartiteGraphGNN(nn.Module):
         edge_attr_stacked = data.edge_attr.to(torch.float32).repeat(bs, 1) # Shape [bs*E, 2]
         edge_attr = self.edge_encoder(edge_attr_stacked) # Shape [bs*E, input_dim]
 
+        # Compute absolute edge roles for relational layers (1=subject, 2=predicate, 3=object)
+        if self.relational:
+            edge_roles = data.edge_attr[:, 1].abs().long().repeat(bs)  # (bs*E,)
+
         x = h.view(bs * num_nodes, -1)
 
         # Batch vector for GPS (maps each node to its graph in the batch)
@@ -591,7 +665,9 @@ class BipartiteGraphGNN(nn.Module):
         # Message passing
         for i, layer in enumerate(self.layers):
             x_in = x # Save input for residual
-            if self.use_gps:
+            if self.relational:
+                x = layer(x, edge_index, edge_attr=edge_attr, edge_roles=edge_roles)
+            elif self.use_gps:
                 x = layer(x, edge_index, batch_vec, edge_attr=edge_attr)
             else:
                 x = layer(x, edge_index, edge_attr=edge_attr)
@@ -650,6 +726,7 @@ class FICE(nn.Module):
                  relation_layer_norm=False,
                  relation_skip_connection=True,
                  relation_attention=False,
+                 relational=False,
                  # Query GNN params
                  query_gnn_type='TripleModel',
                  query_message_func='gine',
@@ -690,6 +767,7 @@ class FICE(nn.Module):
                 pe_dim=pe_dim,
                 dropout=relation_dropout, # Using relation_dropout as default for unified
                 relation_attention=relation_attention,
+                relational=relational,
             )
 
         else:
@@ -703,6 +781,7 @@ class FICE(nn.Module):
                 pe_dim=pe_dim,
                 dropout=relation_dropout,
                 relation_attention=relation_attention,
+                relational=relational,
             )
 
             self.entity_model = EntityGNN(

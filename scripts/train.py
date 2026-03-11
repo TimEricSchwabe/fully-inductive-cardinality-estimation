@@ -133,6 +133,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     relation_skip_connection = config.relation_gnn.skip_connection
     relation_dropout = config.relation_gnn.dropout
     relation_attention = config.relation_gnn.relation_attention
+    relational = config.relation_gnn.relational
     relation_graph_mode = "bipartite"
 
     # Query GNN params
@@ -168,6 +169,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             relation_skip_connection=relation_skip_connection,
             relation_dropout=relation_dropout,
             relation_attention=relation_attention,
+            relational=relational,
 
             # Query Params
             query_gnn_type=query_gnn_model,

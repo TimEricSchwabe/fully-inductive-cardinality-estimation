@@ -27,6 +27,7 @@ class RelationGNNConfig(BaseSettings):
     layer_norm: bool = True
     dropout: float = 0.0
     relation_attention: bool = False
+    relational: bool = False
 
 class QueryGNNConfig(BaseSettings):
     message_func: Literal['gine', 'deepset'] = "gine"

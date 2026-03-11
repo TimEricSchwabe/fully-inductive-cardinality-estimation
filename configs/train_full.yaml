@@ -95,7 +95,7 @@ eval_every: 1
 seed: 42
 device: "auto"
 weight_decay: 0.01
-n_embedding_layers: 6
+n_embedding_layers: 4
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
@@ -119,6 +119,7 @@ relation_gnn:
   layer_norm: True
   dropout: 0.0
   relation_attention: True
+  relational: True
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "deepset"
