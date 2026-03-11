@@ -339,6 +339,22 @@
 
 ---
 
-## Experiment 21: 3-Layer Query GNN + Dropout 0.1 Combined (Slurm pending)
+## Experiment 21: 3-Layer Query GNN + Dropout 0.1 Combined (Slurm 331711)
 **Hypothesis:** Exp 17 (3 layers) and Exp 18 (dropout) both significantly improved dbpedia median (-13.5% and -16.9%) while targeting different aspects: receptive field vs regularization. Combining them may compound the dbpedia gains. Both hurt wn18rr individually, but wn18rr at 1.86 is already very good — even at 2.0-2.3 it's still excellent for a fully inductive model.
 **Changes:** query_gnn.num_layers: 2→3, all dropout: 0.0→0.1. Otherwise same as Exp 16.
+
+**Results:**
+| Metric | Exp 16 (baseline) | Exp 21 (combined) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.940 | +7.1% worse |
+| dbpedia100k/median_q_error | 4.794 | 4.071 | -15.1% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.235 | +20.2% worse |
+| overall/mean_q_error | 1679.9 | 1741.6 | +3.7% worse |
+
+**Conclusion:** Effects don't compound — results fall between individual experiments. The dbpedia-vs-wn18rr tradeoff is fundamental: changes that improve generalization to truly unseen graphs hurt transfer from related training graphs. Need a different approach that improves the encoder's learned representations rather than the query GNN or regularization.
+
+---
+
+## Experiment 22: Deeper Encoder — 6 Layers (Slurm TBD)
+**Hypothesis:** Experiments 17-21 all modified the query side or regularization, revealing a fundamental dbpedia-vs-wn18rr tradeoff. A different approach: deepen the encoder (BipartiteGraphGNN) from 4→6 layers. More encoder layers capture higher-order structural motifs in the factor graph (3-hop+ neighborhoods), producing richer embeddings that should benefit ALL downstream graphs. Unlike query-side changes, this improves the quality of the learned representations themselves. With skip connections and layer norm already enabled, deeper encoders should train stably.
+**Changes:** n_embedding_layers: 4→6. Otherwise identical to Exp 16 baseline.

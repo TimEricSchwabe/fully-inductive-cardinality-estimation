@@ -95,7 +95,7 @@ eval_every: 1
 seed: 42
 device: "auto"
 weight_decay: 0.01
-n_embedding_layers: 4
+n_embedding_layers: 6
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
@@ -110,22 +110,22 @@ entity_gnn:
   source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.1
+  dropout: 0.0
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.1
+  dropout: 0.0
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "deepset"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
   skip_connection: False
   layer_norm: True
-  dropout: 0.1
-  num_layers: 3
+  dropout: 0.0
+  num_layers: 2
 
 scheduler:
   enabled: True
