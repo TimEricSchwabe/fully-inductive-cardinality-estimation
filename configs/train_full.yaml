@@ -101,19 +101,19 @@ Conditioning: "false" # choices are "seed only", "all", "false". False sets all 
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-random_walk_pe: 8
+random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
+  message_func: "GAT" # choices are "gine" or "GAT" or "deepset" or "gps"
   source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
   dropout: 0.0
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
+  message_func: "GAT" # choices are "GAT" or "gine" or "deepset" or "gps"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
