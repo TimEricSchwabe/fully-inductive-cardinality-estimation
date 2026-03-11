@@ -452,7 +452,25 @@
 
 **Conclusion:** Adding 6 layers to wd=0 hurts dbpedia significantly compared to 4 layers with wd=0 (4.13 vs 3.53). Without weight decay, the deeper encoder overfits to training graphs rather than learning generalizable features. Best loss yet (0.953) suggests better training fit but worse generalization. The wd=0 + deeper encoder combination cancels out — wd acts as implicit regularization that deeper encoders need. Best configuration for dbpedia remains Exp 26 (lr=1e-4, wd=0.0, 4 layers).
 
-## Summary of Best Configurations (as of Exp 27)
+## Experiment 28: GAT Encoder Message Function (Slurm 331733)
+**Hypothesis:** GAT (Graph Attention Network) learns attention weights over neighbors, potentially producing more discriminative embeddings than GINE which treats all neighbors equally. For cardinality estimation, some neighbors are more informative about local structure.
+**Changes:** entity_gnn.message_func: gine→GAT, relation_gnn.message_func: gine→GAT. Otherwise identical to Exp 23 baseline (lr=1e-4, wd=0.01, 4L).
+**Note:** GAT took ~50 minutes total (vs ~10 min for GINE) — 5x slower due to attention computation on large factor graphs.
+
+**Results:**
+| Metric | Exp 23 (GINE, lr=1e-4) | Exp 28 (GAT, lr=1e-4) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.455 | 2.462 | flat |
+| dbpedia100k/median_q_error | 3.967 | 3.613 | -8.9% better |
+| wn18rr_v4_ind/median_q_error | 2.355 | 2.438 | +3.5% worse |
+| overall/mean_q_error | 488.6 | 1598.8 | +227% worse |
+| overall/loss | 1.010 | 0.984 | -2.6% better |
+
+**Conclusion:** GAT gives a meaningful dbpedia improvement (-8.9%) at the cost of slightly worse wn18rr (+3.5%) and much worse outliers. The attention mechanism helps for unseen graphs but creates extreme predictions on some queries. Also impractical for fast iteration (5x slower). The same dbpedia-vs-wn18rr tradeoff holds. Reverted to GINE.
+
+---
+
+## Summary of Best Configurations (as of Exp 28)
 
 | Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med |
 |---|---|---|---|---|

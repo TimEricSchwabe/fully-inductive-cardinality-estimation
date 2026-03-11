@@ -429,6 +429,7 @@ class BipartiteGraphGNN(nn.Module):
         skip_connection: bool = True,
         pe_dim: int = 0,
         dropout: float = 0.0,
+        relation_attention: bool = False,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -490,7 +491,18 @@ class BipartiteGraphGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
-
+        # Post-GNN relation self-attention
+        self.relation_attention = relation_attention
+        if relation_attention:
+            out_dim = hidden_dims[-1]
+            self.rel_attn_norm = nn.LayerNorm(out_dim)
+            self.rel_attn = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
+            self.rel_ffn_norm = nn.LayerNorm(out_dim)
+            self.rel_ffn = nn.Sequential(
+                nn.Linear(out_dim, out_dim * 2),
+                nn.SiLU(),
+                nn.Linear(out_dim * 2, out_dim),
+            )
 
     def forward(self, data, batch=None):
         """
@@ -596,6 +608,23 @@ class BipartiteGraphGNN(nn.Module):
         # and numnodes is total number of nodes (entities + relations)
         out = x.view(bs, num_nodes, -1)
 
+        # Post-GNN relation self-attention
+        if self.relation_attention and hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
+            rel_start = data.original_num_nodes
+            rel_end = rel_start + data.original_num_relations
+            rel_emb = out[:, rel_start:rel_end, :]  # (bs, num_rels, dim)
+
+            # Pre-norm self-attention + residual
+            rel_normed = self.rel_attn_norm(rel_emb)
+            rel_attn_out, _ = self.rel_attn(rel_normed, rel_normed, rel_normed)
+            rel_emb = rel_emb + rel_attn_out
+
+            # Pre-norm FFN + residual
+            rel_normed2 = self.rel_ffn_norm(rel_emb)
+            rel_emb = rel_emb + self.rel_ffn(rel_normed2)
+
+            out[:, rel_start:rel_end, :] = rel_emb
+
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
 
@@ -618,6 +647,7 @@ class FICE(nn.Module):
                  relation_message_func='gine',
                  relation_layer_norm=False,
                  relation_skip_connection=True,
+                 relation_attention=False,
                  # Query GNN params
                  query_gnn_type='TripleModel',
                  query_message_func='gine',
@@ -656,7 +686,8 @@ class FICE(nn.Module):
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
                 pe_dim=pe_dim,
-                dropout=relation_dropout # Using relation_dropout as default for unified
+                dropout=relation_dropout, # Using relation_dropout as default for unified
+                relation_attention=relation_attention,
             )
 
         else:
@@ -668,7 +699,8 @@ class FICE(nn.Module):
                 skip_connection=relation_skip_connection,
                 conditioning=conditioning,
                 pe_dim=pe_dim,
-                dropout=relation_dropout
+                dropout=relation_dropout,
+                relation_attention=relation_attention,
             )
 
             self.entity_model = EntityGNN(
