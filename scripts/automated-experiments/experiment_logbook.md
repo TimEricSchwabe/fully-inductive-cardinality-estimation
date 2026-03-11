@@ -470,11 +470,28 @@
 
 ---
 
-## Summary of Best Configurations (as of Exp 28)
+## Experiment 29: GINE + Relation-node Self-Attention, lr=1e-4 (Slurm 331756)
+**Hypothesis:** Re-test relation attention (Exp 11) with lr=1e-4. Exp 11 at lr=5e-4 hurt median (+15% overall) but reduced wn18rr mean outliers by 44%. With proper low lr, the attention parameters should converge better, learning useful global relation interactions.
+**Changes:** Added post-GNN self-attention (4 heads, pre-norm) + FFN over relation nodes in BipartiteGraphGNN. relation_attention: True. GINE 4 layers, lr=1e-4, wd=0.01.
+
+**Results:**
+| Metric | Exp 23 (GINE, lr=1e-4) | Exp 29 (GINE+RelAttn) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.455 | **2.388** | **-2.7% better** |
+| dbpedia100k/median_q_error | 3.967 | 3.928 | -1.0% better |
+| wn18rr_v4_ind/median_q_error | 2.355 | 2.334 | -0.9% better |
+| overall/mean_q_error | 488.6 | 775.1 | +58.6% worse |
+| overall/loss | 1.010 | 0.984 | -2.6% better |
+
+**Conclusion:** NEW BEST overall median (2.388)! Relation attention with lr=1e-4 improves ALL THREE median q-errors simultaneously — the first change that doesn't show the dbpedia-vs-wn18rr tradeoff. The attention lets relations share global information, producing more consistent embeddings across graphs. Mean q-error is worse (more outliers), suggesting some queries get extreme predictions from the attention mechanism. The improvement is modest but consistent.
+
+---
+
+## Summary of Best Configurations (as of Exp 29)
 
 | Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med |
 |---|---|---|---|---|
-| Overall | Exp 25 (lr=1e-4, wd=0.01, 6L) | **2.421** | 3.942 | 2.367 |
+| Overall | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 |
 | DBpedia | Exp 26 (lr=1e-4, wd=0.0, 4L) | 2.439 | **3.527** | 2.502 |
 | WN18RR | Exp 16 (lr=5e-4, wd=0.01, 4L) | 2.746 | 4.794 | **1.860** |
-| Balanced | Exp 23 (lr=1e-4, wd=0.01, 4L) | 2.455 | 3.967 | 2.355 |
+| Balanced | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 |
