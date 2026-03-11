@@ -358,3 +358,19 @@
 ## Experiment 22: Deeper Encoder — 6 Layers (Slurm TBD)
 **Hypothesis:** Experiments 17-21 all modified the query side or regularization, revealing a fundamental dbpedia-vs-wn18rr tradeoff. A different approach: deepen the encoder (BipartiteGraphGNN) from 4→6 layers. More encoder layers capture higher-order structural motifs in the factor graph (3-hop+ neighborhoods), producing richer embeddings that should benefit ALL downstream graphs. Unlike query-side changes, this improves the quality of the learned representations themselves. With skip connections and layer norm already enabled, deeper encoders should train stably.
 **Changes:** n_embedding_layers: 4→6. Otherwise identical to Exp 16 baseline.
+
+**Results:**
+| Metric | Exp 16 (4 layers) | Exp 22 (6 layers) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.924 | +6.5% worse |
+| dbpedia100k/median_q_error | 4.794 | 4.097 | -14.5% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.274 | +22.3% worse |
+| overall/mean_q_error | 1679.9 | 1051.6 | -37.4% better |
+
+**Conclusion:** Same dbpedia-vs-wn18rr tradeoff but from the encoder side. Deeper encoder captures more structural motifs, helping unseen graphs (dbpedia) but hurting transfer from related training graphs (wn18rr). Notable: mean q-error dropped 37% — far fewer outlier predictions. This suggests the deeper encoder learns more robust representations even if median is mixed. The tradeoff is fundamental and present across ALL axes (query depth, regularization, encoder depth).
+
+---
+
+## Experiment 23: Lower Learning Rate 1e-4 (Slurm TBD)
+**Hypothesis:** All experiments so far use lr=5e-4. At this rate the model may be learning noisy features that overfit to training graph patterns (helping wn18rr_ind which shares structure with wn18rr_v4 training graph) rather than generalizable structural features. A lower lr=1e-4 should learn smoother, more generalizable representations. This is a fundamentally different axis — changing the optimization landscape rather than architecture. Lower lr with cosine scheduler should converge to a flatter minimum with better generalization.
+**Changes:** learning_rate: 5e-4→1e-4. Otherwise identical to Exp 16 baseline (4 layers, 128-dim).
