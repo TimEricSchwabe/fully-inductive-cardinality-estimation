@@ -612,18 +612,20 @@ class BipartiteGraphGNN(nn.Module):
         if self.relation_attention and hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
             rel_start = data.original_num_nodes
             rel_end = rel_start + data.original_num_relations
-            rel_emb = out[:, rel_start:rel_end, :]  # (bs, num_rels, dim)
+            if rel_end > rel_start:
+                rel_emb = out[:, rel_start:rel_end, :]  # (bs, num_rels, dim)
 
-            # Pre-norm self-attention + residual
-            rel_normed = self.rel_attn_norm(rel_emb)
-            rel_attn_out, _ = self.rel_attn(rel_normed, rel_normed, rel_normed)
-            rel_emb = rel_emb + rel_attn_out
+                # Pre-norm self-attention + residual
+                rel_normed = self.rel_attn_norm(rel_emb)
+                rel_attn_out, _ = self.rel_attn(rel_normed, rel_normed, rel_normed)
+                rel_emb = rel_emb + rel_attn_out
 
-            # Pre-norm FFN + residual
-            rel_normed2 = self.rel_ffn_norm(rel_emb)
-            rel_emb = rel_emb + self.rel_ffn(rel_normed2)
+                # Pre-norm FFN + residual
+                rel_normed2 = self.rel_ffn_norm(rel_emb)
+                rel_emb = rel_emb + self.rel_ffn(rel_normed2)
 
-            out[:, rel_start:rel_end, :] = rel_emb
+                # Avoid in-place modification for autograd
+                out = torch.cat([out[:, :rel_start, :], rel_emb, out[:, rel_end:, :]], dim=1)
 
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
