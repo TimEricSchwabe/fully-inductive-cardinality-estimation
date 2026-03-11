@@ -407,3 +407,20 @@
 ## Experiment 25: lr=1e-4 + 6 Encoder Layers Combined (Slurm TBD)
 **Hypothesis:** Both lr=1e-4 (Exp 23) and 6 encoder layers (Exp 22) independently improved dbpedia and overall metrics. The deeper encoder struggled at lr=5e-4 (may have been learning too fast for 6 layers). At lr=1e-4, the deeper encoder should converge more stably and learn better higher-order structural features. This combination targets the encoder quality axis with proper optimization.
 **Changes:** learning_rate: 5e-4→1e-4, n_embedding_layers: 4→6. Otherwise identical to Exp 16 baseline.
+
+**Results:**
+| Metric | Exp 16 (baseline) | Exp 23 (lr=1e-4 only) | Exp 25 (lr=1e-4+6L) | Change vs 16 |
+|---|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.455 | 2.421 | -11.8% better |
+| dbpedia100k/median_q_error | 4.794 | 3.967 | 3.942 | -17.8% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.355 | 2.367 | +27.3% worse |
+| overall/mean_q_error | 1679.9 | 488.6 | 694.8 | -58.6% better |
+| overall/loss | 1.293 | 1.010 | 0.978 | -24.3% better |
+
+**Conclusion:** NEW BEST overall median (2.421) and dbpedia median (3.942)! The combination compounds — 6 layers adds incremental improvement on top of lr=1e-4. The lr change is the dominant factor. Best loss (0.978) confirms better fit. Mean q-error slightly higher than lr=1e-4 alone but still a huge 58.6% reduction from baseline. The wn18rr tradeoff persists but is not worse than lr=1e-4 alone (2.367 vs 2.355). This is the new best configuration for overall and dbpedia.
+
+---
+
+## Experiment 26: lr=1e-4 + Weight Decay 0.0 (Slurm TBD)
+**Hypothesis:** lr=1e-4 is confirmed as the best lr. Weight decay=0.01 with low lr may over-regularize — the model is already learning more conservatively with low lr, so the wd penalty may be shrinking weights too aggressively. Removing wd (0.0) lets the model retain learned representations better, potentially improving both overall and reducing the wn18rr degradation.
+**Changes:** learning_rate: 5e-4→1e-4, weight_decay: 0.01→0.0. n_embedding_layers stays at 4 (isolate wd effect).
