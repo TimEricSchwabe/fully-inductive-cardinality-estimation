@@ -3,7 +3,7 @@ data:
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: &bs 32
-    num_queries: &nq 8000
+    num_queries: &nq 20000
     type: "train-val" # current unseen validation data
   - dataset: "LUBM"
     queries: "lubm_path_queries"
@@ -82,9 +82,9 @@ data:
     type: "validation"
 
 
-epochs: 20
-wandb: False
-wandb_run_name: "AutoResearch"
+epochs: 100
+wandb: True
+wandb_run_name: "RelationalGNN"
 wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -94,7 +94,7 @@ save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
 device: "auto"
-weight_decay: 0.01
+weight_decay: 0.00
 n_embedding_layers: 4
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
@@ -110,15 +110,15 @@ entity_gnn:
   source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.0
+  dropout: 0.1
 
 relation_gnn:
   message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.0
-  relation_attention: False
+  dropout: 0.1
+  relation_attention: True
   relational: True
 
 query_gnn:
@@ -130,5 +130,5 @@ query_gnn:
   num_layers: 2
 
 scheduler:
-  enabled: True
+  enabled: False
   min_lr: 1.0e-6

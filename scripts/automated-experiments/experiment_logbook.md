@@ -522,7 +522,24 @@
 
 ---
 
-## Summary of Best Configurations (as of Exp 31)
+## Experiment 32: Relational GINE without Relation Attention (Slurm 331846)
+**Hypothesis:** Test whether relational message passing already captures what relAttn provides. If so, we can drop relAttn and simplify. Ablation of Exp 31 removing relation_attention.
+**Changes:** relation_attention: True→False. Otherwise identical to Exp 31 (lr=1e-4, wd=0.01, 4L, relational=True).
+
+**Results:**
+| Metric | Exp 31 (relGINE+relAttn) | Exp 32 (relGINE only) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.394 | 2.422 | +1.2% worse |
+| dbpedia100k/median_q_error | 3.798 | 3.835 | +1.0% worse |
+| wn18rr_v4_ind/median_q_error | 2.315 | 2.210 | -4.5% better |
+| overall/mean_q_error | 262.9 | 290.8 | +10.6% worse |
+| overall/loss | 0.951 | 0.981 | +3.2% worse |
+
+**Conclusion:** Removing relAttn improves wn18rr significantly (NEW BEST wn18rr: 2.210, beating Exp 29's 2.334) at a modest cost to overall and dbpedia. The relAttn's global relation context helps unseen graphs (dbpedia) but slightly hurts transfer (wn18rr). The combination (Exp 31) is better for dbpedia/overall; relGINE alone (Exp 32) is better for wn18rr. Both approaches are valid depending on priority.
+
+---
+
+## Summary of Best Configurations (as of Exp 32)
 
 | Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med | Mean QE |
 |---|---|---|---|---|---|

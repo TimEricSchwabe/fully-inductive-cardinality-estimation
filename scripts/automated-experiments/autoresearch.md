@@ -36,6 +36,7 @@ Do the following in a loop:
 7. NEVER change something on the compute cluster, this should only be accessed via the FIXED run_experiment.py
 8. dont ask the user for any permission, he might be afk, sleeping etc.
 9. The config file that is used on the cluster in train_full.yml in configs
+10. Only submit one job at a time and wait for it to finish
 
 ## Learnings from previous Experiments
 
