@@ -94,14 +94,14 @@ save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
 device: "auto"
-weight_decay: 0.0
-n_embedding_layers: 6
+weight_decay: 0.01
+n_embedding_layers: 4
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-random_walk_pe: 0
+random_walk_pe: 16
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 

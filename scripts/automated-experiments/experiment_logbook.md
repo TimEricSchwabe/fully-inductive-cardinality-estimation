@@ -440,3 +440,23 @@
 ## Experiment 27: lr=1e-4 + wd=0.0 + 6 Encoder Layers (Slurm TBD)
 **Hypothesis:** Combine the three best individual improvements: lr=1e-4 (Exp 23, massive overall improvement), wd=0.0 (Exp 26, best dbpedia), and 6 layers (Exp 25, compounded with lr). Each targets a different axis: optimization landscape, regularization strength, and encoder capacity. Together they should push overall and dbpedia even further.
 **Changes:** learning_rate: 5e-4→1e-4, weight_decay: 0.01→0.0, n_embedding_layers: 4→6.
+
+**Results:**
+| Metric | Exp 26 (lr=1e-4, wd=0, 4L) | Exp 27 (lr=1e-4, wd=0, 6L) | Change vs Exp 16 |
+|---|---|---|---|
+| overall/median_q_error | 2.439 | 2.520 | -8.2% better |
+| dbpedia100k/median_q_error | 3.527 | 4.129 | -13.9% better |
+| wn18rr_v4_ind/median_q_error | 2.502 | 2.481 | +33.4% worse |
+| overall/mean_q_error | 378.2 | 425.0 | -74.7% better |
+| overall/loss | 0.998 | 0.953 | -26.3% better |
+
+**Conclusion:** Adding 6 layers to wd=0 hurts dbpedia significantly compared to 4 layers with wd=0 (4.13 vs 3.53). Without weight decay, the deeper encoder overfits to training graphs rather than learning generalizable features. Best loss yet (0.953) suggests better training fit but worse generalization. The wd=0 + deeper encoder combination cancels out — wd acts as implicit regularization that deeper encoders need. Best configuration for dbpedia remains Exp 26 (lr=1e-4, wd=0.0, 4 layers).
+
+## Summary of Best Configurations (as of Exp 27)
+
+| Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med |
+|---|---|---|---|---|
+| Overall | Exp 25 (lr=1e-4, wd=0.01, 6L) | **2.421** | 3.942 | 2.367 |
+| DBpedia | Exp 26 (lr=1e-4, wd=0.0, 4L) | 2.439 | **3.527** | 2.502 |
+| WN18RR | Exp 16 (lr=5e-4, wd=0.01, 4L) | 2.746 | 4.794 | **1.860** |
+| Balanced | Exp 23 (lr=1e-4, wd=0.01, 4L) | 2.455 | 3.967 | 2.355 |
