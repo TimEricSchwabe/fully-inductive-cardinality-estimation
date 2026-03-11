@@ -374,3 +374,20 @@
 ## Experiment 23: Lower Learning Rate 1e-4 (Slurm TBD)
 **Hypothesis:** All experiments so far use lr=5e-4. At this rate the model may be learning noisy features that overfit to training graph patterns (helping wn18rr_ind which shares structure with wn18rr_v4 training graph) rather than generalizable structural features. A lower lr=1e-4 should learn smoother, more generalizable representations. This is a fundamentally different axis — changing the optimization landscape rather than architecture. Lower lr with cosine scheduler should converge to a flatter minimum with better generalization.
 **Changes:** learning_rate: 5e-4→1e-4. Otherwise identical to Exp 16 baseline (4 layers, 128-dim).
+
+**Results:**
+| Metric | Exp 16 (lr=5e-4) | Exp 23 (lr=1e-4) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.455 | -10.6% better |
+| dbpedia100k/median_q_error | 4.794 | 3.967 | -17.3% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.355 | +26.6% worse |
+| overall/mean_q_error | 1679.9 | 488.6 | -70.9% better |
+| overall/loss | 1.293 | 1.010 | -21.9% better |
+
+**Conclusion:** BREAKTHROUGH! Lower learning rate massively improves overall metrics. Best overall median (2.455) and dbpedia median (3.967) by far. Mean q-error dropped 70.9% — dramatically fewer outliers. The lr=5e-4 baseline was learning too aggressively, fitting noisy patterns rather than generalizable structure. wn18rr still degrades (the same tradeoff), but all other metrics are substantially better. This is now the best configuration found. Try intermediate lr=3e-4 to search for optimal tradeoff.
+
+---
+
+## Experiment 24: Intermediate Learning Rate 3e-4 (Slurm TBD)
+**Hypothesis:** lr=1e-4 gave the best overall/dbpedia results but hurt wn18rr (+26.6%). lr=5e-4 baseline has best wn18rr. Try lr=3e-4 as an intermediate point — may find a sweet spot where overall and dbpedia still improve substantially while wn18rr degradation is more modest.
+**Changes:** learning_rate: 5e-4→3e-4. Otherwise identical to Exp 16 baseline.
