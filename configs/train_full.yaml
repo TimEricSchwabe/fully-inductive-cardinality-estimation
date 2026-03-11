@@ -118,7 +118,7 @@ relation_gnn:
   skip_connection: True
   layer_norm: True
   dropout: 0.1
-  relation_attention: True
+  relation_attention: False
   relational: True
 
 query_gnn:
