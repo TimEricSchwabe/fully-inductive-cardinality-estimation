@@ -86,7 +86,7 @@ epochs: 20
 wandb: False
 wandb_run_name: "AutoResearch"
 wandb_run_id: "b9588a2d"
-learning_rate: 3e-4
+learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
 save_every: 5
@@ -95,7 +95,7 @@ eval_every: 1
 seed: 42
 device: "auto"
 weight_decay: 0.01
-n_embedding_layers: 4
+n_embedding_layers: 6
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py

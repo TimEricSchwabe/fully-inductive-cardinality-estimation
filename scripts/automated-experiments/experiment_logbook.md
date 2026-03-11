@@ -391,3 +391,19 @@
 ## Experiment 24: Intermediate Learning Rate 3e-4 (Slurm TBD)
 **Hypothesis:** lr=1e-4 gave the best overall/dbpedia results but hurt wn18rr (+26.6%). lr=5e-4 baseline has best wn18rr. Try lr=3e-4 as an intermediate point — may find a sweet spot where overall and dbpedia still improve substantially while wn18rr degradation is more modest.
 **Changes:** learning_rate: 5e-4→3e-4. Otherwise identical to Exp 16 baseline.
+
+**Results:**
+| Metric | Exp 16 (lr=5e-4) | Exp 24 (lr=3e-4) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.746 | 2.842 | +3.5% worse |
+| dbpedia100k/median_q_error | 4.794 | 4.592 | -4.2% better |
+| wn18rr_v4_ind/median_q_error | 1.860 | 2.250 | +21.0% worse |
+| overall/mean_q_error | 1679.9 | 2174.2 | +29.4% worse |
+
+**Conclusion:** lr=3e-4 is worse than both lr=5e-4 and lr=1e-4 on overall metrics. The lr landscape is not smooth — there's a phase transition between "fast learning" (5e-4, good at memorizing related patterns) and "slow learning" (1e-4, good at generalizable features). The intermediate point gets the worst of both worlds. lr=1e-4 is definitively superior for overall and dbpedia.
+
+---
+
+## Experiment 25: lr=1e-4 + 6 Encoder Layers Combined (Slurm TBD)
+**Hypothesis:** Both lr=1e-4 (Exp 23) and 6 encoder layers (Exp 22) independently improved dbpedia and overall metrics. The deeper encoder struggled at lr=5e-4 (may have been learning too fast for 6 layers). At lr=1e-4, the deeper encoder should converge more stably and learn better higher-order structural features. This combination targets the encoder quality axis with proper optimization.
+**Changes:** learning_rate: 5e-4→1e-4, n_embedding_layers: 4→6. Otherwise identical to Exp 16 baseline.
