@@ -504,13 +504,34 @@
 
 ---
 
-## Summary of Best Configurations (as of Exp 30)
+## Experiment 31: Relational GINE + Relation Attention (Slurm 331821)
+**Hypothesis:** The factor graph has 3 node types (entity, relation, triple) and 3 edge types (subject, predicate, object). Current GINE treats all edges identically. A relational GNN with per-edge-type message MLPs should learn type-specific aggregation patterns — e.g., how entity→triple messages differ from relation→triple messages. Added: (1) RelationalGINELayer with 3 separate message MLPs per edge role, shared update MLP, (2) learnable node type embeddings for entity/relation/triple nodes.
+**Changes:** Added `relational: True` to relation_gnn config. RelationalGINELayer replaces GINEConv in BipartiteGraphGNN. Node type embeddings added to input. Otherwise identical to Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn=True).
+**Note:** ~5x slower than GINE (50min vs 10min) due to per-role Python loop with separate scatter ops.
 
-| Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med |
-|---|---|---|---|---|
-| Overall | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 |
-| DBpedia | Exp 26 (lr=1e-4, wd=0.0, 4L) | 2.439 | **3.527** | 2.502 |
-| WN18RR | Exp 16 (lr=5e-4, wd=0.01, 4L) | 2.746 | 4.794 | **1.860** |
-| Balanced | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 |
+**Results:**
+| Metric | Exp 29 (GINE+relAttn) | Exp 31 (Relational+relAttn) | Change |
+|---|---|---|---|
+| overall/median_q_error | 2.388 | 2.394 | +0.3% (flat) |
+| dbpedia100k/median_q_error | 3.928 | 3.798 | -3.3% better |
+| wn18rr_v4_ind/median_q_error | 2.334 | 2.315 | -0.8% better |
+| overall/mean_q_error | 775.1 | 262.9 | -66.1% better |
+| overall/loss | 0.984 | 0.951 | -3.4% better |
 
-**Key insight:** Adding depth (6L) consistently reduces mean q-error but hurts medians. The attention in Exp 29 already captures global interactions — deeper layers add redundant capacity that slightly overfits.
+**Conclusion:** Relational message passing improves both inductive datasets while keeping overall median flat. The massive mean reduction (66%) shows far fewer outlier predictions. Per-type message functions let the model learn structurally appropriate aggregation — entity nodes aggregate neighborhood info differently than relation or triple nodes. New best loss and mean q-error. Downside: 5x training time makes it impractical for fast iteration. The combination of relational + relAttn is effective.
+
+---
+
+## Summary of Best Configurations (as of Exp 31)
+
+| Prioritizing | Config | Overall Med | DBpedia Med | WN18RR Med | Mean QE |
+|---|---|---|---|---|---|
+| Overall | Exp 29 (lr=1e-4, wd=0.01, 4L, relAttn) | **2.388** | 3.928 | 2.334 | 775 |
+| DBpedia | Exp 26 (lr=1e-4, wd=0.0, 4L) | 2.439 | **3.527** | 2.502 | 378 |
+| WN18RR | Exp 16 (lr=5e-4, wd=0.01, 4L) | 2.746 | 4.794 | **1.860** | 1680 |
+| Balanced (mean+med) | Exp 31 (lr=1e-4, wd=0.01, 4L, relGINE+relAttn) | 2.394 | 3.798 | 2.315 | **263** |
+
+**Key insights:**
+- Relational message passing (Exp 31) dramatically reduces mean q-error while matching medians. Best for production use.
+- Adding depth (6L) consistently reduces mean q-error but hurts medians.
+- Relation attention (Exp 29) was the first change to improve all 3 medians simultaneously.

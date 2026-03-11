@@ -89,7 +89,7 @@ class RelationalGINELayer(nn.Module):
         edge_roles: (E,) absolute role values (1, 2, 3).
         """
         num_nodes = x.size(0)
-        agg = torch.zeros(num_nodes, x.size(1), device=x.device)
+        role_aggs = []
 
         for role_idx in range(self.num_roles):
             role = role_idx + 1
@@ -102,8 +102,11 @@ class RelationalGINELayer(nn.Module):
             e_feats = edge_attr[mask]
 
             msg = self.msg_mlps[role_idx](torch.cat([src_feats, e_feats], dim=-1))
-            agg.scatter_add_(0, dst_idx.unsqueeze(-1).expand_as(msg), msg)
+            role_agg = torch.zeros(num_nodes, x.size(1), device=x.device)
+            role_agg.scatter_add_(0, dst_idx.unsqueeze(-1).expand_as(msg), msg)
+            role_aggs.append(role_agg)
 
+        agg = sum(role_aggs) if role_aggs else torch.zeros(num_nodes, x.size(1), device=x.device)
         out = self.update_mlp((1 + self.eps) * x + agg)
         return out
 
