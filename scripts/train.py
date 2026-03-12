@@ -307,8 +307,8 @@ def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_s
 
         bipartite_graph.mapped_relation_indices = mapped_relation_indices
         bipartite_graph.mapped_entity_indices = mapped_entity_indices
-        bipartite_graph = compute_rwpe(bipartite_graph, walk_length, role_aware=role_aware)
         bipartite_graph = bipartite_graph.to(device)
+        bipartite_graph = compute_rwpe(bipartite_graph, walk_length, role_aware=role_aware)
 
     return bipartite_graph, bipartite_graph_gloal_to_local
 
@@ -451,7 +451,7 @@ def train_epoch(state: TrainingState):
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
                         # Update the graph to the sampled subgraph
-                        graph = compute_rwpe(graph_sub, state.training_context.config.random_walk_pe, role_aware=False).to(device)
+                        graph = compute_rwpe(graph_sub.to(device), state.training_context.config.random_walk_pe, role_aware=False)
                         # Update the node indices to the mapped indices
                         query_batch.node_embedding_indices = mapped
                     else:
@@ -611,7 +611,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                                 torch.full_like(query_nodes, -1),
                             ).to(torch.long)
                             # Update the graph to the sampled subgraph
-                            graph = compute_rwpe(graph_sub, state.training_context.config.random_walk_pe, role_aware=False).to(device)
+                            graph = compute_rwpe(graph_sub.to(device), state.training_context.config.random_walk_pe, role_aware=False)
                             # Update the node indices to the mapped indices
                             query_batch.node_embedding_indices = mapped
                         else:
