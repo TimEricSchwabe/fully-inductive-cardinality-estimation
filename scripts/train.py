@@ -15,6 +15,7 @@ import torch
 import torch.nn.functional as F
 import wandb
 from torch_geometric.data import Data
+from torch_geometric.transforms import AddRandomWalkPE
 from torch_geometric.utils import subgraph
 from tqdm import tqdm
 
@@ -145,6 +146,11 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     query_gnn_num_layers = config.query_gnn.num_layers
     
     
+    # Compute effective pe_dim: role-aware RWPE on factor graphs produces 3x dims
+    pe_dim = config.random_walk_pe
+    if pe_dim > 0 and config.relation_gnn.source == 'factor':
+        pe_dim = pe_dim * 3
+
     if model_type == 'FiceBinary':
         logger.info(f"Initializing FiceBinary model (dim={vector_dim})")
         model = FiceBinary(vector_dim=vector_dim, skip_connection=query_gnn_skip_connection)
@@ -152,17 +158,17 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
         logger.info(f"Initializing FICE model (dim={vector_dim}, layers={n_embedding_layers})")
         model = FICE(
             vector_dim=vector_dim,
-            n_embedding_layers=n_embedding_layers, 
+            n_embedding_layers=n_embedding_layers,
             conditioning=conditioning,
             entity_graph_mode=entity_graph_mode,
             relation_graph_mode=relation_graph_mode,
-            
+
             # Entity Params
             entity_message_func=entity_message_func,
             entity_layer_norm=entity_layer_norm,
             entity_skip_connection=entity_skip_connection,
             entity_dropout=entity_dropout,
-            
+
             # Relation Params
             relation_message_func=relation_message_func,
             relation_layer_norm=relation_layer_norm,
@@ -178,7 +184,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
             query_gnn_num_layers=query_gnn_num_layers,
-            pe_dim=config.random_walk_pe,
+            pe_dim=pe_dim,
             prediction_mode=config.prediction_mode,
         )
     elif model_type == 'FiceIndependent':
@@ -240,7 +246,26 @@ def log_gpu_memory_usage(step_name: str):
 
 
 
-def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_sampler, device):
+def compute_rwpe(data, walk_length, role_aware=False):
+    """Compute RWPE on a (sampled) subgraph. If role_aware, compute
+    separate RWPEs for subject/predicate/object edges and concatenate."""
+    if walk_length <= 0:
+        return data
+    if role_aware and hasattr(data, 'edge_attr') and data.edge_attr is not None:
+        roles = data.edge_attr[:, 1]
+        pe_parts = []
+        for role in [1, 2, 3]:  # subject, predicate, object
+            mask = (roles.abs() == role)
+            sub = Data(edge_index=data.edge_index[:, mask], num_nodes=data.num_nodes)
+            sub = AddRandomWalkPE(walk_length=walk_length)(sub)
+            pe_parts.append(sub.random_walk_pe)
+        data.random_walk_pe = torch.cat(pe_parts, dim=-1)  # (N, 3*walk_length)
+    else:
+        data = AddRandomWalkPE(walk_length=walk_length)(data)
+    return data
+
+
+def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_sampler, device, walk_length=0, role_aware=False):
     full_bipartite_graph = graph_to_sample.to(device)
     offset = full_graph.num_nodes
     seeds = torch.cat((query_batch.node_embedding_indices, query_batch.edge_embedding_indices + offset))
@@ -264,6 +289,7 @@ def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_s
 
         bipartite_graph.mapped_relation_indices = mapped_relation_indices
         bipartite_graph.mapped_entity_indices = mapped_entity_indices
+        bipartite_graph = compute_rwpe(bipartite_graph, walk_length, role_aware=role_aware)
         bipartite_graph = bipartite_graph.to(device)
 
     return bipartite_graph, bipartite_graph_gloal_to_local
@@ -335,7 +361,7 @@ def train_epoch(state: TrainingState):
 
         # generate a sample of the bipartite/factor graph
         raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
-        bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
+        bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device, walk_length=state.training_context.config.random_walk_pe, role_aware=use_factor)
 
         # Relation GNN always uses bipartite/factor graph
         relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
@@ -407,6 +433,7 @@ def train_epoch(state: TrainingState):
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
                         # Update the graph to the sampled subgraph
+                        graph_sub = compute_rwpe(graph_sub, state.training_context.config.random_walk_pe, role_aware=False)
                         graph = graph_sub.to(device)
                         # Update the node indices to the mapped indices
                         query_batch.node_embedding_indices = mapped
@@ -515,7 +542,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
 
             # generate a sample of the bipartite/factor graph
             raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
-            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
+            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device, walk_length=state.training_context.config.random_walk_pe, role_aware=use_factor)
 
             # Relation GNN always uses bipartite/factor graph
             relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
@@ -567,6 +594,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                                 torch.full_like(query_nodes, -1),
                             ).to(torch.long)
                             # Update the graph to the sampled subgraph
+                            graph_sub = compute_rwpe(graph_sub, state.training_context.config.random_walk_pe, role_aware=False)
                             graph = graph_sub.to(device)
                             # Update the node indices to the mapped indices
                             query_batch.node_embedding_indices = mapped

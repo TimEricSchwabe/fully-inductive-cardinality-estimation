@@ -514,13 +514,13 @@ class BipartiteGraphGNN(nn.Module):
             self.node_type_emb = nn.Embedding(3, input_dim)
 
         # Feature encoder to project structural features to hidden dimension
-        # Input features: [Base + LogDegree(1) + PE(k) + SeedFlag(1)]
+        # Input features: [Base + RoleDegree(6) + PE(k) + SeedFlag(1)]
         self.pe_dim = pe_dim
         if conditioning == "random":
             self.base_dim = input_dim
         else:
             self.base_dim = 1
-        self.raw_in_dim = self.base_dim + 1 + self.pe_dim + 1
+        self.raw_in_dim = self.base_dim + 6 + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -584,9 +584,21 @@ class BipartiteGraphGNN(nn.Module):
         num_nodes = data.num_nodes
 
         # --- Structural Feature Construction ---
-        # 1. Log Degree
-        deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
-        feat_deg = torch.log1p(deg).unsqueeze(-1).to(device) # (num_nodes, 1)
+        # 1. Role-aware Degree (6 dims: subject_in, predicate_in, object_in, subject_out, predicate_out, object_out)
+        if hasattr(data, 'edge_attr') and data.edge_attr is not None and data.edge_attr.shape[1] >= 2:
+            edge_roles = data.edge_attr[:, 1].to(device)
+            dst = data.edge_index[1].to(device)
+            feat_deg = torch.zeros(num_nodes, 6, device=device)
+            for i, role_val in enumerate([1, 2, 3, -1, -2, -3]):
+                mask = (edge_roles == role_val)
+                if mask.any():
+                    feat_deg[:, i].scatter_add_(0, dst[mask], torch.ones(mask.sum(), device=device))
+            feat_deg = torch.log1p(feat_deg)
+        else:
+            # Fallback for graphs without roles
+            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+            feat_deg = torch.log1p(deg).unsqueeze(-1).to(device)
+            feat_deg = F.pad(feat_deg, (0, 5))  # pad to 6 dims
 
         # 2. Positional Encoding
         if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):

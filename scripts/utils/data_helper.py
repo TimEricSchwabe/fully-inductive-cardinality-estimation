@@ -14,7 +14,6 @@ from utils.models import *
 from fice import datasets
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
-from torch_geometric.transforms import AddRandomWalkPE
 
 logger = logging.getLogger(__name__)
 
@@ -348,19 +347,15 @@ def make_factor_graph(data):
     )
 
 
-def get_or_build_graph(dataset, dataset_name, graph_type, random_walk_pe=0):
+def get_or_build_graph(dataset, dataset_name, graph_type):
     """Build or load cached bipartite/factor graph for a dataset."""
-    suffix = f"_rwpe{random_walk_pe}" if random_walk_pe > 0 else ""
     processed_dir = get_dataset_processed_dir(dataset_name)
-    cache_path = processed_dir / f"{dataset_name}_{graph_type}{suffix}.pt"
+    cache_path = processed_dir / f"{dataset_name}_{graph_type}.pt"
     if cache_path.exists():
         logger.info(f"Loading cached {graph_type} graph from {cache_path}")
         return torch.load(cache_path, weights_only=False)
     logger.info(f"Building {graph_type} graph for {dataset_name}...")
     graph = make_factor_graph(dataset) if graph_type == "factor" else make_bipartit_graph(dataset)
-    if random_walk_pe > 0:
-        logger.info(f"Computing RandomWalkPE (walk_length={random_walk_pe}) for {dataset_name} {graph_type} graph...")
-        graph = AddRandomWalkPE(walk_length=random_walk_pe)(graph)
     torch.save(graph, cache_path)
     logger.info(f"Cached {graph_type} graph to {cache_path}")
     return graph
@@ -396,20 +391,14 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries_name = data_config.queries 
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
         
-        # Apply RandomWalkPE to KG entity graph if requested and entity source is KG
-        random_walk_pe = config.random_walk_pe if isinstance(config, Config) else 0
-        if random_walk_pe > 0 and isinstance(config, Config) and config.entity_gnn.source == 'KG':
-            logger.info(f"Computing RandomWalkPE (walk_length={random_walk_pe}) for {dataset_name}...")
-            dataset = AddRandomWalkPE(walk_length=random_walk_pe)(dataset)
-
         queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
         # Build only the graph type needed by relation_gnn.source
         relation_source = config.relation_gnn.source if isinstance(config, Config) else 'bipartite'
         if relation_source == 'factor':
-            dataset.factor_graph = get_or_build_graph(dataset, dataset_name, 'factor', random_walk_pe)
+            dataset.factor_graph = get_or_build_graph(dataset, dataset_name, 'factor')
         else:
-            dataset.bipartite_graph = get_or_build_graph(dataset, dataset_name, 'bipartite', random_walk_pe)
+            dataset.bipartite_graph = get_or_build_graph(dataset, dataset_name, 'bipartite')
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
