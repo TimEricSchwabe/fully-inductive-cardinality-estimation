@@ -15,7 +15,6 @@ import torch
 import torch.nn.functional as F
 import wandb
 from torch_geometric.data import Data
-from torch_geometric.transforms import AddRandomWalkPE
 from torch_geometric.utils import subgraph
 from tqdm import tqdm
 
@@ -246,9 +245,28 @@ def log_gpu_memory_usage(step_name: str):
 
 
 
+def _dense_rwpe(edge_index, num_nodes, walk_length):
+    """Compute RWPE via dense matmul on whatever device edge_index lives on."""
+    device = edge_index.device
+    row, col = edge_index
+    # Row-normalized adjacency: RW = D^{-1}A
+    deg = torch.zeros(num_nodes, device=device)
+    deg.scatter_add_(0, row, torch.ones(row.size(0), device=device))
+    deg.clamp_(min=1)
+    # Build dense transition matrix
+    rw = torch.zeros(num_nodes, num_nodes, device=device)
+    rw[row, col] = 1.0 / deg[row]
+    # Collect diag(RW^k) for k=1..walk_length
+    out = []
+    power = rw
+    for _ in range(walk_length):
+        out.append(power.diagonal())
+        power = power @ rw
+    return torch.stack(out, dim=-1)  # (N, walk_length)
+
+
 def compute_rwpe(data, walk_length, role_aware=False):
-    """Compute RWPE on a (sampled) subgraph. If role_aware, compute
-    separate RWPEs for subject/predicate/object edges and concatenate."""
+    """Compute RWPE on a (sampled) subgraph, on its current device."""
     if walk_length <= 0:
         return data
     if role_aware and hasattr(data, 'edge_attr') and data.edge_attr is not None:
@@ -256,12 +274,10 @@ def compute_rwpe(data, walk_length, role_aware=False):
         pe_parts = []
         for role in [1, 2, 3]:  # subject, predicate, object
             mask = (roles.abs() == role)
-            sub = Data(edge_index=data.edge_index[:, mask], num_nodes=data.num_nodes)
-            sub = AddRandomWalkPE(walk_length=walk_length)(sub)
-            pe_parts.append(sub.random_walk_pe)
+            pe_parts.append(_dense_rwpe(data.edge_index[:, mask], data.num_nodes, walk_length))
         data.random_walk_pe = torch.cat(pe_parts, dim=-1)  # (N, 3*walk_length)
     else:
-        data = AddRandomWalkPE(walk_length=walk_length)(data)
+        data.random_walk_pe = _dense_rwpe(data.edge_index, data.num_nodes, walk_length)
     return data
 
 
@@ -289,8 +305,7 @@ def prepare_bipartite_graph(graph_to_sample, full_graph, query_batch, neighbor_s
 
         bipartite_graph.mapped_relation_indices = mapped_relation_indices
         bipartite_graph.mapped_entity_indices = mapped_entity_indices
-        bipartite_graph = compute_rwpe(bipartite_graph.cpu(), walk_length, role_aware=role_aware)
-        bipartite_graph = bipartite_graph.to(device)
+        bipartite_graph = compute_rwpe(bipartite_graph, walk_length, role_aware=role_aware)
 
     return bipartite_graph, bipartite_graph_gloal_to_local
 
@@ -433,8 +448,7 @@ def train_epoch(state: TrainingState):
                             torch.full_like(query_nodes, -1),
                         ).to(torch.long)
                         # Update the graph to the sampled subgraph
-                        graph_sub = compute_rwpe(graph_sub.cpu(), state.training_context.config.random_walk_pe, role_aware=False)
-                        graph = graph_sub.to(device)
+                        graph = compute_rwpe(graph_sub, state.training_context.config.random_walk_pe, role_aware=False)
                         # Update the node indices to the mapped indices
                         query_batch.node_embedding_indices = mapped
                     else:
