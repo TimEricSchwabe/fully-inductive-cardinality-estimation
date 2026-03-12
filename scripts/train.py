@@ -269,8 +269,10 @@ def compute_rwpe(data, walk_length, role_aware=False):
     """Compute RWPE on a (sampled) subgraph, on its current device."""
     if walk_length <= 0:
         return data
+    # Ensure edge_index and edge_attr are on the same device
+    device = data.edge_index.device
     if role_aware and hasattr(data, 'edge_attr') and data.edge_attr is not None:
-        roles = data.edge_attr[:, 1]
+        roles = data.edge_attr[:, 1].to(device)
         pe_parts = []
         for role in [1, 2, 3]:  # subject, predicate, object
             mask = (roles.abs() == role)
