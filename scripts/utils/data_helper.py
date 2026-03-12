@@ -325,20 +325,15 @@ def make_factor_graph(data):
 
     total_nodes = num_entities + num_relations + num_triples
 
-    # Coalesce duplicate edges (sum counts)
-    edge_weight = torch.ones(combined.size(1))
-    unique_edges, counts = coalesce(combined, edge_weight, num_nodes=total_nodes, reduce='add')
+    # Each triple node is unique — no deduplication needed.
+    # Self-loop triples (s == o) produce parallel edges with distinct roles.
+    counts = torch.ones(combined.size(1))
+    forward_attr = torch.stack([counts, role_types], dim=1)
 
-    # We need to track roles through coalesce — but since each triple node is unique,
-    # there are no duplicate (src, dst) pairs, so we can coalesce role_types too
-    _, unique_roles = coalesce(combined, role_types, num_nodes=total_nodes, reduce='add')
+    reverse_edges = torch.stack([combined[1], combined[0]], dim=0)
+    reverse_attr = torch.stack([counts, -role_types], dim=1)
 
-    # Make undirected: add reverse edges with negated role
-    forward_attr = torch.stack([counts, unique_roles], dim=1)
-    reverse_edges = torch.stack([unique_edges[1], unique_edges[0]], dim=0)
-    reverse_attr = torch.stack([counts, -unique_roles], dim=1)
-
-    final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
+    final_edge_index = torch.cat([combined, reverse_edges], dim=1)
     final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
 
     return Data(
