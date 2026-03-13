@@ -85,12 +85,6 @@ class QueryGNN(torch.nn.Module):
         return torch.abs(out.squeeze(-1))           # [batch_size]
 
 
-_MSG_ACTIVATIONS = {
-    'relu': F.relu,
-    'silu': F.silu,
-    'linear': lambda x: x,
-}
-
 ############ Oroginal GNCE model ############
 
 class TripleConv(MessagePassing):
@@ -146,13 +140,11 @@ class TripleConv(MessagePassing):
 
     def __init__(self, nn: torch.nn.Module, eps: float = 0.,
                  train_eps: bool = False, edge_dim: Optional[int] = None,
-                 message_activation: str = 'relu',
                  **kwargs):
         kwargs.setdefault('aggr', 'add')
         super().__init__(**kwargs)
         self.nn = nn
         self.initial_eps = eps
-        self.msg_act = _MSG_ACTIVATIONS[message_activation]
 
         # Whether to switch the input to the MLP based on the directionality
         self.DIRECTIONAL = False
@@ -205,7 +197,7 @@ class TripleConv(MessagePassing):
         # edge_attr = edge_attr[:, :-1]
 
 
-        return self.msg_act(self.lin(torch.cat((x_i, edge_attr, x_j), 1)))
+        return self.lin(torch.cat((x_i, edge_attr, x_j), 1)).relu()
 
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(nn={self.nn})'
@@ -218,11 +210,10 @@ class EdgeUpdatingTripleConv(nn.Module):
     Edge update: per-edge messages (pre-aggregation) become the new edge features.
     """
 
-    def __init__(self, nn_module, edge_dim, eps=0., train_eps=False, message_activation='relu'):
+    def __init__(self, nn_module, edge_dim, eps=0., train_eps=False):
         super().__init__()
         self.nn = nn_module
         self.edge_lin = Linear(3 * edge_dim, edge_dim)
-        self.msg_act = _MSG_ACTIVATIONS[message_activation]
         if train_eps:
             self.eps = nn.Parameter(torch.Tensor([eps]))
         else:
@@ -231,7 +222,7 @@ class EdgeUpdatingTripleConv(nn.Module):
     def forward(self, x, edge_index, edge_attr=None):
         src, dst = edge_index[0], edge_index[1]
         # Per-edge messages: cat(target, edge, source) matching TripleConv convention
-        edge_msg = self.msg_act(self.edge_lin(torch.cat([x[dst], edge_attr, x[src]], dim=1)))
+        edge_msg = self.edge_lin(torch.cat([x[dst], edge_attr, x[src]], dim=1)).relu()
         # Aggregate at target nodes
         agg = torch.zeros_like(x)
         agg.scatter_add_(0, dst.unsqueeze(1).expand_as(edge_msg), edge_msg)
@@ -250,7 +241,7 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu'):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum'):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
@@ -274,9 +265,9 @@ class TripleModel(torch.nn.Module):
             if self.message_func == 'gine':
                 return GINEConv(nn=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'triple':
-                return TripleConv(nn=mlp, edge_dim=self.feat_dim, message_activation=message_activation)
+                return TripleConv(nn=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'edge_triple':
-                return EdgeUpdatingTripleConv(nn_module=mlp, edge_dim=self.feat_dim, message_activation=message_activation)
+                return EdgeUpdatingTripleConv(nn_module=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'deepset':
                 from fice.models import DeepSetConv
                 return DeepSetConv(nn_module=mlp, edge_dim=self.feat_dim)
