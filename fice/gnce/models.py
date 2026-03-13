@@ -233,6 +233,8 @@ class TripleModel(torch.nn.Module):
             )
             if self.message_func == 'gine':
                 return GINEConv(nn=mlp, edge_dim=self.feat_dim)
+            elif self.message_func == 'triple':
+                return TripleConv(nn=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'deepset':
                 from fice.models import DeepSetConv
                 return DeepSetConv(nn_module=mlp, edge_dim=self.feat_dim)
