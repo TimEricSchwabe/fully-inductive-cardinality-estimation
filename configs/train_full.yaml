@@ -129,7 +129,7 @@ query_gnn:
   layer_norm: True
   dropout: 0.0
   num_layers: 2
-  message_activation: "relu" # choices are "relu" or "silu" or "linear"
+  message_activation: "linear" # choices are "relu" or "silu" or "linear"
 
 scheduler:
   enabled: False
