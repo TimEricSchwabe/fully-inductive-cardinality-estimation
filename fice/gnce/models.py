@@ -202,6 +202,35 @@ class TripleConv(MessagePassing):
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(nn={self.nn})'
 
+
+class EdgeUpdatingTripleConv(nn.Module):
+    """TripleConv variant that also updates edge features per layer.
+
+    Node update: same as TripleConv — cat(x_i, e, x_j) → lin → ReLU → aggregate → GIN-style update.
+    Edge update: per-edge messages (pre-aggregation) become the new edge features.
+    """
+
+    def __init__(self, nn_module, edge_dim, eps=0., train_eps=False):
+        super().__init__()
+        self.nn = nn_module
+        self.edge_lin = Linear(3 * edge_dim, edge_dim)
+        if train_eps:
+            self.eps = nn.Parameter(torch.Tensor([eps]))
+        else:
+            self.register_buffer('eps', torch.Tensor([eps]))
+
+    def forward(self, x, edge_index, edge_attr=None):
+        src, dst = edge_index[0], edge_index[1]
+        # Per-edge messages: cat(target, edge, source) matching TripleConv convention
+        edge_msg = self.edge_lin(torch.cat([x[dst], edge_attr, x[src]], dim=1)).relu()
+        # Aggregate at target nodes
+        agg = torch.zeros_like(x)
+        agg.scatter_add_(0, dst.unsqueeze(1).expand_as(edge_msg), edge_msg)
+        # GIN-style node update
+        out = self.nn(agg + (1 + self.eps) * x)
+        return out, edge_msg
+
+
 class TripleModel(torch.nn.Module):
     """
     GNN model to predict cardinality of a query,
@@ -221,6 +250,7 @@ class TripleModel(torch.nn.Module):
         self.use_graph_size = use_graph_size
         self.use_softplus = use_softplus
         self.num_layers = num_layers
+        self.edge_updating = (message_func == 'edge_triple')
 
         readout_dim = 200
 
@@ -236,6 +266,8 @@ class TripleModel(torch.nn.Module):
                 return GINEConv(nn=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'triple':
                 return TripleConv(nn=mlp, edge_dim=self.feat_dim)
+            elif self.message_func == 'edge_triple':
+                return EdgeUpdatingTripleConv(nn_module=mlp, edge_dim=self.feat_dim)
             elif self.message_func == 'deepset':
                 from fice.models import DeepSetConv
                 return DeepSetConv(nn_module=mlp, edge_dim=self.feat_dim)
@@ -275,7 +307,11 @@ class TripleModel(torch.nn.Module):
 
         for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
             x_input = x
-            x = F.silu(conv(x, edge_index, edge_attr=edge_attr))
+            if self.edge_updating:
+                x, edge_attr = conv(x, edge_index, edge_attr=edge_attr)
+                x = F.silu(x)
+            else:
+                x = F.silu(conv(x, edge_index, edge_attr=edge_attr))
             if self.layer_norm:
                 x = norm(x)
             if self.skip_connection:

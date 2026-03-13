@@ -30,7 +30,7 @@ class RelationGNNConfig(BaseSettings):
     relational: bool = False
 
 class QueryGNNConfig(BaseSettings):
-    message_func: Literal['gine', 'deepset', 'triple'] = "gine"
+    message_func: Literal['gine', 'deepset', 'triple', 'edge_triple'] = "gine"
     model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
     skip_connection: bool = False
     layer_norm: bool = True
