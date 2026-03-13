@@ -6,7 +6,7 @@ REMOTE_HOST="${REMOTE_HOST:-coma}"
 REMOTE_REPO="${REMOTE_REPO:-fully-inductive-cardinality-estimation}"
 BRANCH="${BRANCH:-main}"
 SBATCH_SCRIPT="${SBATCH_SCRIPT:-scripts/train_tim.sbatch}"
-SBATCH_NODE="${SBATCH_NODE:-gpu-nvidia-h200-1}"
+SBATCH_NODE="${SBATCH_NODE:-gpu-nvidia-h200-3}"
 
 ssh "$REMOTE_HOST" bash -s -- \
   "$REMOTE_REPO" "$BRANCH" "$SBATCH_SCRIPT" "$SBATCH_NODE" \
