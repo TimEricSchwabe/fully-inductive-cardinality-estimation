@@ -37,6 +37,7 @@ class QueryGNNConfig(BaseSettings):
     dropout: float = 0.0
     num_layers: int = 2
     readout: Literal['sum', 'attention'] = 'sum'
+    message_activation: Literal['relu', 'silu', 'linear'] = 'relu'
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True
