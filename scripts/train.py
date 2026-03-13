@@ -147,6 +147,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
     query_gnn_layer_norm = config.query_gnn.layer_norm
     query_gnn_dropout = config.query_gnn.dropout
     query_gnn_num_layers = config.query_gnn.num_layers
+    query_gnn_readout = config.query_gnn.readout
     
     
     # Compute effective pe_dim: role-aware RWPE on factor graphs produces 3x dims
@@ -187,6 +188,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_skip_connection=query_gnn_skip_connection,
             query_gnn_dropout=query_gnn_dropout,
             query_gnn_num_layers=query_gnn_num_layers,
+            query_gnn_readout=query_gnn_readout,
             pe_dim=pe_dim,
             prediction_mode=config.prediction_mode,
         )

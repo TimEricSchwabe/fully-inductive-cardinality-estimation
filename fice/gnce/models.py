@@ -2,6 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch_geometric.nn import Linear, GINEConv, GPSConv
 from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
+from torch_geometric.nn.aggr import AttentionalAggregation
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.transforms import AddLaplacianEigenvectorPE
 from typing import Optional, Union
@@ -211,7 +212,7 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum'):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
@@ -250,6 +251,17 @@ class TripleModel(torch.nn.Module):
             self.norms.append(nn.LayerNorm(out_dim))
 
         self.skip_proj = Linear(self.feat_dim, readout_dim)
+
+        # Readout: sum or attention pooling
+        self.readout = readout
+        if readout == 'attention':
+            gate_nn = nn.Sequential(
+                nn.Linear(readout_dim, readout_dim // 2),
+                nn.SiLU(),
+                nn.Linear(readout_dim // 2, 1),
+            )
+            self.pool = AttentionalAggregation(gate_nn)
+
         lin_input_dim = readout_dim + 1 if use_graph_size else readout_dim
         self.lin = Linear(lin_input_dim, 50)
         self.lin2 = Linear(50, 1)
@@ -272,7 +284,10 @@ class TripleModel(torch.nn.Module):
                 else:
                     x = x + x_input
 
-        x = global_add_pool(x, batch.batch)
+        if self.readout == 'attention':
+            x = self.pool(x, batch.batch)
+        else:
+            x = global_add_pool(x, batch.batch)
         if self.use_graph_size:
             log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
             x = torch.cat([x, log_gs], dim=-1)

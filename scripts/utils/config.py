@@ -36,6 +36,7 @@ class QueryGNNConfig(BaseSettings):
     layer_norm: bool = True
     dropout: float = 0.0
     num_layers: int = 2
+    readout: Literal['sum', 'attention'] = 'sum'
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True

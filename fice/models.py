@@ -749,6 +749,7 @@ class FICE(nn.Module):
                  query_skip_connection=False,
                  query_gnn_dropout=0.0,
                  query_gnn_num_layers=2,
+                 query_gnn_readout='sum',
                  # Global params
                  pe_dim=0,
                  entity_dropout=0.0,
@@ -824,6 +825,7 @@ class FICE(nn.Module):
                 use_graph_size=use_gs,
                 use_softplus=use_sp,
                 num_layers=query_gnn_num_layers,
+                readout=query_gnn_readout,
             )
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
