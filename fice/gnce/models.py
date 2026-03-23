@@ -10,6 +10,7 @@ from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
 from torch import Tensor
 from torch_geometric.nn.inits import reset
 import torch.nn as nn
+from torch_scatter import scatter_max, scatter_min, scatter_add
 
 
 
@@ -723,6 +724,192 @@ class SimpleSumGNN(torch.nn.Module):
         out = self.conv(x, edge_index, edge_attr)
         out = global_add_pool(out, batch.batch)
         return self.mlp(out).squeeze(-1)
+
+
+############ BoxTripleModel ############
+
+class BoxLayerNorm(nn.Module):
+    """Normalizes center and log_width halves independently to preserve box structure."""
+    def __init__(self, half_dim):
+        super().__init__()
+        self.center_norm = nn.LayerNorm(half_dim)
+        self.width_norm = nn.LayerNorm(half_dim)
+
+    def forward(self, boxes):
+        H = boxes.size(-1) // 2
+        center = (boxes[:, :H] + boxes[:, H:]) / 2
+        half_width = F.softplus(boxes[:, H:] - boxes[:, :H]) / 2
+
+        center = self.center_norm(center)
+        half_width = F.softplus(self.width_norm(half_width))
+
+        return torch.cat([center - half_width, center + half_width], dim=-1)
+
+
+class BoxConv(nn.Module):
+    """Box-semantic message passing for query graphs.
+
+    Per-edge: computes triple intersection box + geometric features.
+    Aggregation: scatter_max(mins), scatter_min(maxes) = box intersection.
+    Node update: MLP on (self_box, agg_box, geometric_scalars) -> new box.
+    """
+    def __init__(self, half_dim, hidden_dim=128):
+        super().__init__()
+        self.half_dim = half_dim
+
+        # Per-edge MLP: geometric features -> learned message refinement
+        # Input: [inter_center(H), inter_log_width(H), log_vol_s(1), log_vol_d(1), log_vol_e(1), log_vol_inter(1)]
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * half_dim + 4, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, half_dim),
+        )
+
+        # Node update MLP: combines self box + aggregated box -> new box
+        # Input: [self_center(H), self_log_width(H), agg_center(H), agg_log_width(H), edge_scalar_mean(1)]
+        self.node_mlp = nn.Sequential(
+            nn.Linear(4 * half_dim + 1, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 2 * half_dim),
+        )
+
+    @staticmethod
+    def _safe_log_width(maxs, mins):
+        """log(softplus(max - min)), clamped for numerical stability."""
+        return F.softplus(maxs - mins).clamp(min=1e-8).log()
+
+    def forward(self, boxes, edge_index, edge_boxes):
+        # boxes: [N, 2H], edge_boxes: [E, 2H]
+        src, dst = edge_index
+        H = self.half_dim
+        N = boxes.size(0)
+
+        # 1. Extract boxes for each edge endpoint
+        min_s, max_s = boxes[src, :H], boxes[src, H:]
+        min_d, max_d = boxes[dst, :H], boxes[dst, H:]
+        min_e, max_e = edge_boxes[:, :H], edge_boxes[:, H:]
+
+        # 2. Triple intersection (soft — softplus ensures positive widths + gradients)
+        inter_min = torch.max(torch.max(min_s, min_d), min_e)
+        inter_max = torch.min(torch.min(max_s, max_d), max_e)
+        inter_log_width = self._safe_log_width(inter_max, inter_min)
+        inter_center = (inter_min + inter_max) / 2
+
+        # 3. Volume features (scalar per edge)
+        log_vol_inter = inter_log_width.sum(-1, keepdim=True)
+        log_vol_s = self._safe_log_width(max_s, min_s).sum(-1, keepdim=True)
+        log_vol_d = self._safe_log_width(max_d, min_d).sum(-1, keepdim=True)
+        log_vol_e = self._safe_log_width(max_e, min_e).sum(-1, keepdim=True)
+
+        # 4. Edge MLP: geometric features -> learned refinement
+        geo = torch.cat([inter_center, inter_log_width, log_vol_s, log_vol_d, log_vol_e, log_vol_inter], dim=-1)
+        edge_feat = self.edge_mlp(geo)  # [E, H]
+
+        # 5. Aggregate at target nodes via box intersection
+        # scatter_max/scatter_min return (values, argmax) tuples
+        agg_min, _ = scatter_max(inter_min, dst, dim=0, dim_size=N)
+        agg_max, _ = scatter_min(inter_max, dst, dim=0, dim_size=N)
+        agg_feat = scatter_add(edge_feat, dst, dim=0, dim_size=N)
+
+        # Handle isolated nodes: keep their original box
+        deg = scatter_add(torch.ones(src.size(0), 1, device=boxes.device), dst, dim=0, dim_size=N)
+        has_msg = (deg > 0).squeeze(-1)
+        agg_min = torch.where(has_msg.unsqueeze(-1), agg_min, boxes[:, :H])
+        agg_max = torch.where(has_msg.unsqueeze(-1), agg_max, boxes[:, H:])
+        deg = deg.clamp(min=1)
+
+        # 6. Node update
+        agg_center = (agg_min + agg_max) / 2
+        agg_log_width = self._safe_log_width(agg_max, agg_min)
+        self_center = (boxes[:, :H] + boxes[:, H:]) / 2
+        self_log_width = self._safe_log_width(boxes[:, H:], boxes[:, :H])
+
+        update_input = torch.cat([
+            self_center, self_log_width,
+            agg_center, agg_log_width,
+            (agg_feat / deg).sum(-1, keepdim=True),  # mean edge scalar
+        ], dim=-1)
+        raw_update = self.node_mlp(update_input)  # [N, 2H]
+
+        # 7. Re-project to valid box
+        new_center = raw_update[:, :H]
+        new_half_width = F.softplus(raw_update[:, H:])
+        return torch.cat([new_center - new_half_width, new_center + new_half_width], dim=-1)
+
+
+def _box_intersection(a, b):
+    """Element-wise box intersection: max(mins), min(maxes)."""
+    H = a.size(-1) // 2
+    inter_min = torch.max(a[:, :H], b[:, :H])
+    inter_max = torch.min(a[:, H:], b[:, H:])
+    return torch.cat([inter_min, inter_max], dim=-1)
+
+
+class BoxTripleModel(nn.Module):
+    """Query GNN where all operations work natively in box semantics.
+
+    Message passing: triple intersection boxes.
+    Aggregation: scatter_max(mins), scatter_min(maxes).
+    Skip connections: box intersection (constraints only tighten).
+    Readout: volume-aware pooling.
+    """
+    def __init__(self, feat_dim, num_layers=2, hidden_dim=128, use_graph_size=True, dropout=0.0, **kwargs):
+        super().__init__()
+        self.half_dim = (feat_dim - 3) // 2  # H = 64 for feat_dim=131
+        self.use_graph_size = use_graph_size
+
+        # Box message passing layers
+        self.layers = nn.ModuleList([
+            BoxConv(self.half_dim, hidden_dim) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([
+            BoxLayerNorm(self.half_dim) for _ in range(num_layers)
+        ])
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Readout MLP
+        # Input: pooled [log_vol(1), center(H), log_width(H), log_counts(3)] + graph_size(1)
+        readout_in = 1 + 2 * self.half_dim + 3 + (1 if use_graph_size else 0)
+        self.readout = nn.Sequential(
+            nn.Linear(readout_in, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 50),
+            nn.SiLU(),
+            nn.Linear(50, 1),
+        )
+
+    def forward(self, batch, graph_size):
+        H = self.half_dim
+
+        # Separate counts from boxes
+        counts = batch.x[:, :3]
+        boxes = batch.x[:, 3:]          # [N, 2H]
+        edge_boxes = batch.edge_attr[:, 3:]  # [E, 2H]
+
+        # Box message passing
+        for layer, norm in zip(self.layers, self.norms):
+            boxes_in = boxes
+            boxes = layer(boxes, batch.edge_index, edge_boxes)
+            boxes = norm(boxes)
+            boxes = self.dropout(boxes)
+            # Skip connection: intersection with input (constraints only tighten)
+            boxes = _box_intersection(boxes, boxes_in)
+
+        # Readout: extract geometric features per node
+        mins, maxs = boxes[:, :H], boxes[:, H:]
+        log_width = F.softplus(maxs - mins).clamp(min=1e-8).log()  # [N, H]
+        log_vol = log_width.sum(-1, keepdim=True)                   # [N, 1]
+        center = (mins + maxs) / 2                                  # [N, H]
+        log_counts = torch.log1p(counts)                 # [N, 3]
+
+        feats = torch.cat([log_vol, center, log_width, log_counts], dim=-1)
+        pooled = global_add_pool(feats, batch.batch)
+
+        if self.use_graph_size:
+            log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(pooled.size(0), -1)
+            pooled = torch.cat([pooled, log_gs], dim=-1)
+
+        return torch.abs(self.readout(pooled).squeeze(-1))
 
 
 ############ QueryTransformer ############
