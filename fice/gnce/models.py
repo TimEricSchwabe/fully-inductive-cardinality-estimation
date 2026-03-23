@@ -474,33 +474,36 @@ class CardinalityConv(MessagePassing):
     4. Predicts and subtracts a Join Correction (ψ_node) at the node
     IMPORTANT: This conv should be only appplied ONCE to the initial query graph.
     """
-    def __init__(self, emb_dim, hidden_dim=128):
+    def __init__(self, emb_dim, hidden_dim=128, embedding_space='euclidean'):
         super().__init__(aggr='mean', flow='target_to_source')
         self.emb_dim = emb_dim
-        
+        self.embedding_space = embedding_space
+        self.half_dim = emb_dim // 2
+
+        # Aggregation dim: full emb_dim for euclidean, half for box/gaussian (centers/means)
+        self.agg_dim = emb_dim // 2 if embedding_space in ('box', 'gaussian') else emb_dim
+
         # Triple Pattern Correction
-        # Input: [emb_s, emb_p, emb_o]
+        # Input: [emb_s, emb_p, emb_o] (full embeddings for MLP correction)
         self.edge_mlp = nn.Sequential(
             nn.Linear(3 * emb_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, 1), # Outputs ψ_edge
-            # nn.Softplus() # Optional: enforce positive correction
         )
-        
+
         # Node Join Correction (Node Level)
-        # Input: [aggregated_embedding]
+        # Input: [aggregated_embedding] (centers/means for box/gaussian)
         self.node_mlp = nn.Sequential(
-            nn.Linear(emb_dim, hidden_dim),
+            nn.Linear(self.agg_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, 1), # Outputs ψ_node
-             # nn.Softplus()
         )
-        
+
         # Embedding Update (to pass to Phase 2)
         self.emb_update = nn.Sequential(
-            nn.Linear(emb_dim, emb_dim),
+            nn.Linear(self.agg_dim, self.agg_dim),
             nn.SiLU(),
-            nn.Linear(emb_dim, emb_dim)
+            nn.Linear(self.agg_dim, self.agg_dim)
         )
         
         
@@ -528,38 +531,49 @@ class CardinalityConv(MessagePassing):
 
     def message(self, x_i, x_j, edge_attr):
         # x_j: Source (Subject), x_i: Target (Object)
-        
+
         # 1. Counts (Log Space)
         c_s = x_j[:, 0:1]
         c_o = x_i[:, 2:3]
         c_p = edge_attr[:, 1:2]
-        
+
         # 2. Embeddings
         e_s = x_j[:, 3:]
         e_o = x_i[:, 3:]
         e_p = edge_attr[:, 3:]
-        
-        # Normalize embeddings (so model learns to model similarity via orientation and not magnitude)
-        e_s = F.normalize(e_s, p=2, dim=1)
-        e_o = F.normalize(e_o, p=2, dim=1)
-        e_p = F.normalize(e_p, p=2, dim=1)
-        
+
+        # Normalize embeddings for euclidean (so model learns similarity via orientation, not magnitude)
+        # For box/gaussian: skip normalization — magnitudes encode volume/spread
+        if self.embedding_space == 'euclidean':
+            e_s = F.normalize(e_s, p=2, dim=1)
+            e_o = F.normalize(e_o, p=2, dim=1)
+            e_p = F.normalize(e_p, p=2, dim=1)
+
         # --- Independent Cardinality ---
         # log(|t|) = log(|s|) + log(|p|) + log(|o|) - 2*log(N)
         log_card_ind = c_s + c_p + c_o - 2 * self.log_N
-        
+
         # --- Learned Triple Correction ---
         # ψ_edge(e_s, e_p, e_o)
         triple_emb = torch.cat([e_s, e_p, e_o], dim=1)
         triple_selectivity = self.edge_mlp(triple_emb)
-        
+
         # Corrected Edge Estimate
         log_card_corrected = log_card_ind - triple_selectivity
-        
+
         # Pass the combined embedding to the node for aggregation
-        # (Simple sum aggregation of embeddings)
-        msg_emb = e_s + e_p + e_o 
-        
+        if self.embedding_space == 'box':
+            # For boxes: aggregate centers (midpoint of min/max)
+            from fice.embedding_spaces import box_center
+            hd = self.half_dim
+            msg_emb = box_center(e_s, hd) + box_center(e_p, hd) + box_center(e_o, hd)
+        elif self.embedding_space == 'gaussian':
+            # For gaussians: aggregate means (first half)
+            hd = self.half_dim
+            msg_emb = e_s[:, :hd] + e_p[:, :hd] + e_o[:, :hd]
+        else:
+            msg_emb = e_s + e_p + e_o
+
         return torch.cat([log_card_corrected, msg_emb], dim=1)
 
 
@@ -569,20 +583,21 @@ class SelectivityConv(MessagePassing):
     Operates on the graph structure to refine estimates.
     Does NOT use raw edge counts, only embeddings.
     """
-    def __init__(self, emb_dim, hidden_dim=128):
+    def __init__(self, emb_dim, hidden_dim=128, agg_dim=None):
         super().__init__(aggr='add', flow='target_to_source')
         self.emb_dim = emb_dim
-        
+        d = agg_dim if agg_dim is not None else emb_dim
+
         self.mlp = nn.Sequential(
-            nn.Linear(2 * emb_dim, hidden_dim),
+            nn.Linear(2 * d, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, 1) # Outputs scalar correction update
         )
-        
+
         self.emb_update = nn.Sequential(
-            nn.Linear(2 * emb_dim, emb_dim),
+            nn.Linear(2 * d, d),
             nn.SiLU(),
-            nn.Linear(emb_dim, emb_dim)
+            nn.Linear(d, d)
         )
 
     def forward(self, x_emb, edge_index):
@@ -612,17 +627,20 @@ class SelectivityConv(MessagePassing):
 
 
 class QueryCardinalityGNN(torch.nn.Module):
-    def __init__(self, feat_dim, hidden_dim=128, num_layers=0):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=0, embedding_space='euclidean'):
         super().__init__()
         self.feat_dim = feat_dim
         self.emb_dim = feat_dim - 3
-        
+
         # Phase 1: Base + Initial Correction
-        self.phase1 = CardinalityConv(self.emb_dim, hidden_dim)
-        
+        self.phase1 = CardinalityConv(self.emb_dim, hidden_dim, embedding_space=embedding_space)
+
+        # Aggregation dim used by phase 2 (centers/means for box/gaussian)
+        agg_dim = self.emb_dim // 2 if embedding_space in ('box', 'gaussian') else self.emb_dim
+
         # Phase 2: Refinement (No edge features)
         self.phase2_layers = nn.ModuleList([
-            SelectivityConv(self.emb_dim, hidden_dim) 
+            SelectivityConv(self.emb_dim, hidden_dim, agg_dim=agg_dim)
             for _ in range(num_layers)
         ])
 

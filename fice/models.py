@@ -7,6 +7,7 @@ from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import degree
 import time 
 from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN
+from fice.embedding_spaces import EmbeddingProjection
 
 
 class DeepSetConv(MessagePassing):
@@ -112,7 +113,7 @@ class RelationalGINELayer(nn.Module):
 
 
 class EntityGNN(nn.Module):
-    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, pe_dim=0, dropout=0.0, **kwargs):
+    def __init__(self, input_dim, hidden_dims, message_func='gine', conditioning='all', layer_norm=True, skip_connection=True, pe_dim=0, dropout=0.0, embedding_space='euclidean', **kwargs):
         super(EntityGNN, self).__init__()
 
         self.input_dim = input_dim
@@ -167,6 +168,8 @@ class EntityGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
+        # Geometric embedding space projection at output
+        self.embed_proj = EmbeddingProjection(hidden_dims[-1], space=embedding_space)
 
     def forward(self, data, batch=None, relation_representations=None):
         if batch is None:
@@ -279,8 +282,8 @@ class EntityGNN(nn.Module):
         
         # Clean up large batched tensors
         del batched_edge_index, edge_attr
-        
-        return x
+
+        return self.embed_proj(x)
 
 
 class RelationGNN(nn.Module):
@@ -301,6 +304,7 @@ class RelationGNN(nn.Module):
         skip_connection: bool = True,
         pe_dim: int = 0,
         dropout: float = 0.0,
+        embedding_space: str = 'euclidean',
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -353,6 +357,8 @@ class RelationGNN(nn.Module):
             [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
         )
 
+        # Geometric embedding space projection at output
+        self.embed_proj = EmbeddingProjection(hidden_dims[-1], space=embedding_space)
 
     def forward(self, data, batch=None):
         """
@@ -459,11 +465,11 @@ class RelationGNN(nn.Module):
 
         # Reshape back to (batch_size, num_nodes, hidden_dim)
         out = x.view(bs, num_nodes, -1)
-        
+
         # Clean up large batched tensors
         del edge_index, edge_type, edge_attr
-        
-        return out
+
+        return self.embed_proj(out)
 
 
 class BipartiteGraphGNN(nn.Module):
@@ -486,6 +492,7 @@ class BipartiteGraphGNN(nn.Module):
         relation_attention: bool = False,
         relational: bool = False,
         role_aware_degrees: bool = True,
+        embedding_space: str = 'euclidean',
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -558,6 +565,9 @@ class BipartiteGraphGNN(nn.Module):
         )
 
         # Post-GNN relation self-attention
+        # Geometric embedding space projection at output
+        self.embed_proj = EmbeddingProjection(hidden_dims[-1], space=embedding_space)
+
         self.relation_attention = relation_attention
         if relation_attention:
             out_dim = hidden_dims[-1]
@@ -722,7 +732,7 @@ class BipartiteGraphGNN(nn.Module):
         # Clean up large batched tensors
         del edge_index, edge_attr, edge_attr_stacked
 
-        return out
+        return self.embed_proj(out)
 
 
 class FICE(nn.Module):
@@ -758,6 +768,7 @@ class FICE(nn.Module):
                  entity_dropout=0.0,
                  relation_dropout=0.0,
                  prediction_mode='log-cardinality',
+                 embedding_space='euclidean',
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
@@ -788,6 +799,7 @@ class FICE(nn.Module):
                 relation_attention=relation_attention,
                 relational=relational,
                 role_aware_degrees=role_aware_degrees,
+                embedding_space=embedding_space,
             )
 
         else:
@@ -803,6 +815,7 @@ class FICE(nn.Module):
                 relation_attention=relation_attention,
                 relational=relational,
                 role_aware_degrees=role_aware_degrees,
+                embedding_space=embedding_space,
             )
 
             self.entity_model = EntityGNN(
@@ -813,11 +826,12 @@ class FICE(nn.Module):
                 layer_norm=entity_layer_norm,
                 skip_connection=entity_skip_connection,
                 pe_dim=pe_dim,
-                dropout=entity_dropout
+                dropout=entity_dropout,
+                embedding_space=embedding_space,
             )
 
         if self.query_gnn_type == 'QueryCardinalityGNN':
-            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3)
+            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=embedding_space)
         elif self.query_gnn_type == 'TripleModel':
             use_gs = (prediction_mode != 'log-selectivity')
             use_sp = (prediction_mode == 'log-selectivity')
