@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-retest"
+wandb_run_name: "RelationalGNN-retest2"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -100,7 +100,7 @@ GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
-embedding_dim: 32
+embedding_dim: 128
 random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
