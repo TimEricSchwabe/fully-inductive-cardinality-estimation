@@ -28,6 +28,7 @@ class RelationGNNConfig(BaseSettings):
     dropout: float = 0.0
     relation_attention: bool = False
     relational: bool = False
+    role_aware_degrees: bool = True
 
 class QueryGNNConfig(BaseSettings):
     message_func: Literal['gine', 'deepset', 'triple', 'edge_triple'] = "gine"

@@ -485,6 +485,7 @@ class BipartiteGraphGNN(nn.Module):
         dropout: float = 0.0,
         relation_attention: bool = False,
         relational: bool = False,
+        role_aware_degrees: bool = True,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -505,6 +506,7 @@ class BipartiteGraphGNN(nn.Module):
         self.enable_layer_norm = layer_norm
         self.dropout = dropout
         self.relational = relational
+        self.role_aware_degrees = role_aware_degrees
 
         # Add projection for edge attributes (Count, Direction) -> input_dim
         self.edge_encoder = nn.Linear(2, input_dim)
@@ -514,13 +516,13 @@ class BipartiteGraphGNN(nn.Module):
             self.node_type_emb = nn.Embedding(3, input_dim)
 
         # Feature encoder to project structural features to hidden dimension
-        # Input features: [Base + RoleDegree(6) + PE(k) + SeedFlag(1)]
         self.pe_dim = pe_dim
         if conditioning == "random":
             self.base_dim = input_dim
         else:
             self.base_dim = 1
-        self.raw_in_dim = self.base_dim + 6 + self.pe_dim + 1
+        self.degree_dim = 6 if role_aware_degrees else 1
+        self.raw_in_dim = self.base_dim + self.degree_dim + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -584,8 +586,8 @@ class BipartiteGraphGNN(nn.Module):
         num_nodes = data.num_nodes
 
         # --- Structural Feature Construction ---
-        # 1. Role-aware Degree (6 dims: subject_in, predicate_in, object_in, subject_out, predicate_out, object_out)
-        if hasattr(data, 'edge_attr') and data.edge_attr is not None and data.edge_attr.shape[1] >= 2:
+        if self.role_aware_degrees and hasattr(data, 'edge_attr') and data.edge_attr is not None and data.edge_attr.shape[1] >= 2:
+            # Role-aware Degree (6 dims: subject_in, predicate_in, object_in, subject_out, predicate_out, object_out)
             edge_roles = data.edge_attr[:, 1].to(device)
             dst = data.edge_index[1].to(device)
             feat_deg = torch.zeros(num_nodes, 6, device=device)
@@ -595,10 +597,9 @@ class BipartiteGraphGNN(nn.Module):
                     feat_deg[:, i].scatter_add_(0, dst[mask], torch.ones(mask.sum(), device=device))
             feat_deg = torch.log1p(feat_deg)
         else:
-            # Fallback for graphs without roles
+            # Simple 1-dim log-degree
             deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
             feat_deg = torch.log1p(deg).unsqueeze(-1).to(device)
-            feat_deg = F.pad(feat_deg, (0, 5))  # pad to 6 dims
 
         # 2. Positional Encoding
         if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
@@ -742,6 +743,7 @@ class FICE(nn.Module):
                  relation_skip_connection=True,
                  relation_attention=False,
                  relational=False,
+                 role_aware_degrees=True,
                  # Query GNN params
                  query_gnn_type='TripleModel',
                  query_message_func='gine',
@@ -785,6 +787,7 @@ class FICE(nn.Module):
                 dropout=relation_dropout, # Using relation_dropout as default for unified
                 relation_attention=relation_attention,
                 relational=relational,
+                role_aware_degrees=role_aware_degrees,
             )
 
         else:
@@ -799,6 +802,7 @@ class FICE(nn.Module):
                 dropout=relation_dropout,
                 relation_attention=relation_attention,
                 relational=relational,
+                role_aware_degrees=role_aware_degrees,
             )
 
             self.entity_model = EntityGNN(

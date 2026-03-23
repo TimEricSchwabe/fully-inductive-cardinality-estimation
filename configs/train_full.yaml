@@ -120,6 +120,7 @@ relation_gnn:
   dropout: 0.1
   relation_attention: False
   relational: True
+  role_aware_degrees: False
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
