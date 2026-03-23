@@ -250,12 +250,13 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu'):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu', embedding_space: str = 'euclidean'):
         super().__init__()
         self.feat_dim = feat_dim
         self.layer_norm = layer_norm
         self.skip_connection = skip_connection
         self.message_func = message_func
+        self.embedding_space = embedding_space
         self.use_graph_size = use_graph_size
         self.use_softplus = use_softplus
         self.num_layers = num_layers
@@ -309,10 +310,26 @@ class TripleModel(torch.nn.Module):
 
         self.dropout_layer = torch.nn.Dropout(p=dropout)
 
+    def _box_to_center_logwidth(self, features):
+        """Transform box [counts | min | max] → [counts | center | log_width]."""
+        half = (self.feat_dim - 3) // 2
+        counts = features[:, :3]
+        emb = features[:, 3:]
+        mins, maxs = emb[:, :half], emb[:, half:]
+        center = (mins + maxs) / 2
+        log_width = F.softplus(maxs - mins).log()
+        return torch.cat([counts, center, log_width], dim=1)
+
     def forward(self, batch, graph_size):
         x = batch.x
         edge_index = batch.edge_index
         edge_attr = batch.edge_attr
+
+        # Preprocess box embeddings: [min, max] → [center, log_width]
+        # Makes GINEConv addition geometrically meaningful
+        if self.embedding_space == 'box':
+            x = self._box_to_center_logwidth(x)
+            edge_attr = self._box_to_center_logwidth(edge_attr)
 
         for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
             x_input = x

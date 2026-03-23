@@ -846,6 +846,7 @@ class FICE(nn.Module):
                 num_layers=query_gnn_num_layers,
                 readout=query_gnn_readout,
                 message_activation=query_gnn_message_activation,
+                embedding_space=embedding_space,
             )
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
