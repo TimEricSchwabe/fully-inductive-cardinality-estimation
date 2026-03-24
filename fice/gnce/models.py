@@ -729,21 +729,19 @@ class SimpleSumGNN(torch.nn.Module):
 ############ BoxTripleModel ############
 
 class BoxLayerNorm(nn.Module):
-    """Normalizes center and log_width halves independently to preserve box structure."""
+    """LayerNorm in [center, log_width] space, then re-project to valid [min, max] box."""
     def __init__(self, half_dim):
         super().__init__()
-        self.center_norm = nn.LayerNorm(half_dim)
-        self.width_norm = nn.LayerNorm(half_dim)
+        self.norm = nn.LayerNorm(2 * half_dim)
 
     def forward(self, boxes):
         H = boxes.size(-1) // 2
         center = (boxes[:, :H] + boxes[:, H:]) / 2
-        half_width = F.softplus(boxes[:, H:] - boxes[:, :H]) / 2
-
-        center = self.center_norm(center)
-        half_width = F.softplus(self.width_norm(half_width))
-
-        return torch.cat([center - half_width, center + half_width], dim=-1)
+        log_width = F.softplus(boxes[:, H:] - boxes[:, :H]).clamp(min=1e-8).log()
+        normed = self.norm(torch.cat([center, log_width], dim=-1))
+        center, log_width = normed[:, :H], normed[:, H:]
+        half_w = F.softplus(log_width)
+        return torch.cat([center - half_w, center + half_w], dim=-1)
 
 
 class BoxConv(nn.Module):
@@ -751,7 +749,8 @@ class BoxConv(nn.Module):
 
     Per-edge: computes triple intersection box + geometric features.
     Aggregation: scatter_max(mins), scatter_min(maxes) = box intersection.
-    Node update: MLP on (self_box, agg_box, geometric_scalars) -> new box.
+    Node update: MLP on (self_box, agg_box, agg_edge_feat) -> new box.
+    Edge update: MLP on (src_center, dst_center, edge_center) -> new edge box.
     """
     def __init__(self, half_dim, hidden_dim=128):
         super().__init__()
@@ -765,10 +764,18 @@ class BoxConv(nn.Module):
             nn.Linear(hidden_dim, half_dim),
         )
 
-        # Node update MLP: combines self box + aggregated box -> new box
-        # Input: [self_center(H), self_log_width(H), agg_center(H), agg_log_width(H), edge_scalar_mean(1)]
+        # Node update MLP: combines self box + aggregated box + edge features -> new box
+        # Input: [self_center(H), self_log_width(H), agg_center(H), agg_log_width(H), agg_edge_feat(H)]
         self.node_mlp = nn.Sequential(
-            nn.Linear(4 * half_dim + 1, hidden_dim),
+            nn.Linear(5 * half_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 2 * half_dim),
+        )
+
+        # Edge update MLP: refine edge boxes based on updated node context
+        # Input: [src_center(H), dst_center(H), edge_center(H)] -> [2H]
+        self.edge_update = nn.Sequential(
+            nn.Linear(3 * half_dim, hidden_dim),
             nn.SiLU(),
             nn.Linear(hidden_dim, 2 * half_dim),
         )
@@ -806,7 +813,6 @@ class BoxConv(nn.Module):
         edge_feat = self.edge_mlp(geo)  # [E, H]
 
         # 5. Aggregate at target nodes via box intersection
-        # scatter_max/scatter_min return (values, argmax) tuples
         agg_min, _ = scatter_max(inter_min, dst, dim=0, dim_size=N)
         agg_max, _ = scatter_min(inter_max, dst, dim=0, dim_size=N)
         agg_feat = scatter_add(edge_feat, dst, dim=0, dim_size=N)
@@ -818,7 +824,7 @@ class BoxConv(nn.Module):
         agg_max = torch.where(has_msg.unsqueeze(-1), agg_max, boxes[:, H:])
         deg = deg.clamp(min=1)
 
-        # 6. Node update
+        # 6. Node update — full H-dim edge features (not squashed to scalar)
         agg_center = (agg_min + agg_max) / 2
         agg_log_width = self._safe_log_width(agg_max, agg_min)
         self_center = (boxes[:, :H] + boxes[:, H:]) / 2
@@ -827,22 +833,42 @@ class BoxConv(nn.Module):
         update_input = torch.cat([
             self_center, self_log_width,
             agg_center, agg_log_width,
-            (agg_feat / deg).sum(-1, keepdim=True),  # mean edge scalar
+            agg_feat / deg,  # [N, H] mean edge features (full dimensionality)
         ], dim=-1)
         raw_update = self.node_mlp(update_input)  # [N, 2H]
 
         # 7. Re-project to valid box
         new_center = raw_update[:, :H]
         new_half_width = F.softplus(raw_update[:, H:])
-        return torch.cat([new_center - new_half_width, new_center + new_half_width], dim=-1)
+        new_boxes = torch.cat([new_center - new_half_width, new_center + new_half_width], dim=-1)
+
+        # 8. Edge update: refine edge boxes using updated node context
+        src_center = (new_boxes[src, :H] + new_boxes[src, H:]) / 2
+        dst_center = (new_boxes[dst, :H] + new_boxes[dst, H:]) / 2
+        edge_center = (edge_boxes[:, :H] + edge_boxes[:, H:]) / 2
+        edge_raw = self.edge_update(torch.cat([src_center, dst_center, edge_center], dim=-1))
+        edge_c = edge_raw[:, :H]
+        edge_hw = F.softplus(edge_raw[:, H:])
+        new_edge_boxes = torch.cat([edge_c - edge_hw, edge_c + edge_hw], dim=-1)
+
+        return new_boxes, new_edge_boxes
 
 
-def _box_intersection(a, b):
-    """Element-wise box intersection: max(mins), min(maxes)."""
-    H = a.size(-1) // 2
-    inter_min = torch.max(a[:, :H], b[:, :H])
-    inter_max = torch.min(a[:, H:], b[:, H:])
-    return torch.cat([inter_min, inter_max], dim=-1)
+def _box_residual(boxes_new, boxes_old):
+    """Additive skip connection in [center, log_width] space, re-projected to valid [min, max] box.
+
+    center_out = center_new + center_old  (position correction)
+    log_width_out = log_width_new + log_width_old  (multiplicative width scaling)
+    """
+    H = boxes_new.size(-1) // 2
+    c_new = (boxes_new[:, :H] + boxes_new[:, H:]) / 2
+    lw_new = F.softplus(boxes_new[:, H:] - boxes_new[:, :H]).clamp(min=1e-8).log()
+    c_old = (boxes_old[:, :H] + boxes_old[:, H:]) / 2
+    lw_old = F.softplus(boxes_old[:, H:] - boxes_old[:, :H]).clamp(min=1e-8).log()
+    c = c_new + c_old
+    lw = lw_new + lw_old
+    half_w = F.softplus(lw)
+    return torch.cat([c - half_w, c + half_w], dim=-1)
 
 
 class BoxTripleModel(nn.Module):
@@ -889,11 +915,11 @@ class BoxTripleModel(nn.Module):
         # Box message passing
         for layer, norm in zip(self.layers, self.norms):
             boxes_in = boxes
-            boxes = layer(boxes, batch.edge_index, edge_boxes)
+            boxes, edge_boxes = layer(boxes, batch.edge_index, edge_boxes)
             boxes = norm(boxes)
             boxes = self.dropout(boxes)
-            # Skip connection: intersection with input (constraints only tighten)
-            boxes = _box_intersection(boxes, boxes_in)
+            # Skip connection: additive residual in [center, log_width] space
+            boxes = _box_residual(boxes, boxes_in)
 
         # Readout: extract geometric features per node
         mins, maxs = boxes[:, :H], boxes[:, H:]

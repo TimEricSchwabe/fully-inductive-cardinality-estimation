@@ -104,7 +104,7 @@ embedding_dim: 128
 random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
-embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian"
+embedding_space: "box" # choices are "euclidean" or "box" or "gaussian"
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
@@ -119,13 +119,13 @@ relation_gnn:
   skip_connection: True
   layer_norm: True
   dropout: 0.1
-  relation_attention: True
+  relation_attention: False
   relational: True
   role_aware_degrees: False
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
-  model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel"
+  model: "BoxTripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel"
   skip_connection: False
   readout: "sum" # choices are "sum" or "attention"
   layer_norm: True
