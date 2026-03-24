@@ -786,8 +786,14 @@ class FICE(nn.Module):
         self.entity_graph_mode = entity_graph_mode
 
 
+        if embedding_space == 'hyperbolic':
+            from fice.hyperbolic import HyperbolicBipartiteGraphGNN
+            BipartiteGNNCls = HyperbolicBipartiteGraphGNN
+        else:
+            BipartiteGNNCls = BipartiteGraphGNN
+
         if self.use_unified_bipartite_graph:
-            self.embedding_model = BipartiteGraphGNN(
+            self.embedding_model = BipartiteGNNCls(
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,
                 message_func=relation_message_func,
@@ -803,7 +809,7 @@ class FICE(nn.Module):
             )
 
         else:
-            self.relation_model = BipartiteGraphGNN(
+            self.relation_model = BipartiteGNNCls(
                 input_dim=self.vector_dim,
                 hidden_dims=self.hidden_dims_relnet,
                 message_func=relation_message_func,
@@ -830,8 +836,11 @@ class FICE(nn.Module):
                 embedding_space=embedding_space,
             )
 
+        # Hyperbolic BipartiteGNN outputs Euclidean tangent vectors — query GNN stays Euclidean
+        query_embedding_space = 'euclidean' if embedding_space == 'hyperbolic' else embedding_space
+
         if self.query_gnn_type == 'QueryCardinalityGNN':
-            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=embedding_space)
+            self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=query_embedding_space)
         elif self.query_gnn_type == 'TripleModel':
             use_gs = (prediction_mode != 'log-selectivity')
             use_sp = (prediction_mode == 'log-selectivity')
@@ -846,7 +855,7 @@ class FICE(nn.Module):
                 num_layers=query_gnn_num_layers,
                 readout=query_gnn_readout,
                 message_activation=query_gnn_message_activation,
-                embedding_space=embedding_space,
+                embedding_space=query_embedding_space,
             )
         elif self.query_gnn_type == 'BoxTripleModel':
             use_gs = (prediction_mode != 'log-selectivity')
