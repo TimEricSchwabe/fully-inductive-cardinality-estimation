@@ -69,7 +69,7 @@ class Config(BaseSettings):
     random_walk_pe: int = 0  # Random walk PE walk length (0 = disabled)
     gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
     prediction_mode: Literal['log-cardinality', 'log-selectivity'] = 'log-cardinality'
-    embedding_space: Literal['euclidean', 'box', 'gaussian', 'hyperbolic', 'hgcn'] = 'euclidean'
+    embedding_space: Literal['euclidean', 'box', 'gaussian', 'hyperbolic', 'hgcn', 'product'] = 'euclidean'
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()

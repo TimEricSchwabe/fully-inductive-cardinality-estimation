@@ -104,7 +104,7 @@ embedding_dim: 128
 random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
-embedding_space: "hgcn" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn"
+embedding_space: "product" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product"
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
@@ -120,7 +120,7 @@ relation_gnn:
   layer_norm: True
   dropout: 0.1
   relation_attention: False
-  relational: True
+  relational: True #whether to use relational GNN
   role_aware_degrees: False
 
 query_gnn:

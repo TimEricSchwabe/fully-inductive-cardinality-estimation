@@ -774,7 +774,7 @@ class FICE(nn.Module):
         self.vector_dim = vector_dim
         self.prediction_mode = prediction_mode
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
-        self.use_unified_bipartite_graph = (entity_graph_mode == "bipartite")
+        self.use_unified_bipartite_graph = (entity_graph_mode in ("bipartite", "factor"))
         # Use n_embedding_layers to create the list of hidden dimensions
         self.hidden_dims_relnet = self.hidden_dims_entitynet = [self.vector_dim] * n_embedding_layers
 
@@ -792,6 +792,9 @@ class FICE(nn.Module):
         elif embedding_space == 'hgcn':
             from fice.hyperbolic import HGCNBipartiteGraphGNN
             BipartiteGNNCls = HGCNBipartiteGraphGNN
+        elif embedding_space == 'product':
+            from fice.product_space import ProductSpaceBipartiteGraphGNN
+            BipartiteGNNCls = ProductSpaceBipartiteGraphGNN
         else:
             BipartiteGNNCls = BipartiteGraphGNN
 
@@ -840,7 +843,7 @@ class FICE(nn.Module):
             )
 
         # Hyperbolic BipartiteGNN outputs Euclidean tangent vectors — query GNN stays Euclidean
-        query_embedding_space = 'euclidean' if embedding_space in ('hyperbolic', 'hgcn') else embedding_space
+        query_embedding_space = 'euclidean' if embedding_space in ('hyperbolic', 'hgcn', 'product') else embedding_space
 
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=query_embedding_space)

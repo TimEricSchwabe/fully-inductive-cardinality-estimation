@@ -34,7 +34,7 @@ WANDB_CONFIG = {
 class WandbBackgroundLogger:
     """Sends wandb.log / wandb.log_artifact calls to a background thread."""
 
-    def __init__(self, max_retries=3, retry_delay=5):
+    def __init__(self, max_retries=30, retry_delay=5):
         self._queue = queue.Queue()
         self._max_retries = max_retries
         self._retry_delay = retry_delay
