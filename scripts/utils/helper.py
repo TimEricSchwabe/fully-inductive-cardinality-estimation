@@ -13,6 +13,8 @@ from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 import hashlib
 import time
+import queue
+import threading
 
 
 logger = logging.getLogger(__name__)
@@ -27,6 +29,63 @@ WANDB_CONFIG = {
     'notes': '',
     'mode': 'online',  # 'online', 'offline', or 'disabled'
 }
+
+
+class WandbBackgroundLogger:
+    """Sends wandb.log / wandb.log_artifact calls to a background thread."""
+
+    def __init__(self, max_retries=3, retry_delay=5):
+        self._queue = queue.Queue()
+        self._max_retries = max_retries
+        self._retry_delay = retry_delay
+        self._thread = threading.Thread(target=self._worker, daemon=True)
+        self._thread.start()
+
+    def log(self, data):
+        self._queue.put(("log", data))
+
+    def log_artifact(self, artifact):
+        self._queue.put(("artifact", artifact))
+
+    def _worker(self):
+        while True:
+            item = self._queue.get()
+            if item is None:
+                break
+            kind, payload = item
+            self._attempt(kind, payload)
+            self._queue.task_done()
+
+    def _attempt(self, kind, payload):
+        for attempt in range(self._max_retries):
+            try:
+                if kind == "log":
+                    wandb.log(payload)
+                elif kind == "artifact":
+                    wandb.log_artifact(payload)
+                return
+            except Exception as e:
+                logger.warning(
+                    f"wandb {kind} failed (attempt {attempt+1}/{self._max_retries}): {e}"
+                )
+                if attempt < self._max_retries - 1:
+                    time.sleep(self._retry_delay)
+        logger.error(f"wandb {kind} dropped after {self._max_retries} failed attempts")
+
+    def shutdown(self, timeout=30):
+        """Drain remaining items, then stop the worker."""
+        self._queue.put(None)
+        self._thread.join(timeout=timeout)
+        if self._thread.is_alive():
+            logger.warning("wandb background logger did not drain in time; some logs may be lost")
+
+
+_wandb_bg = WandbBackgroundLogger()
+
+
+def shutdown_wandb_logger(timeout=30):
+    """Drain the wandb background queue before exiting."""
+    _wandb_bg.shutdown(timeout=timeout)
 
 
 def initialize_wandb(config, run_dir):
@@ -79,40 +138,14 @@ def initialize_wandb(config, run_dir):
     return None
 
 
-def wandb_log_artifact_with_retry(artifact, max_retries=10000, initial_wait=5):
-    """
-    Logs a wandb artifact with exponential backoff retry logic.
-    Global helper to be used across the project.
-    """
-    wait_time = initial_wait
-    for attempt in range(max_retries):
-        try:
-            wandb.log_artifact(artifact)
-            if attempt > 0:
-                logger.info(f"WandB artifact upload succeeded after {attempt} retries.")
-            return # Success
-        except Exception as e:
-            logger.warning(f"WandB artifact upload failed (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time} seconds...")
-            time.sleep(wait_time)
-            # Cap wait time at 5 minutes
-            wait_time = min(wait_time * 2, 300)
-    
-    logger.error(f"Failed to upload artifact after {max_retries} attempts. Giving up.")
+def wandb_log_artifact_with_retry(artifact, **kwargs):
+    """Queue artifact for background wandb upload."""
+    _wandb_bg.log_artifact(artifact)
 
 
-def wandb_log_with_retry(data, max_retries=1000, initial_wait=2):
-    """
-    Logs metrics to wandb with retry logic.
-    """
-    wait_time = initial_wait
-    for attempt in range(max_retries):
-        try:
-            wandb.log(data)
-            return
-        except Exception as e:
-            logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
-            time.sleep(wait_time)
-            wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
+def wandb_log_with_retry(data, **kwargs):
+    """Queue metrics for background wandb logging."""
+    _wandb_bg.log(data)
 
 
 

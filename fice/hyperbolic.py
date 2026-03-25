@@ -311,3 +311,288 @@ class HyperbolicBipartiteGraphGNN(nn.Module):
 
         # No EmbeddingProjection — output is already Euclidean tangent vectors
         return out
+
+
+# ===========================================================================
+# Proper HGCN-style model: mobius_matvec, per-layer curvature, Möbius skip
+# ===========================================================================
+
+import geoopt
+
+
+class HGCNRelationalLayer(nn.Module):
+    """HGCN-style relational message passing layer on the Poincaré ball.
+
+    Per role: mobius_matvec(W_r, x_src) → logmap0 → add edge features → scatter_add.
+    Self-connection: mobius_matvec(W_self, x) → logmap0.
+    Combine in tangent space, expmap0 to output ball (possibly different curvature).
+    """
+
+    def __init__(self, in_dim, out_dim, edge_dim, num_roles=3, dropout=0.0):
+        super().__init__()
+        self.num_roles = num_roles
+        self.in_dim = in_dim
+        self.out_dim = out_dim
+
+        # Per-role weight matrices for mobius_matvec
+        self.W_roles = nn.ParameterList([
+            nn.Parameter(torch.empty(out_dim, in_dim))
+            for _ in range(num_roles)
+        ])
+        # Self-connection weight
+        self.W_self = nn.Parameter(torch.empty(out_dim, in_dim))
+        # Edge feature projection (shared across roles)
+        self.edge_proj = nn.Linear(edge_dim, out_dim)
+        # Bias in tangent space
+        self.bias = nn.Parameter(torch.zeros(out_dim))
+        self.dropout = dropout
+
+        # Xavier init
+        for W in list(self.W_roles) + [self.W_self]:
+            nn.init.xavier_uniform_(W)
+
+    def forward(self, x, edge_index, edge_attr, edge_roles, ball_in, ball_out):
+        """
+        x: (N, in_dim) on Poincaré ball with curvature ball_in.
+        Returns: (N, out_dim) on Poincaré ball with curvature ball_out.
+        """
+        N = x.size(0)
+
+        # Self-connection: hyperbolic linear → tangent space
+        x_self = ball_in.mobius_matvec(self.W_self, x)
+        x_self = ball_in.projx(x_self)
+        x_self_tan = ball_in.logmap0(x_self)
+
+        # Per-role message passing
+        agg = torch.zeros(N, self.out_dim, device=x.device)
+        for role_idx in range(self.num_roles):
+            role = role_idx + 1
+            mask = (edge_roles == role)
+            if not mask.any():
+                continue
+            src_idx = edge_index[0, mask]
+            dst_idx = edge_index[1, mask]
+
+            # Hyperbolic linear on source nodes
+            h_src = ball_in.mobius_matvec(self.W_roles[role_idx], x[src_idx])
+            h_src = ball_in.projx(h_src)
+            # To tangent space
+            h_tan = ball_in.logmap0(h_src)
+            # Add edge features (Euclidean in tangent space)
+            h_tan = h_tan + self.edge_proj(edge_attr[mask])
+            # Aggregate to destination
+            agg.scatter_add_(0, dst_idx.unsqueeze(-1).expand_as(h_tan), h_tan)
+
+        # Combine in tangent space: self + neighbors + bias
+        combined = x_self_tan + agg + self.bias
+        combined = F.dropout(combined, p=self.dropout, training=self.training)
+
+        # Map to output ball (possibly different curvature)
+        out = ball_out.expmap0(combined)
+        out = ball_out.projx(out)
+        return out
+
+
+class HGCNBipartiteGraphGNN(nn.Module):
+    """Proper HGCN-style BipartiteGraphGNN with Möbius operations.
+
+    Uses mobius_matvec for linear transforms, per-layer learnable curvature,
+    Möbius addition for skip connections, and only linear ops in tangent space
+    (non-linearity comes from exp/log maps).
+    """
+
+    def __init__(
+        self,
+        input_dim: int = 128,
+        hidden_dims: tuple = (128, 128),
+        message_func: str = 'gine',  # ignored — always uses HGCNRelationalLayer
+        conditioning: str = "false",
+        layer_norm: bool = False,
+        skip_connection: bool = True,
+        pe_dim: int = 0,
+        dropout: float = 0.0,
+        relation_attention: bool = False,
+        relational: bool = False,  # ignored — always relational
+        role_aware_degrees: bool = True,
+        embedding_space: str = 'hgcn',  # ignored
+    ):
+        super().__init__()
+        self.conditioning = conditioning
+        self.input_dim = input_dim
+        self.skip_connection = skip_connection
+        self.enable_layer_norm = layer_norm
+        self.dropout = dropout
+        self.role_aware_degrees = role_aware_degrees
+
+        # Edge encoder (Euclidean — encodes raw edge attrs before passing to layers)
+        self.edge_encoder = nn.Linear(2, input_dim)
+
+        # Node type embeddings for factor graph (entity=0, relation=1, triple=2)
+        self.node_type_emb = nn.Embedding(3, input_dim)
+
+        # Feature encoder (identical to BipartiteGraphGNN)
+        self.pe_dim = pe_dim
+        if conditioning == "random":
+            self.base_dim = input_dim
+        else:
+            self.base_dim = 1
+        self.degree_dim = 6 if role_aware_degrees else 1
+        self.raw_in_dim = self.base_dim + self.degree_dim + self.pe_dim + 1
+        self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
+        self.input_norm = nn.LayerNorm(input_dim)
+
+        # Per-layer Poincaré balls with learnable curvature
+        dims = (input_dim, *hidden_dims)
+        self.balls = nn.ModuleList([
+            geoopt.PoincareBall(c=1.0, learnable=True)
+            for _ in range(len(dims))
+        ])
+
+        # HGCN relational layers
+        self.layers = nn.ModuleList([
+            HGCNRelationalLayer(dims[i], dims[i + 1], edge_dim=input_dim, dropout=dropout)
+            for i in range(len(dims) - 1)
+        ])
+
+        # LayerNorms (applied in tangent space)
+        self.norms = nn.ModuleList(
+            [nn.LayerNorm(d) for d in hidden_dims] if self.enable_layer_norm else []
+        )
+
+        # Post-GNN relation self-attention
+        self.relation_attention = relation_attention
+        if relation_attention:
+            out_dim = hidden_dims[-1]
+            self.rel_attn_norm = nn.LayerNorm(out_dim)
+            self.rel_attn = nn.MultiheadAttention(out_dim, num_heads=4, batch_first=True)
+            self.rel_ffn_norm = nn.LayerNorm(out_dim)
+            self.rel_ffn = nn.Sequential(
+                nn.Linear(out_dim, out_dim * 2),
+                nn.SiLU(),
+                nn.Linear(out_dim * 2, out_dim),
+            )
+
+    def forward(self, data, batch=None):
+        assert len(data.edge_index) % 2 == 0, "Bipartite graph must have even number of edges."
+
+        if batch is None:
+            bs = 1
+            device = data.edge_index.device
+        else:
+            bs = batch.batch_size
+            device = batch.edge_index.device
+        num_nodes = data.num_nodes
+
+        # --- Structural Feature Construction (identical to BipartiteGraphGNN) ---
+        if self.role_aware_degrees and hasattr(data, 'edge_attr') and data.edge_attr is not None and data.edge_attr.shape[1] >= 2:
+            edge_roles = data.edge_attr[:, 1].to(device)
+            dst = data.edge_index[1].to(device)
+            feat_deg = torch.zeros(num_nodes, 6, device=device)
+            for i, role_val in enumerate([1, 2, 3, -1, -2, -3]):
+                mask = (edge_roles == role_val)
+                if mask.any():
+                    feat_deg[:, i].scatter_add_(0, dst[mask], torch.ones(mask.sum(), device=device))
+            feat_deg = torch.log1p(feat_deg)
+        else:
+            feat_deg = torch.log1p(degree(data.edge_index[0], num_nodes, dtype=torch.float)).unsqueeze(-1).to(device)
+
+        if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
+            pe = data.random_walk_pe.to(device)
+            if pe.shape[-1] > self.pe_dim:
+                pe = pe[:, :self.pe_dim]
+            elif pe.shape[-1] < self.pe_dim:
+                pe = torch.cat([pe, torch.zeros(pe.shape[0], self.pe_dim - pe.shape[-1], device=device)], dim=-1)
+            feat_pe = pe
+        else:
+            feat_pe = torch.zeros(num_nodes, self.pe_dim, device=device)
+
+        feat_seed = torch.zeros(bs, num_nodes, 1, device=device)
+        if self.conditioning != "false" and batch is not None:
+            valid_mask_n = batch.node_embedding_indices != -1
+            graph_idx_n = batch.batch[valid_mask_n]
+            node_idx_n = batch.node_embedding_indices[valid_mask_n]
+            feat_seed[graph_idx_n, node_idx_n] = 1.0
+            valid_mask_e = batch.edge_embedding_indices != -1
+            edge2graph_e = batch.batch[batch.edge_index[0]]
+            graph_idx_e = edge2graph_e[valid_mask_e]
+            rel_idx_e = batch.edge_embedding_indices[valid_mask_e]
+            feat_seed[graph_idx_e, rel_idx_e] = 1.0
+
+        if self.conditioning == 'random':
+            feat_base = torch.randn(bs, num_nodes, self.input_dim, device=device)
+        else:
+            feat_base = torch.ones(bs, num_nodes, 1, device=device) * 0.1
+
+        feat_deg = feat_deg.unsqueeze(0).expand(bs, -1, -1)
+        feat_pe = feat_pe.unsqueeze(0).expand(bs, -1, -1)
+        raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
+
+        h = self.feature_encoder(raw_h)
+        h = self.input_norm(h)
+        h = F.silu(h)
+        h = F.dropout(h, p=self.dropout, training=self.training)
+
+        # Node type embeddings
+        if hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
+            node_types = torch.zeros(num_nodes, dtype=torch.long, device=device)
+            n_ent = data.original_num_nodes
+            n_rel = data.original_num_relations
+            node_types[n_ent:n_ent + n_rel] = 1
+            node_types[n_ent + n_rel:] = 2
+            h = h + self.node_type_emb(node_types).unsqueeze(0)
+
+        # Batch edge indices
+        rel_edges = data.edge_index
+        offset = (torch.arange(bs, device=device) * num_nodes).view(-1, 1, 1)
+        edge_index = (rel_edges.unsqueeze(0) + offset).permute(1, 0, 2).reshape(2, -1)
+
+        # Encode edge attributes
+        edge_attr = self.edge_encoder(data.edge_attr.to(torch.float32).repeat(bs, 1))
+        edge_roles = data.edge_attr[:, 1].abs().long().repeat(bs)
+
+        x = h.view(bs * num_nodes, -1)
+
+        # --- HGCN MESSAGE PASSING ---
+        # Map to initial Poincaré ball
+        x = self.balls[0].expmap0(x)
+        x = self.balls[0].projx(x)
+
+        for i, layer in enumerate(self.layers):
+            x_prev = x  # for Möbius skip connection
+
+            x = layer(x, edge_index, edge_attr, edge_roles,
+                      ball_in=self.balls[i], ball_out=self.balls[i + 1])
+
+            # LayerNorm in tangent space
+            if self.enable_layer_norm and i < len(self.norms):
+                x_tan = self.balls[i + 1].logmap0(x)
+                x_tan = self.norms[i](x_tan)
+                x = self.balls[i + 1].expmap0(x_tan)
+                x = self.balls[i + 1].projx(x)
+
+            # Möbius skip connection
+            if self.skip_connection and x.shape == x_prev.shape:
+                # Transport x_prev from ball[i] to ball[i+1]
+                x_prev_transported = self.balls[i + 1].expmap0(self.balls[i].logmap0(x_prev))
+                x_prev_transported = self.balls[i + 1].projx(x_prev_transported)
+                x = self.balls[i + 1].mobius_add(x, x_prev_transported)
+                x = self.balls[i + 1].projx(x)
+
+        # Final: map to Euclidean tangent space
+        out = self.balls[-1].logmap0(x)
+        out = out.view(bs, num_nodes, -1)
+
+        # Post-GNN relation self-attention (Euclidean)
+        if self.relation_attention and hasattr(data, 'original_num_nodes') and hasattr(data, 'original_num_relations'):
+            rel_start = data.original_num_nodes
+            rel_end = rel_start + data.original_num_relations
+            if rel_end > rel_start:
+                rel_emb = out[:, rel_start:rel_end, :]
+                rel_normed = self.rel_attn_norm(rel_emb)
+                rel_attn_out, _ = self.rel_attn(rel_normed, rel_normed, rel_normed)
+                rel_emb = rel_emb + rel_attn_out
+                rel_normed2 = self.rel_ffn_norm(rel_emb)
+                rel_emb = rel_emb + self.rel_ffn(rel_normed2)
+                out = torch.cat([out[:, :rel_start, :], rel_emb, out[:, rel_end:, :]], dim=1)
+
+        return out

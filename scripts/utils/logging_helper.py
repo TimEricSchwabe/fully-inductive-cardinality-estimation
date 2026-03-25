@@ -12,9 +12,9 @@ import pandas as pd
 import torch
 import wandb
 from sklearn.decomposition import PCA
-import time
 from sklearn.manifold import TSNE
 import utils.metrics as metrics
+from utils.helper import wandb_log_with_retry
 
 
 
@@ -340,19 +340,7 @@ class MetricLogger:
         return overall_metrics
     
     def _wandb_log_retry(self, data):
-        max_retries = 1000
-        initial_wait = 2
-        wait_time = initial_wait
-        
-        for attempt in range(max_retries):
-            try:
-                wandb.log(data)
-                return
-            except Exception as e:
-                # Catching generic Exception is intentional here to survive network glitches
-                logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
+        wandb_log_with_retry(data)
 
     def log_embedding_similarity(self, embeddings, name: str, epoch: int, sample_size: int = 2000):
         """

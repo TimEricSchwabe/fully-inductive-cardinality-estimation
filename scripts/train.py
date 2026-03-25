@@ -48,6 +48,7 @@ from utils.helper import (
     analyze_vector_similarity,
     wandb_log_artifact_with_retry,
     wandb_log_with_retry,
+    shutdown_wandb_logger,
 )
 from utils.logging_helper import (
     TRAIN_METRICS_FILE_NAME,
@@ -1074,8 +1075,8 @@ def main():
             artifact.add_file(str(state.training_context.log_dir / 'final_test_metrics_per_query_set_name.csv'))
         
         wandb_log_artifact_with_retry(artifact)
-        
-        
+
+        shutdown_wandb_logger(timeout=60)
         wandb.finish()
         logger.info("Weights & Biases run finished")
 

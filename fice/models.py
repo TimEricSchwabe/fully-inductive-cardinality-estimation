@@ -789,6 +789,9 @@ class FICE(nn.Module):
         if embedding_space == 'hyperbolic':
             from fice.hyperbolic import HyperbolicBipartiteGraphGNN
             BipartiteGNNCls = HyperbolicBipartiteGraphGNN
+        elif embedding_space == 'hgcn':
+            from fice.hyperbolic import HGCNBipartiteGraphGNN
+            BipartiteGNNCls = HGCNBipartiteGraphGNN
         else:
             BipartiteGNNCls = BipartiteGraphGNN
 
@@ -837,7 +840,7 @@ class FICE(nn.Module):
             )
 
         # Hyperbolic BipartiteGNN outputs Euclidean tangent vectors — query GNN stays Euclidean
-        query_embedding_space = 'euclidean' if embedding_space == 'hyperbolic' else embedding_space
+        query_embedding_space = 'euclidean' if embedding_space in ('hyperbolic', 'hgcn') else embedding_space
 
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=query_embedding_space)

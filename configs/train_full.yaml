@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-hyperbolic"
+wandb_run_name: "RelationalGNN-HGCN"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -104,7 +104,7 @@ embedding_dim: 128
 random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
-embedding_space: "hyperbolic" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic"
+embedding_space: "hgcn" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn"
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
