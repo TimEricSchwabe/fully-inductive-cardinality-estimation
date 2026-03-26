@@ -871,6 +871,20 @@ class FICE(nn.Module):
                 use_graph_size=use_gs,
                 dropout=query_gnn_dropout,
             )
+        elif self.query_gnn_type == 'ProductTripleModel':
+            from fice.product_space import ProductTripleModel
+            use_gs = (prediction_mode != 'log-selectivity')
+            use_sp = (prediction_mode == 'log-selectivity')
+            self.query_gnn = ProductTripleModel(
+                feat_dim=self.vector_dim + 3,
+                layer_norm=query_layer_norm,
+                skip_connection=query_skip_connection,
+                dropout=query_gnn_dropout,
+                use_graph_size=use_gs,
+                use_softplus=use_sp,
+                num_layers=query_gnn_num_layers,
+                readout=query_gnn_readout,
+            )
         elif self.query_gnn_type == 'QueryTransformer':
             self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
         elif self.query_gnn_type == 'SimpleSumGNN':
@@ -1085,6 +1099,8 @@ class FICE(nn.Module):
             elif self.query_gnn_type == 'TripleModel':
                 querygnn_output = self.query_gnn(graph_size=graph_size, batch=batch)
             elif self.query_gnn_type == 'BoxTripleModel':
+                querygnn_output = self.query_gnn(graph_size=graph_size, batch=batch)
+            elif self.query_gnn_type == 'ProductTripleModel':
                 querygnn_output = self.query_gnn(graph_size=graph_size, batch=batch)
             elif self.query_gnn_type == 'QueryTransformer':
                 querygnn_output = self.query_gnn(batch=batch, N=graph_size)

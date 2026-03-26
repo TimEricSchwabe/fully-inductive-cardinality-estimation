@@ -1,18 +1,16 @@
-"""Product Space (Euclidean × Torus) BipartiteGraphGNN.
+"""Product Space (Euclidean × Torus) models for FICE.
 
-Splits embedding dimensions into a Euclidean branch (RelationalGINELayer)
-and a torus branch (rotation-based message passing). The torus component
-uses RotatE-style rotations per structural role, with forward/reverse
-directionality via conjugation.
-
-Output is flattened to real-valued [eucl || real || imag] so the existing
-query GNN works unchanged.
+Contains both the relation encoder (ProductSpaceBipartiteGraphGNN) and the
+query decoder (ProductTripleModel). Both split embedding dimensions into a
+Euclidean branch and a torus branch with rotation-based message passing.
 """
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch_geometric.utils import degree
+from torch_geometric.nn import GINEConv, global_add_pool
+from torch_geometric.nn.aggr import AttentionalAggregation
 
 from fice.models import RelationalGINELayer
 
@@ -300,3 +298,193 @@ class ProductSpaceBipartiteGraphGNN(nn.Module):
                 out = torch.cat([out[:, :rel_start, :], rel_emb, out[:, rel_end:, :]], dim=1)
 
         return out
+
+
+# =============================================================================
+# Product Space Query GNN
+# =============================================================================
+
+class TorusQueryLayer(nn.Module):
+    """Rotation-based message passing on the torus for query graphs.
+
+    Unlike TorusRelationalLayer (which has per-role learned rotations),
+    this layer uses the edge embedding's torus part AS the rotation.
+    This is the RotatE principle: the relation embedding defines how
+    a head entity is rotated to predict the tail entity.
+    """
+
+    def __init__(self, complex_dim):
+        super().__init__()
+        self.complex_dim = complex_dim
+        self.alpha = nn.Parameter(torch.tensor(0.5))
+
+    def forward(self, x_complex, edge_index, edge_complex):
+        """
+        x_complex: (N, complex_dim) complex64 — node embeddings on torus
+        edge_index: (2, E)
+        edge_complex: (E, complex_dim) complex64 — edge rotations
+        Returns: (N, complex_dim) complex64 — on torus
+        """
+        N = x_complex.size(0)
+        agg = torch.zeros(N, self.complex_dim, dtype=torch.cfloat, device=x_complex.device)
+        src, dst = edge_index
+
+        # Message: rotate source by edge rotation
+        msg = x_complex[src] * edge_complex
+        agg.scatter_add_(0, dst.unsqueeze(-1).expand_as(msg), msg)
+
+        # Project to torus
+        agg = agg / (agg.abs() + 1e-8)
+
+        # Alpha-blend self with aggregated
+        alpha = torch.sigmoid(self.alpha)
+        out = alpha * x_complex + (1 - alpha) * agg
+        return out / (out.abs() + 1e-8)
+
+
+class ProductTripleModel(nn.Module):
+    """Product space (Euclidean × Torus) query GNN.
+
+    Splits query features into Euclidean and torus parts. The Euclidean branch
+    uses GINEConv (same as TripleModel). The torus branch uses edge embeddings
+    as RotatE-style rotations. Both branches run in parallel, then flatten
+    and pool for the final cardinality prediction.
+
+    Drop-in replacement for TripleModel when using product space embeddings.
+    """
+
+    def __init__(
+        self,
+        feat_dim: int = 131,
+        layer_norm=True,
+        skip_connection=False,
+        dropout=0.0,
+        message_func='gine',
+        use_graph_size: bool = True,
+        use_softplus: bool = False,
+        num_layers: int = 2,
+        readout: str = 'sum',
+        message_activation: str = 'relu',
+        embedding_space: str = 'euclidean',  # unused
+    ):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.layer_norm = layer_norm
+        self.skip_connection = skip_connection
+        self.use_graph_size = use_graph_size
+        self.use_softplus = use_softplus
+
+        # Dimension split (must match ProductSpaceBipartiteGraphGNN)
+        embedding_dim = feat_dim - 3  # remove 3 count dims
+        self.complex_dim = embedding_dim // 8
+        self.eucl_dim = embedding_dim - 2 * self.complex_dim
+        self.eucl_feat_dim = 3 + self.eucl_dim  # counts go with Euclidean branch
+
+        readout_dim = 200
+
+        # --- Euclidean branch: GINEConv layers ---
+        def make_gine(in_dim, out_dim, edge_dim):
+            mlp = nn.Sequential(
+                nn.Linear(in_dim, out_dim),
+                nn.Dropout(p=dropout),
+                nn.SiLU(),
+                nn.Linear(out_dim, out_dim),
+                nn.Dropout(p=dropout),
+            )
+            return GINEConv(nn=mlp, edge_dim=edge_dim)
+
+        self.eucl_convs = nn.ModuleList()
+        self.eucl_norms = nn.ModuleList()
+        for i in range(num_layers):
+            self.eucl_convs.append(make_gine(self.eucl_feat_dim, self.eucl_feat_dim, self.eucl_feat_dim))
+            self.eucl_norms.append(nn.LayerNorm(self.eucl_feat_dim))
+
+        # --- Torus branch: TorusQueryLayer per layer ---
+        self.torus_layers = nn.ModuleList([
+            TorusQueryLayer(self.complex_dim) for _ in range(num_layers)
+        ])
+
+        # --- Readout ---
+        # Project flattened [eucl_feat | torus_real | torus_imag] → readout_dim
+        combined_dim = self.eucl_feat_dim + 2 * self.complex_dim  # = feat_dim
+        self.readout_proj = nn.Linear(combined_dim, readout_dim)
+
+        self.readout_type = readout
+        if readout == 'attention':
+            gate_nn = nn.Sequential(
+                nn.Linear(readout_dim, readout_dim // 2),
+                nn.SiLU(),
+                nn.Linear(readout_dim // 2, 1),
+            )
+            self.pool = AttentionalAggregation(gate_nn)
+
+        lin_input_dim = readout_dim + 1 if use_graph_size else readout_dim
+        self.lin = nn.Linear(lin_input_dim, 50)
+        self.lin2 = nn.Linear(50, 1)
+        self.dropout_layer = nn.Dropout(p=dropout)
+
+    def _split_features(self, features):
+        """Split [counts(3) | eucl(d_E) | torus_real(d_T) | torus_imag(d_T)] into branches."""
+        eucl = features[:, :3 + self.eucl_dim]  # counts + euclidean part
+        torus_real = features[:, 3 + self.eucl_dim:3 + self.eucl_dim + self.complex_dim]
+        torus_imag = features[:, 3 + self.eucl_dim + self.complex_dim:]
+        torus_complex = torch.complex(torus_real, torus_imag)
+        # Project to torus; replace zero-norm (unbound nodes/edges) with identity
+        norm = torus_complex.abs()
+        torus_complex = torch.where(
+            norm > 1e-8,
+            torus_complex / (norm + 1e-8),
+            torch.ones_like(torus_complex),
+        )
+        return eucl, torus_complex
+
+    def forward(self, batch, graph_size):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+
+        # Split node and edge features
+        x_eucl, x_torus = self._split_features(x)
+        e_eucl, e_torus = self._split_features(edge_attr)
+
+        # Message passing
+        for i in range(len(self.eucl_convs)):
+            x_eucl_prev = x_eucl
+            x_torus_prev = x_torus
+
+            # Euclidean branch
+            x_eucl = F.silu(self.eucl_convs[i](x_eucl, edge_index, edge_attr=e_eucl))
+            if self.layer_norm:
+                x_eucl = self.eucl_norms[i](x_eucl)
+
+            # Torus branch
+            x_torus = self.torus_layers[i](x_torus, edge_index, e_torus)
+
+            # Skip connections
+            if self.skip_connection:
+                x_eucl = x_eucl + x_eucl_prev
+                x_torus = x_torus * x_torus_prev
+                x_torus = x_torus / (x_torus.abs() + 1e-8)
+
+        # Flatten: [eucl | torus_real | torus_imag]
+        x = torch.cat([x_eucl, x_torus.real, x_torus.imag], dim=-1)
+        x = F.silu(self.readout_proj(x))
+
+        # Pool to graph level
+        if self.readout_type == 'attention':
+            x = self.pool(x, batch.batch)
+        else:
+            x = global_add_pool(x, batch.batch)
+
+        if self.use_graph_size:
+            log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
+            x = torch.cat([x, log_gs], dim=-1)
+
+        x = self.dropout_layer(x)
+        x = self.lin(x)
+        x = F.silu(x)
+        x = self.lin2(x)
+
+        if self.use_softplus:
+            return x.squeeze(-1)
+        return torch.abs(x.squeeze(-1))

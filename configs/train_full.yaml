@@ -84,7 +84,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-HGCN"
+wandb_run_name: "RelationalGNN-productfull"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -125,7 +125,7 @@ relation_gnn:
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
-  model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel"
+  model: "ProductTripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel"
   skip_connection: False
   readout: "sum" # choices are "sum" or "attention"
   layer_norm: True
