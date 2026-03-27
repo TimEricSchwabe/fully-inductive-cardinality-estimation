@@ -23,8 +23,8 @@ DATASET_NAME="hetionet"
 NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/hetionet/raw/hetionet.nt"
 
 # Query configurations: Python list of (size, count) tuples
-STAR_CONFIGS="[(2, 10), (3, 10), (4, 10), (5, 10)]"
-PATH_CONFIGS="[(2, 10), (3, 10), (4, 10), (5, 10)]"
+STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
+PATH_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
 
 # Sampling parameters
 P_PREDICATE="1.0"        # Star: predicate instantiation probability
