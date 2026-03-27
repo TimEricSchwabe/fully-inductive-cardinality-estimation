@@ -1,5 +1,51 @@
 import numpy as np
 import math
+import csv
+import os
+
+def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name, dataset_name, query_type):
+    """Write per-query predictions to a per-run CSV and append to the master CSV.
+
+    Values must already be in actual (non-log) scale.
+    Columns: stage, dataset_name, query_set_name, query_type, batch_idx, prediction, true_value
+    """
+    os.makedirs("statistics", exist_ok=True)
+
+    fieldnames = [
+        "stage", "dataset_name", "query_set_name", "query_type", "batch_idx",
+        "prediction", "true_value",
+    ]
+
+    rows = []
+    for idx, (pred, true) in enumerate(zip(predicted_cardinality, true_cardinality)):
+        pred_val = float(pred[0]) if hasattr(pred, "__len__") else float(pred)
+        true_val = float(true)
+        rows.append({
+            "stage": "eval",
+            "dataset_name": dataset_name,
+            "query_set_name": dataset_name,
+            "query_type": query_type,
+            "batch_idx": idx,
+            "prediction": pred_val,
+            "true_value": true_val,
+        })
+
+    per_run_path = "statistics/predictions-" + statistics_file_name + ".csv"
+    with open(per_run_path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    master_path = "statistics/all_predictions.csv"
+    write_header = not os.path.exists(master_path)
+    with open(master_path, "a", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        if write_header:
+            writer.writeheader()
+        writer.writerows(rows)
+
+    print(f"Predictions CSV: {per_run_path} ({len(rows)} rows appended to {master_path})")
+
 
 def create_csv_statistics_file(data,file_name,print_time):
     path_to_file = 'statistics/'+file_name+'.txt'
@@ -8,7 +54,8 @@ def create_csv_statistics_file(data,file_name,print_time):
         filehandle.write(print_time)
     print('file crated')
 
-def check_network_estimates(predicted_cardinality,true_cardinality,statistics_file_name,print_time, nb_outliers = 0):
+def check_network_estimates(predicted_cardinality, true_cardinality, statistics_file_name, print_time,
+                             nb_outliers=0, dataset_name="unknown", query_type="unknown"):
     correct_estimates = 0
     wrong_estimates = 0
     max_correct = 0
@@ -156,4 +203,5 @@ def check_network_estimates(predicted_cardinality,true_cardinality,statistics_fi
     print(final_print_statistics)
     if nb_outliers > 0:
         statistics_file_name += "_" + str(nb_outliers) + "outliers"
+    write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name, dataset_name, query_type)
     create_csv_statistics_file(final_print_statistics, statistics_file_name,print_time)
