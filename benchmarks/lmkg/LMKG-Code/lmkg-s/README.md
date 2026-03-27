@@ -36,10 +36,36 @@ evaluation and several bugs were fixed.
 - `allstar`/`alltypessizes` eval uses `eval_star_sizes` from the stats JSON (falls back to
   `star_sizes`) so held-out eval sets can differ from training sets.
 
+### `lmkgs.py` — continuous prediction logging
+
+**Per-epoch prediction logging**
+- The single `model.fit(epochs=N)` call is replaced with a per-epoch loop (`model.fit(epochs=1)`
+  repeated N times). After each epoch the model predicts on the training set, denormalizes the
+  outputs (scale-3: `exp(denormalize_MINMAX(preds))`), and calls `write_predictions_csv()` with
+  `stage="train"`, `epoch=epoch_num+1`, `append=True`.
+- `query_set_name` is derived from dataset name and base query type
+  (e.g. `wn18rr_v4_ind_star_queries`) and propagated to all logging calls.
+- `check_network_estimates()` at the end of training is called with `write_csv=False` to avoid
+  duplicating the final epoch's rows; for eval it keeps `write_csv=True`.
+
 ### `estimates_file.py`
 - Added `math.isfinite()` guard to skip non-finite prediction or true-cardinality values.
 - Safe average: `average_estimation_error` divided by `wrong_estimates` only when
   `wrong_estimates > 0` (prevents `ZeroDivisionError` when all estimates are correct).
+
+**Updated `write_predictions_csv()`**
+- New parameters: `query_set_name`, `epoch=1`, `stage="eval"`, `append=False`.
+- Added `"epoch"` column to the CSV fieldnames and each row.
+- Per-run file open mode is `"a"` when `append=True` (header written only once on first call),
+  `"w"` otherwise.
+- Signature of `check_network_estimates()` extended with `query_set_name`, `epoch`, `stage`,
+  and `write_csv=True`; all are forwarded to `write_predictions_csv()`.
+
+**Output files**
+- `statistics/predictions-{model_name}.csv` — per-run, all epochs × all queries for training;
+  single eval pass for eval. Columns: `stage, epoch, dataset_name, query_set_name, query_type,
+  batch_idx, prediction, true_value`.
+- `statistics/all_predictions.csv` — master file, accumulates across all runs.
 
 # Original README.md
 # LMKG-S

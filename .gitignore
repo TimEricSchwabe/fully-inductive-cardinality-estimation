@@ -2,6 +2,7 @@ __pycache__/
 
 # Virtual environment
 notebooks/fice_runs/
+notebooks/lmkg_runs/
 notebooks/gcare_runs/
 notebooks/gnce_runs/
 notebooks/plots_output/
@@ -58,3 +59,4 @@ logs/
 # macOS
 .DS_Store
 CLAUDE.md
+.claude/

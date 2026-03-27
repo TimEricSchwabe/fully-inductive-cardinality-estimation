@@ -1,6 +1,7 @@
 import argparse
 import glob
 import json
+import re
 import os, time, numpy as np
 from tensorflow.keras.models import Sequential, Model, load_model  # type: ignore[import-untyped]
 from tensorflow.keras.layers import Flatten, Dense, concatenate  # type: ignore[import-untyped]
@@ -179,7 +180,7 @@ with tf.device("GPU:0"):
 
 
 
-    def train_model(model, X, A, E, y, batch_size, epochs, matrix_mode, learning_rate = 1e-3, decay = False, use_q_loss = True, scale = 0, do_training = False, encoding_avg_time = 0):
+    def train_model(model, X, A, E, y, batch_size, epochs, matrix_mode, learning_rate = 1e-3, decay = False, use_q_loss = True, scale = 0, do_training = False, encoding_avg_time = 0, query_set_name = "unknown"):
         """
         Actual training of the model
         :param model: the created model for training
@@ -224,6 +225,7 @@ with tf.device("GPU:0"):
             y = scaler_y.transform(np.reshape(y, (-1, 1)))
         elif scale == 3:
             global MIN, MAX
+
             y = np.log(np.maximum(y, 1))
             if do_training:
                 MIN = float(np.min(y))
@@ -255,10 +257,10 @@ with tf.device("GPU:0"):
         start_time = time.time()
 
         if do_training:
-            model.fit(
-                x=x, y=y,
-                # validation_split=0.2,
-                epochs=epochs, batch_size=batch_size, shuffle = True)
+            for _ in range(epochs):
+                model.fit(
+                    x=x, y=y,
+                    epochs=1, batch_size=batch_size, shuffle=True)
 
 
         end_time = time.time() - start_time
@@ -267,7 +269,7 @@ with tf.device("GPU:0"):
 
         avg_time_prediction_ms = 0
         if do_training:
-            preds = model.predict(x)
+            preds = model.predict(x, verbose=0)
         else:
             total_pred = 0
             for _ in range(30):
@@ -319,7 +321,14 @@ with tf.device("GPU:0"):
 
         # accuracy statistics for the network
 
-        correct_estimate = check_network_estimates(preds, y, statistics_file_name = statistics_file_name, print_time=print_time, nb_outliers = nb_outliers)
+        correct_estimate = check_network_estimates(
+            preds, y, statistics_file_name=statistics_file_name, print_time=print_time,
+            nb_outliers=nb_outliers, dataset_name=dataset_name, query_type=query_type,
+            query_set_name=query_set_name,
+            epoch=epochs if do_training else 1,
+            stage="train" if do_training else "eval",
+            write_csv=not do_training,
+        )
         # correct_estimate = store_statistics.check_network_estimates(preds, y, statistics_file_name = statistics_file_name, print_time=print_time, nb_outliers = nb_outliers)
 
         return correct_estimate
@@ -456,6 +465,9 @@ if __name__ == '__main__':
     weights_name = model_name
     statistics_file_name = 'statistics-'+ model_name
 
+    _base_type = re.sub(r'_\d+$', '', query_type)  # "star_2" → "star"
+    query_set_name = f"{dataset_name}_{_base_type}_queries"
+
     if do_training:
         if "star" in query_type and 'all' not in query_type:
             print("entering for star queries")
@@ -575,7 +587,7 @@ if __name__ == '__main__':
 
 
     '''train the model'''
-    train_model(nn_model, X, A, E, y, batch_size, epochs, decay = decay, matrix_mode = matrix_mode, scale = scale, do_training=do_training, encoding_avg_time=avg_time_encoding_ms)
+    train_model(nn_model, X, A, E, y, batch_size, epochs, decay = decay, matrix_mode = matrix_mode, scale = scale, do_training=do_training, encoding_avg_time=avg_time_encoding_ms, query_set_name=query_set_name)
 
 
     '''storing of the model'''

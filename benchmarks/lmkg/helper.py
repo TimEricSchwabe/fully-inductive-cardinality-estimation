@@ -50,12 +50,12 @@ def classify_sizes(dataset_or_fold):
     return result
 
 
-def train_models(dataset, sizes_by_type, errors, *, epochs, batch_size, layers, neurons):
+def train_models(dataset, sizes_by_type, errors, *, epochs, batch_size, layers, neurons, run_id=None):
     """Train LMKG-S models for all query types and sizes."""
     type_to_qtype = {"combined": "combined", "star": "star", "path": "chain"}
     for type_key, qtype in type_to_qtype.items():
         for size in sizes_by_type[type_key]:
-            rc = run_lmkgs.run_lmkgs([
+            args = [
                 "--training",
                 "--dataset", dataset,
                 "--query-type", qtype,
@@ -64,7 +64,10 @@ def train_models(dataset, sizes_by_type, errors, *, epochs, batch_size, layers, 
                 "--batch-size", str(batch_size),
                 "--layers", str(layers),
                 "--neurons", str(neurons),
-            ])
+            ]
+            if run_id:
+                args += ["--run-id", run_id]
+            rc = run_lmkgs.run_lmkgs(args)
             if rc != 0:
                 msg = f"Training failed: dataset={dataset}, type={qtype}, size={size}"
                 print(f"WARNING: {msg}")
@@ -89,7 +92,7 @@ def _get_eval_test_mode(dataset, size):
     return None
 
 
-def eval_models(dataset, sizes_by_type, errors, *, layers, neurons):
+def eval_models(dataset, sizes_by_type, errors, *, layers, neurons, run_id=None):
     """Evaluate LMKG-S models for all query types and sizes."""
     type_to_qtype = {"combined": "combined", "star": "star", "path": "chain"}
     for type_key, qtype in type_to_qtype.items():
@@ -110,6 +113,8 @@ def eval_models(dataset, sizes_by_type, errors, *, layers, neurons):
                     errors.append(msg)
                     continue
                 args += ["--test-mode", test_mode]
+            if run_id:
+                args += ["--run-id", run_id]
             rc = run_lmkgs.run_lmkgs(args)
             if rc != 0:
                 msg = f"Eval failed: dataset={dataset}, type={qtype}, size={size}"
@@ -117,9 +122,9 @@ def eval_models(dataset, sizes_by_type, errors, *, layers, neurons):
                 errors.append(msg)
 
 
-def train_model_alltypessizes(fold_name, errors, *, epochs, batch_size, layers, neurons):
+def train_model_alltypessizes(fold_name, errors, *, epochs, batch_size, layers, neurons, run_id=None):
     """Train one model per fold using alltypessizes (all query types + sizes)."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--training",
         "--dataset", fold_name,
         "--query-type", "alltypessizes",
@@ -128,32 +133,38 @@ def train_model_alltypessizes(fold_name, errors, *, epochs, batch_size, layers, 
         "--batch-size", str(batch_size),
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Training failed: dataset={fold_name}, type=alltypessizes"
         print(f"WARNING: {msg}")
         errors.append(msg)
 
 
-def eval_model_alltypessizes(fold_name, errors, *, layers, neurons):
+def eval_model_alltypessizes(fold_name, errors, *, layers, neurons, run_id=None):
     """Evaluate the alltypessizes model for a fold."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--eval",
         "--dataset", fold_name,
         "--query-type", "alltypessizes",
         "--query-join", "2",
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Eval failed: dataset={fold_name}, type=alltypessizes"
         print(f"WARNING: {msg}")
         errors.append(msg)
 
 
-def train_model_star_only(fold_name, errors, *, epochs, batch_size, layers, neurons):
+def train_model_star_only(fold_name, errors, *, epochs, batch_size, layers, neurons, run_id=None):
     """Train on mega_no_{ds}_star fold (both types in training, star eval only)."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--training",
         "--dataset", fold_name + "_star",
         "--query-type", "alltypessizes",
@@ -162,16 +173,19 @@ def train_model_star_only(fold_name, errors, *, epochs, batch_size, layers, neur
         "--batch-size", str(batch_size),
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Training failed: dataset={fold_name}_star, type=alltypessizes"
         print(f"WARNING: {msg}")
         errors.append(msg)
 
 
-def train_model_path_only(fold_name, errors, *, epochs, batch_size, layers, neurons):
+def train_model_path_only(fold_name, errors, *, epochs, batch_size, layers, neurons, run_id=None):
     """Train on mega_no_{ds}_path fold (both types in training, path eval only)."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--training",
         "--dataset", fold_name + "_path",
         "--query-type", "alltypessizes",
@@ -180,39 +194,48 @@ def train_model_path_only(fold_name, errors, *, epochs, batch_size, layers, neur
         "--batch-size", str(batch_size),
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Training failed: dataset={fold_name}_path, type=alltypessizes"
         print(f"WARNING: {msg}")
         errors.append(msg)
 
 
-def eval_model_star_only(fold_name, errors, *, layers, neurons):
+def eval_model_star_only(fold_name, errors, *, layers, neurons, run_id=None):
     """Evaluate the alltypessizes model for the _star variant of a fold."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--eval",
         "--dataset", fold_name + "_star",
         "--query-type", "alltypessizes",
         "--query-join", "2",
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Eval failed: dataset={fold_name}_star, type=alltypessizes"
         print(f"WARNING: {msg}")
         errors.append(msg)
 
 
-def eval_model_path_only(fold_name, errors, *, layers, neurons):
+def eval_model_path_only(fold_name, errors, *, layers, neurons, run_id=None):
     """Evaluate the alltypessizes model for the _path variant of a fold."""
-    rc = run_lmkgs.run_lmkgs([
+    args = [
         "--eval",
         "--dataset", fold_name + "_path",
         "--query-type", "alltypessizes",
         "--query-join", "2",
         "--layers", str(layers),
         "--neurons", str(neurons),
-    ])
+    ]
+    if run_id:
+        args += ["--run-id", run_id]
+    rc = run_lmkgs.run_lmkgs(args)
     if rc != 0:
         msg = f"Eval failed: dataset={fold_name}_path, type=alltypessizes"
         print(f"WARNING: {msg}")

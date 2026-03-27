@@ -1,0 +1,17 @@
+# Python 3.8 is required. Other versions are not supported by TensorFlow 2.13.
+#
+# On macOS (Apple Silicon or Intel), replace tensorflow with tensorflow-macos:
+#   tensorflow-macos==2.13.0
+#
+# On Linux:
+#   tensorflow==2.13.0
+#
+# Install:
+#   pip install -r requirements.txt
+
+numpy==1.24.3
+scikit-learn==1.3.2
+scipy==1.10.1
+keras==2.13.1
+tensorflow==2.13.0
+pyyaml
