@@ -35,6 +35,14 @@ SAMPLING_METHOD="dfs"    # Path: "dfs", "bfs", or "random_walk"
 
 PORT=7001
 
+# QLever server settings
+QLEVER_MEMORY="32G"       # RAM for QLever query processing (-m flag)
+QLEVER_TIMEOUT="30"      # Server-side query timeout in seconds (-s flag)
+
+# Sampler HTTP timeout (seconds) for cardinality requests to QLever.
+# The defaults are too low (3s for path, 10s for star).
+SAMPLER_TIMEOUT=30
+
 # ---- Fixed paths (adjust to your cluster setup) ----
 PROJECT_DIR="/storage/home/tschwabe/fully-inductive-cardinality-estimation"
 SAMPLER_DIR="/storage/home/tschwabe/rdf-subgraph-sampler"
@@ -79,7 +87,8 @@ echo ""
 echo "=== Step 2: Starting QLever server on port $PORT ==="
 
 apptainer exec "$QLEVER_SIF" \
-    /qlever/qlever-server -i "$INDEX_DIR/$DATASET_NAME" -p "$PORT" -j 8 -m 4G \
+    /qlever/qlever-server -i "$INDEX_DIR/$DATASET_NAME" -p "$PORT" -j 8 \
+    -m "$QLEVER_MEMORY" -s "$QLEVER_TIMEOUT" \
     > "$INDEX_DIR/server.log" 2>&1 &
 SERVER_PID=$!
 echo "QLever server PID: $SERVER_PID"
@@ -111,9 +120,24 @@ if [ $SERVER_READY -eq 0 ]; then
     exit 1
 fi
 
-# ---- Step 3: Generate star queries ----
+# ---- Step 3: Patch sampler timeouts ----
 echo ""
-echo "=== Step 3: Generating star queries ==="
+echo "=== Step 3: Patching sampler timeouts to ${SAMPLER_TIMEOUT}s ==="
+cd "$SAMPLER_DIR"
+
+# Star sampler: CARDINALITY_TIMEOUT (default 10s)
+sed -i "s/^CARDINALITY_TIMEOUT = .*/CARDINALITY_TIMEOUT = ${SAMPLER_TIMEOUT}/" \
+    samplers/star_query_generator_in_memory.py
+
+# Path sampler: FINAL_QUERY_TIMEOUT (default 3s)
+sed -i "s/^FINAL_QUERY_TIMEOUT = .*/FINAL_QUERY_TIMEOUT = ${SAMPLER_TIMEOUT}/" \
+    samplers/path_query_generator_in_memory.py
+
+echo "Patched timeouts."
+
+# ---- Step 4: Generate star queries ----
+echo ""
+echo "=== Step 4: Generating star queries ==="
 mkdir -p "$STAR_OUTPUT_DIR"
 cd "$SAMPLER_DIR"
 
@@ -137,14 +161,14 @@ PYEOF
 python batch_sampler.py
 echo "Star query generation exit code: $?"
 
-# Move star query output files
-mv ${DATASET_NAME}_stars_*.json "$STAR_OUTPUT_DIR/" 2>/dev/null
+# Move star query output files (filename format: {dataset}_SIZE_{n}_stars_...)
+mv ${DATASET_NAME}*stars*.json "$STAR_OUTPUT_DIR/" 2>/dev/null
 echo "Star query files moved to: $STAR_OUTPUT_DIR/"
 ls -la "$STAR_OUTPUT_DIR/"
 
-# ---- Step 4: Generate path queries ----
+# ---- Step 5: Generate path queries ----
 echo ""
-echo "=== Step 4: Generating path queries ==="
+echo "=== Step 5: Generating path queries ==="
 mkdir -p "$PATH_OUTPUT_DIR"
 
 cat > batch_sampler_config.py << PYEOF
@@ -167,8 +191,8 @@ PYEOF
 python batch_sampler.py
 echo "Path query generation exit code: $?"
 
-# Move path query output files
-mv ${DATASET_NAME}_path_*.json "$PATH_OUTPUT_DIR/" 2>/dev/null
+# Move path query output files (filename format: {dataset}_SIZE_{n}_path_...)
+mv ${DATASET_NAME}*path*.json "$PATH_OUTPUT_DIR/" 2>/dev/null
 echo "Path query files moved to: $PATH_OUTPUT_DIR/"
 ls -la "$PATH_OUTPUT_DIR/"
 
