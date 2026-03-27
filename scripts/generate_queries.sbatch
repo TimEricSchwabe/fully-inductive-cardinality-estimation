@@ -37,7 +37,7 @@ PORT=7001
 
 # QLever server settings
 QLEVER_MEMORY="32G"       # RAM for QLever query processing (-m flag)
-QLEVER_TIMEOUT="30"      # Server-side query timeout in seconds (-s flag)
+QLEVER_TIMEOUT="300s"    # Server-side query timeout (-s flag, needs unit: s/min/h)
 
 # Sampler HTTP timeout (seconds) for cardinality requests to QLever.
 # The defaults are too low (3s for path, 10s for star).
