@@ -2,6 +2,7 @@ __pycache__/
 
 # Virtual environment
 notebooks/fice_runs/
+notebooks/lmkg_runs/
 notebooks/gcare_runs/
 notebooks/gnce_runs/
 notebooks/plots_output/
@@ -12,6 +13,10 @@ graphen.zip
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
 benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
 benchmarks/neuso/NeuSO/
+benchmarks/lmkg/LMKG-Code/lmkg-s/final_datasets/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/weights/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/statistics/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/models/*
 tensorboard_log/
 venv/
 venv*/
@@ -53,3 +58,5 @@ logs/
 
 # macOS
 .DS_Store
+CLAUDE.md
+.claude/

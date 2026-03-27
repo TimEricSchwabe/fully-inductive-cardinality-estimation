@@ -168,6 +168,20 @@ def process_gnce(path: Union[Path, str], dataset: str, type: str , epoch: int = 
 
 
 
+def process_lmkg(path: Union[Path, str], lmkg_name: str, q_type: str):
+    if isinstance(path, str):
+        path = Path(path)
+    pattern = f"*mega_no_{lmkg_name}_{q_type}*.csv"
+    matches = list(path.glob(pattern))
+    if not matches:
+        raise FileNotFoundError(f"No LMKG file found matching {pattern} in {path}")
+    data = pd.read_csv(matches[0])
+    data['q_error'] = q_error(data['true_value'].to_numpy(), data['prediction'].to_numpy())
+    data = data[['q_error', 'prediction', 'true_value']]
+    data['method'] = 'lmkgs'
+    return data
+
+
 def process_fice(path: Union[Path, str], dataset: str, type: str , epoch: int = None):
     if isinstance(path, str):
         path = Path(path)
