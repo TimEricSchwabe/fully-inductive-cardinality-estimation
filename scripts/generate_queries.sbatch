@@ -158,13 +158,13 @@ P_START_END = ${P_START_END}
 QUERY_CONFIGURATIONS = ${STAR_CONFIGS}
 PYEOF
 
-python batch_sampler.py
-echo "Star query generation exit code: $?"
+#python batch_sampler.py
+#echo "Star query generation exit code: $?"
 
 # Move star query output files (filename format: {dataset}_SIZE_{n}_stars_...)
-mv ${DATASET_NAME}*stars*.json "$STAR_OUTPUT_DIR/" 2>/dev/null
-echo "Star query files moved to: $STAR_OUTPUT_DIR/"
-ls -la "$STAR_OUTPUT_DIR/"
+#mv ${DATASET_NAME}*stars*.json "$STAR_OUTPUT_DIR/" 2>/dev/null
+#echo "Star query files moved to: $STAR_OUTPUT_DIR/"
+#ls -la "$STAR_OUTPUT_DIR/"
 
 # ---- Step 5: Generate path queries ----
 echo ""
