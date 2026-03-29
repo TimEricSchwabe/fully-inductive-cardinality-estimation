@@ -24,8 +24,8 @@ GENERATE_PATH=false
 GENERATE_COMPLEX=true
 
 # ---- User-configurable variables (edit per dataset) ----
-DATASET_NAME="wikidata"
-NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/wikidata/raw/59320361"
+DATASET_NAME="swdf"
+NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/swdf/raw/59320634"
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
@@ -39,7 +39,7 @@ P_NODE="0.0"             # Path/Complex: intermediate node instantiation probabi
 P_START_END="0.3"        # Path: start/end node instantiation probability
 SAMPLING_METHOD="dfs"    # Path: "dfs", "bfs", or "random_walk"
 
-PORT=7002
+PORT=7003
 
 # QLever server settings
 QLEVER_MEMORY="64G"       # RAM for QLever query processing (-m flag)
