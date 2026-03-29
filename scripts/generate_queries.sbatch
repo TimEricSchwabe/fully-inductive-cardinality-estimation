@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH -J query_gen
 #SBATCH -t 24:00:00
-#SBATCH -n 16
+#SBATCH -n 32
 
 # ============================================================
 # Query Generation Job
@@ -19,8 +19,8 @@
 # ============================================================
 
 # ---- User-configurable variables (edit per dataset) ----
-DATASET_NAME="hetionet"
-NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/hetionet/raw/hetionet.nt"
+DATASET_NAME="yago"
+NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/yago/raw/Yago.nt"
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
@@ -36,8 +36,8 @@ SAMPLING_METHOD="dfs"    # Path: "dfs", "bfs", or "random_walk"
 PORT=7001
 
 # QLever server settings
-QLEVER_MEMORY="32G"       # RAM for QLever query processing (-m flag)
-QLEVER_TIMEOUT="300s"    # Server-side query timeout (-s flag, needs unit: s/min/h)
+QLEVER_MEMORY="64G"       # RAM for QLever query processing (-m flag)
+QLEVER_TIMEOUT="30s"    # Server-side query timeout (-s flag, needs unit: s/min/h)
 
 # Sampler HTTP timeout (seconds) for cardinality requests to QLever.
 # The defaults are too low (3s for path, 10s for star).
@@ -87,7 +87,7 @@ echo ""
 echo "=== Step 2: Starting QLever server on port $PORT ==="
 
 apptainer exec "$QLEVER_SIF" \
-    /qlever/qlever-server -i "$INDEX_DIR/$DATASET_NAME" -p "$PORT" -j 8 \
+    /qlever/qlever-server -i "$INDEX_DIR/$DATASET_NAME" -p "$PORT" -j 16 \
     -m "$QLEVER_MEMORY" -s "$QLEVER_TIMEOUT" \
     > "$INDEX_DIR/server.log" 2>&1 &
 SERVER_PID=$!
