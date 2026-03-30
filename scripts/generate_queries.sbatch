@@ -20,7 +20,7 @@
 
 # ---- Generation flags (set to true/false) ----
 GENERATE_STAR=false
-GENERATE_PATH=false
+GENERATE_PATH=true
 GENERATE_COMPLEX=true
 
 # ---- User-configurable variables (edit per dataset) ----
@@ -29,7 +29,7 @@ NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/heti
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
-PATH_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
+PATH_CONFIGS="[(2, 5000), (3, 5000), (4, 5000), (5, 5000), (6, 5000), (7, 5000), (8, 5000), (9, 5000), (10, 5000)]"
 COMPLEX_N_QUERIES=5000  # Number of queries per complex shape
 
 # Sampling parameters
