@@ -19,13 +19,13 @@
 # ============================================================
 
 # ---- Generation flags (set to true/false) ----
-GENERATE_STAR=true
+GENERATE_STAR=false
 GENERATE_PATH=false
 GENERATE_COMPLEX=true
 
 # ---- User-configurable variables (edit per dataset) ----
-DATASET_NAME="yago"
-NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/yago/raw/Yago.nt"
+DATASET_NAME="dbpedia100k"
+NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/dbpedia100k/raw/59622674"
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
@@ -40,7 +40,7 @@ P_START_END="0.3"        # Path: start/end node instantiation probability
 SAMPLING_METHOD="dfs"    # Path: "dfs", "bfs", or "random_walk"
 DEDUP_METHOD="wl"
 
-PORT=7004
+PORT=7005
 
 # QLever server settings
 QLEVER_MEMORY="64G"       # RAM for QLever query processing (-m flag)
