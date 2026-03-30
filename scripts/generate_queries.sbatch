@@ -19,13 +19,13 @@
 # ============================================================
 
 # ---- Generation flags (set to true/false) ----
-GENERATE_STAR=false
+GENERATE_STAR=true
 GENERATE_PATH=false
 GENERATE_COMPLEX=true
 
 # ---- User-configurable variables (edit per dataset) ----
-DATASET_NAME="fb237_v4"
-NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/fb237_v4/raw/59621618"
+DATASET_NAME="yago"
+NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/yago/raw/Yago.nt"
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
@@ -38,6 +38,7 @@ P_EDGE="1.0"             # Path/Complex: edge instantiation probability
 P_NODE="0.0"             # Path/Complex: intermediate node instantiation probability
 P_START_END="0.3"        # Path: start/end node instantiation probability
 SAMPLING_METHOD="dfs"    # Path: "dfs", "bfs", or "random_walk"
+DEDUP_METHOD="wl"
 
 PORT=7004
 
@@ -177,6 +178,7 @@ P_EDGE = ${P_EDGE}
 P_NODE = ${P_NODE}
 P_START_END = ${P_START_END}
 QUERY_CONFIGURATIONS = ${STAR_CONFIGS}
+DEDUP_METHOD = "${DEDUP_METHOD}"
 PYEOF
 
     python batch_sampler.py
@@ -213,6 +215,7 @@ P_EDGE = ${P_EDGE}
 P_NODE = ${P_NODE}
 P_START_END = ${P_START_END}
 QUERY_CONFIGURATIONS = ${PATH_CONFIGS}
+DEDUP_METHOD = "${DEDUP_METHOD}"
 PYEOF
 
     python batch_sampler.py
@@ -258,6 +261,7 @@ P_NODE = ${P_NODE}
 P_START_END = ${P_START_END}
 QUERY_SHAPE = "${SHAPE_DEF}"
 QUERY_CONFIGURATIONS = [(1, ${COMPLEX_N_QUERIES})]
+DEDUP_METHOD = "${DEDUP_METHOD}"
 PYEOF
 
         python batch_sampler.py
