@@ -24,8 +24,8 @@ GENERATE_PATH=false
 GENERATE_COMPLEX=true
 
 # ---- User-configurable variables (edit per dataset) ----
-DATASET_NAME="swdf"
-NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/swdf/raw/59320634"
+DATASET_NAME="lubm"
+NT_FILE="/storage/home/tschwabe/fully-inductive-cardinality-estimation/data/lubm/raw/59410577"
 
 # Query configurations: Python list of (size, count) tuples
 STAR_CONFIGS="[(2, 1000), (3, 1000), (4, 1000), (5, 1000), (6, 1000), (7, 1000), (8, 1000), (9, 1000), (10, 1000)]"
