@@ -1,15 +1,44 @@
-# Example YAML config for local training (updated to new Config/DataConfig schema)
+# Full training config with all datasets and complex query types
 data:
+  # === LUBM (train-val) ===
   - dataset: "LUBM"
     queries: "LUBMQueries"
     batch_size: &bs 32
     num_queries: &nq 20000
-    type: "train-val" # current unseen validation data
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  # lubm_cycle_queries: EMPTY
+
+  # === SWDF (train-val) ===
   - dataset: "SWDF"
     queries: "SWDF_Star_Queries"
     batch_size: *bs
@@ -20,6 +49,38 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+
+  # === Wikidata (train-val) ===
   - dataset: "Wikidata"
     queries: "WIKIDATA_Star_Queries"
     batch_size: *bs
@@ -30,6 +91,38 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+
+  # === fb237_v4 (train-val) ===
   - dataset: "fb237_v4"
     queries: "fb237_v4_star_queries"
     batch_size: *bs
@@ -40,26 +133,38 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_star_queries"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
-  - dataset: "fb237_v4_ind"
-    queries: "fb237_v4_ind_path_queries"
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_star_queries"
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
-  - dataset: "dbpedia100k"
-    queries: "dbpedia100k_path_queries"
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+
+  # === wn18rr_v4 (train-val) ===
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_star_queries"
     batch_size: *bs
@@ -70,6 +175,153 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  # wn18rr_v4_binary_tree_queries: EMPTY
+  # wn18rr_v4_path_star_ends_queries: EMPTY
+
+  # === Yago (train-val) ===
+  - dataset: "yago"
+    queries: "yago_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "yago"
+    queries: "yago_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  # yago complex queries: ALL EMPTY
+
+  # === AIDS (train-val) ===
+  - dataset: "aids"
+    queries: "aids_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_binary_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+
+  # === Hetionet (train-val) ===
+  - dataset: "hetionet"
+    queries: "hetionet_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "hetionet"
+    queries: "hetionet_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  # hetionet_flower_queries: EMPTY
+
+  # === CodexL (train-val) ===
+  - dataset: "codex_l"
+    queries: "codex_l_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_binary_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_path_star_ends_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  # codex_l_snowflake_queries: NOT GENERATED
+
+  # === fb237_v4_ind (validation) ===
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "fb237_v4_ind"
+    queries: "fb237_v4_ind_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+
+  # === wn18rr_v4_ind (validation) ===
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
     batch_size: *bs
@@ -77,6 +329,48 @@ data:
     type: "validation"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+
+  # === dbpedia100k (validation) ===
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_binary_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
     type: "validation"

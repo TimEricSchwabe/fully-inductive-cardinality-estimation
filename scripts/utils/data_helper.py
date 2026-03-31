@@ -26,28 +26,119 @@ DATASET_REGISTRY = {
     "wn18rr_v4": datasets.WN18RR_v4,
     "wn18rr_v4_ind": datasets.WN18RR_v4_ind,
     "dbpedia100k": datasets.DBpedia100k,
+    "yago": datasets.Yago,
+    "aids": datasets.AIDS,
+    "hetionet": datasets.Hetionet,
+    "codex_l": datasets.CodexL,
 }
 
 QUERY_REGISTRY = {
+    # LUBM
     "LUBMQueries": datasets.LUBMQueries,
-    "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
-    "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
-    "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
-
-    "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
-    "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
-    "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
-    "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
-
-    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
-    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
-    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
-    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
-
-    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
     "lubm_path_queries": datasets.lubm_path_queries,
+    "lubm_cycle_queries": datasets.lubm_cycle_queries,
+    "lubm_diamond_queries": datasets.lubm_diamond_queries,
+    "lubm_flower_queries": datasets.lubm_flower_queries,
+    "lubm_snowflake_queries": datasets.lubm_snowflake_queries,
+    "lubm_tree_queries": datasets.lubm_tree_queries,
+    "lubm_path_star_ends_queries": datasets.lubm_path_star_ends_queries,
+
+    # SWDF
+    "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
     "swdf_path_queries": datasets.swdf_path_queries,
+    "swdf_cycle_queries": datasets.swdf_cycle_queries,
+    "swdf_diamond_queries": datasets.swdf_diamond_queries,
+    "swdf_flower_queries": datasets.swdf_flower_queries,
+    "swdf_snowflake_queries": datasets.swdf_snowflake_queries,
+    "swdf_tree_queries": datasets.swdf_tree_queries,
+    "swdf_path_star_ends_queries": datasets.swdf_path_star_ends_queries,
+
+    # Wikidata
+    "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
     "wikidata_path_queries": datasets.wikidata_path_queries,
+    "wikidata_cycle_queries": datasets.wikidata_cycle_queries,
+    "wikidata_diamond_queries": datasets.wikidata_diamond_queries,
+    "wikidata_flower_queries": datasets.wikidata_flower_queries,
+    "wikidata_snowflake_queries": datasets.wikidata_snowflake_queries,
+    "wikidata_tree_queries": datasets.wikidata_tree_queries,
+    "wikidata_path_star_ends_queries": datasets.wikidata_path_star_ends_queries,
+
+    # fb237_v4
+    "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
+    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
+    "fb237_v4_cycle_queries": datasets.fb237_v4_cycle_queries,
+    "fb237_v4_diamond_queries": datasets.fb237_v4_diamond_queries,
+    "fb237_v4_flower_queries": datasets.fb237_v4_flower_queries,
+    "fb237_v4_snowflake_queries": datasets.fb237_v4_snowflake_queries,
+    "fb237_v4_tree_queries": datasets.fb237_v4_tree_queries,
+    "fb237_v4_path_star_ends_queries": datasets.fb237_v4_path_star_ends_queries,
+
+    # fb237_v4_ind
+    "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
+
+    # wn18rr_v4
+    "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
+    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
+    "wn18rr_v4_cycle_queries": datasets.wn18rr_v4_cycle_queries,
+    "wn18rr_v4_diamond_queries": datasets.wn18rr_v4_diamond_queries,
+    "wn18rr_v4_flower_queries": datasets.wn18rr_v4_flower_queries,
+    "wn18rr_v4_snowflake_queries": datasets.wn18rr_v4_snowflake_queries,
+    "wn18rr_v4_tree_queries": datasets.wn18rr_v4_tree_queries,
+
+    # wn18rr_v4_ind
+    "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
+
+    # dbpedia100k
+    "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
+    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
+    "dbpedia100k_cycle_queries": datasets.dbpedia100k_cycle_queries,
+    "dbpedia100k_diamond_queries": datasets.dbpedia100k_diamond_queries,
+    "dbpedia100k_flower_queries": datasets.dbpedia100k_flower_queries,
+    "dbpedia100k_snowflake_queries": datasets.dbpedia100k_snowflake_queries,
+    "dbpedia100k_binary_tree_queries": datasets.dbpedia100k_binary_tree_queries,
+    "dbpedia100k_path_star_ends_queries": datasets.dbpedia100k_path_star_ends_queries,
+
+    # Yago
+    "yago_star_queries": datasets.yago_star_queries,
+    "yago_path_queries": datasets.yago_path_queries,
+    "yago_cycle_queries": datasets.yago_cycle_queries,
+    "yago_diamond_queries": datasets.yago_diamond_queries,
+    "yago_flower_queries": datasets.yago_flower_queries,
+    "yago_snowflake_queries": datasets.yago_snowflake_queries,
+    "yago_binary_tree_queries": datasets.yago_binary_tree_queries,
+    "yago_path_star_ends_queries": datasets.yago_path_star_ends_queries,
+
+    # AIDS
+    "aids_star_queries": datasets.aids_star_queries,
+    "aids_path_queries": datasets.aids_path_queries,
+    "aids_cycle_queries": datasets.aids_cycle_queries,
+    "aids_diamond_queries": datasets.aids_diamond_queries,
+    "aids_flower_queries": datasets.aids_flower_queries,
+    "aids_snowflake_queries": datasets.aids_snowflake_queries,
+    "aids_binary_tree_queries": datasets.aids_binary_tree_queries,
+    "aids_path_star_ends_queries": datasets.aids_path_star_ends_queries,
+
+    # Hetionet
+    "hetionet_star_queries": datasets.hetionet_star_queries,
+    "hetionet_path_queries": datasets.hetionet_path_queries,
+    "hetionet_cycle_queries": datasets.hetionet_cycle_queries,
+    "hetionet_diamond_queries": datasets.hetionet_diamond_queries,
+    "hetionet_flower_queries": datasets.hetionet_flower_queries,
+    "hetionet_snowflake_queries": datasets.hetionet_snowflake_queries,
+    "hetionet_binary_tree_queries": datasets.hetionet_binary_tree_queries,
+    "hetionet_path_star_ends_queries": datasets.hetionet_path_star_ends_queries,
+
+    # CodexL
+    "codex_l_star_queries": datasets.codex_l_star_queries,
+    "codex_l_path_queries": datasets.codex_l_path_queries,
+    "codex_l_cycle_queries": datasets.codex_l_cycle_queries,
+    "codex_l_diamond_queries": datasets.codex_l_diamond_queries,
+    "codex_l_flower_queries": datasets.codex_l_flower_queries,
+    "codex_l_snowflake_queries": datasets.codex_l_snowflake_queries,
+    "codex_l_binary_tree_queries": datasets.codex_l_binary_tree_queries,
+    "codex_l_path_star_ends_queries": datasets.codex_l_path_star_ends_queries,
 }
 
 

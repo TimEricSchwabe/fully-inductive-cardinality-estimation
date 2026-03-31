@@ -4,7 +4,7 @@ from urllib.parse import urlparse
 import torch
 import json
 from torch_geometric.data import Data, InMemoryDataset
-from typing import Optional, Dict, List, Tuple, Union, Literal
+from typing import Optional, Dict, List, Tuple, Union
 import requests
 from tqdm import tqdm as _tqdm
 
@@ -288,7 +288,7 @@ class NTQueries(InMemoryDataset):
         transform=None,
         pre_transform=None,
         dim: int = 128,
-        type: Literal["star", "path"] = "star",
+        type: str = "star",
     ):
         self.url = url
         self.dim = dim
@@ -639,6 +639,125 @@ class lubm_path_queries(NTQueries):
             **kwargs
         )
 
+class lubm_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_cycle.json",
+            dataset_name="lubm_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
+
+class lubm_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_diamond.json",
+            dataset_name="lubm_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
+
+class lubm_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_flower.json",
+            dataset_name="lubm_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class lubm_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_snowflake.json",
+            dataset_name="lubm_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class lubm_tree_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_binary_tree.json",
+            dataset_name="lubm_binary_tree_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="tree",
+            **kwargs
+        )
+
+class lubm_path_star_ends_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///lubm_path_star_ends.json",
+            dataset_name="lubm_path_star_ends_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends",
+            **kwargs
+        )
 
 class swdf_path_queries(NTQueries):
     def __init__(
@@ -680,8 +799,125 @@ class wikidata_path_queries(NTQueries):
             **kwargs
         )
 
+class wikidata_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_cycle.json",
+            dataset_name="wikidata_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
 
+class wikidata_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_diamond.json",
+            dataset_name="wikidata_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
 
+class wikidata_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_flower.json",
+            dataset_name="wikidata_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class wikidata_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_snowflake.json",
+            dataset_name="wikidata_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class wikidata_tree_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_binary_tree.json",
+            dataset_name="wikidata_binary_tree_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="tree",
+            **kwargs
+        )
+
+class wikidata_path_star_ends_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wikidata_path_star_ends.json",
+            dataset_name="wikidata_path_star_ends_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends",
+            **kwargs
+        )
 
 class wn18rr_v4_ind_path_queries(NTQueries):
     def __init__(
@@ -743,6 +979,106 @@ class dbpedia100k_path_queries(NTQueries):
             **kwargs
         )
 
+class dbpedia100k_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///dbpedia100k_cycle.json",
+            dataset_name="dbpedia100k_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
+
+class dbpedia100k_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///dbpedia100k_diamond.json",
+            dataset_name="dbpedia100k_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
+
+class dbpedia100k_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///dbpedia100k_flower.json",
+            dataset_name="dbpedia100k_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class dbpedia100k_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///dbpedia100k_snowflake.json",
+            dataset_name="dbpedia100k_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class dbpedia100k_path_star_ends_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///dbpedia100k_path_star_ends.json",
+            dataset_name="dbpedia100k_path_star_ends_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends",
+            **kwargs
+        )
+
 class fb237_v4_path_queries(NTQueries):
     def __init__(
         self,
@@ -782,6 +1118,506 @@ class fb237_v4_ind_path_queries(NTQueries):
             type="path",
             **kwargs
         )
+
+class fb237_v4_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_cycle.json",
+            dataset_name="fb237_v4_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
+
+class fb237_v4_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_diamond.json",
+            dataset_name="fb237_v4_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
+
+class fb237_v4_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_flower.json",
+            dataset_name="fb237_v4_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class fb237_v4_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_snowflake.json",
+            dataset_name="fb237_v4_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class fb237_v4_tree_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_binary_tree.json",
+            dataset_name="fb237_v4_binary_tree_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="tree",
+            **kwargs
+        )
+
+class fb237_v4_path_star_ends_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///fb237_v4_path_star_ends.json",
+            dataset_name="fb237_v4_path_star_ends_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends",
+            **kwargs
+        )
+
+class swdf_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_cycle.json",
+            dataset_name="swdf_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
+
+class swdf_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_diamond.json",
+            dataset_name="swdf_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
+
+class swdf_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_flower.json",
+            dataset_name="swdf_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class swdf_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_snowflake.json",
+            dataset_name="swdf_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class swdf_tree_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_binary_tree.json",
+            dataset_name="swdf_binary_tree_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="tree",
+            **kwargs
+        )
+
+class swdf_path_star_ends_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///swdf_path_star_ends.json",
+            dataset_name="swdf_path_star_ends_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends",
+            **kwargs
+        )
+
+class wn18rr_v4_cycle_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wn18rr_v4_cycle.json",
+            dataset_name="wn18rr_v4_cycle_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle",
+            **kwargs
+        )
+
+class wn18rr_v4_diamond_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wn18rr_v4_diamond.json",
+            dataset_name="wn18rr_v4_diamond_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond",
+            **kwargs
+        )
+
+class wn18rr_v4_flower_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wn18rr_v4_flower.json",
+            dataset_name="wn18rr_v4_flower_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower",
+            **kwargs
+        )
+
+class wn18rr_v4_snowflake_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wn18rr_v4_snowflake.json",
+            dataset_name="wn18rr_v4_snowflake_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake",
+            **kwargs
+        )
+
+class wn18rr_v4_tree_queries(NTQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///wn18rr_v4_binary_tree.json",
+            dataset_name="wn18rr_v4_tree_queries",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="tree",
+            **kwargs
+        )
+
+class Yago(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            url="file:///Yago.nt",
+            dataset_name="yago",
+            **kwargs
+        )
+
+class yago_star_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_star.json", dataset_name="yago_star_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, **kwargs)
+
+class yago_path_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_path.json", dataset_name="yago_path_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path", **kwargs)
+
+class yago_cycle_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_cycle.json", dataset_name="yago_cycle_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="cycle", **kwargs)
+
+class yago_diamond_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_diamond.json", dataset_name="yago_diamond_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="diamond", **kwargs)
+
+class yago_flower_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_flower.json", dataset_name="yago_flower_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="flower", **kwargs)
+
+class yago_snowflake_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_snowflake.json", dataset_name="yago_snowflake_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="snowflake", **kwargs)
+
+class yago_binary_tree_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_binary_tree.json", dataset_name="yago_binary_tree_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="binary_tree", **kwargs)
+
+class yago_path_star_ends_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///yago_path_star_ends.json", dataset_name="yago_path_star_ends_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path_star_ends", **kwargs)
+
+class AIDS(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            url="file:///AIDS.nt",
+            dataset_name="aids",
+            **kwargs
+        )
+
+class aids_star_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_star.json", dataset_name="aids_star_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, **kwargs)
+
+class aids_path_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_path.json", dataset_name="aids_path_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path", **kwargs)
+
+class aids_cycle_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_cycle.json", dataset_name="aids_cycle_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="cycle", **kwargs)
+
+class aids_diamond_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_diamond.json", dataset_name="aids_diamond_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="diamond", **kwargs)
+
+class aids_flower_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_flower.json", dataset_name="aids_flower_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="flower", **kwargs)
+
+class aids_snowflake_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_snowflake.json", dataset_name="aids_snowflake_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="snowflake", **kwargs)
+
+class aids_binary_tree_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_binary_tree.json", dataset_name="aids_binary_tree_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="binary_tree", **kwargs)
+
+class aids_path_star_ends_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///aids_path_star_ends.json", dataset_name="aids_path_star_ends_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path_star_ends", **kwargs)
+
+class Hetionet(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            url="file:///hetionet.nt",
+            dataset_name="hetionet",
+            **kwargs
+        )
+
+class hetionet_star_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_star.json", dataset_name="hetionet_star_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, **kwargs)
+
+class hetionet_path_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_path.json", dataset_name="hetionet_path_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path", **kwargs)
+
+class hetionet_cycle_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_cycle.json", dataset_name="hetionet_cycle_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="cycle", **kwargs)
+
+class hetionet_diamond_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_diamond.json", dataset_name="hetionet_diamond_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="diamond", **kwargs)
+
+class hetionet_flower_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_flower.json", dataset_name="hetionet_flower_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="flower", **kwargs)
+
+class hetionet_snowflake_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_snowflake.json", dataset_name="hetionet_snowflake_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="snowflake", **kwargs)
+
+class hetionet_binary_tree_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_binary_tree.json", dataset_name="hetionet_binary_tree_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="binary_tree", **kwargs)
+
+class hetionet_path_star_ends_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///hetionet_path_star_ends.json", dataset_name="hetionet_path_star_ends_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path_star_ends", **kwargs)
+
+class CodexL(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            url="file:///codex_l.nt",
+            dataset_name="codex_l",
+            **kwargs
+        )
+
+class codex_l_star_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_star.json", dataset_name="codex_l_star_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, **kwargs)
+
+class codex_l_path_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_path.json", dataset_name="codex_l_path_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path", **kwargs)
+
+class codex_l_cycle_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_cycle.json", dataset_name="codex_l_cycle_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="cycle", **kwargs)
+
+class codex_l_diamond_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_diamond.json", dataset_name="codex_l_diamond_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="diamond", **kwargs)
+
+class codex_l_flower_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_flower.json", dataset_name="codex_l_flower_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="flower", **kwargs)
+
+class codex_l_snowflake_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_snowflake.json", dataset_name="codex_l_snowflake_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="snowflake", **kwargs)
+
+class codex_l_binary_tree_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_binary_tree.json", dataset_name="codex_l_binary_tree_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="binary_tree", **kwargs)
+
+class codex_l_path_star_ends_queries(NTQueries):
+    def __init__(self, entity_occurrences: Dict = None, relation_occurrences: Dict = None, global_entity_mapping: Dict = None, global_relation_mapping: Dict = None, **kwargs):
+        super().__init__(url="file:///codex_l_path_star_ends.json", dataset_name="codex_l_path_star_ends_queries", entity_occurrences=entity_occurrences, relation_occurrences=relation_occurrences, global_entity_mapping=global_entity_mapping, global_relation_mapping=global_relation_mapping, type="path_star_ends", **kwargs)
 
 if __name__ == "__main__":
     dataset = LUBM()

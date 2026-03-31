@@ -1,15 +1,57 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
+ 
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_star_queries"
+    batch_size: &bs 32
+    num_queries: &nq 1000
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_cycle_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_diamond_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_flower_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_snowflake_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_tree_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
-    batch_size: &bs 32
-    num_queries: &nq 100
-    type: "train-val"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
+  - dataset: "wn18rr_v4_ind"
+    queries: "wn18rr_v4_ind_path_queries"
+    batch_size: *bs
+    num_queries: *nq
+    type: "validation"
 
 
-epochs: 10
-wandb: False
-wandb_run_name: "Tim-local-selectivity-raw"
+epochs: 100
+wandb: True
+wandb_run_name: "RelationalGNN-wn18-complex"
+#wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
 output_dir: "output/"
@@ -17,43 +59,46 @@ save_every: 5
 save_metrics_every: 1 # Default from config.py
 eval_every: 1
 seed: 42
-device: "cpu"
-weight_decay: 0.01 # Default from config.py defualt is 0.01
-
-
+device: "auto"
+weight_decay: 0.00
 n_embedding_layers: 4
 GNNNeighborhood: [100, 100] # Graph Sage numbers
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
 min_cardinality: null # Default from config.py
 model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
 embedding_dim: 128
-random_walk_pe: 8
+random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
+embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product"
 
 entity_gnn:
-  message_func: "gine" # choices are "gine" or "GAT" or "deepset"
-  source: "factor" # choices are "KG", "bipartite", "factor" ## Note that if bipartite/factor, the relation gnn source needs to be the same
+  message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
+  source: "factor" # choices are "KG", "bipartite", "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.0
+  dropout: 0.1
 
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine" or "deepset"
+  message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
   source: "factor" # choices are "bipartite" or "factor"
   skip_connection: True
   layer_norm: True
-  dropout: 0.0
+  dropout: 0.1
   relation_attention: False
-  relational: True
+  relational: True #whether to use relational GNN
+  role_aware_degrees: False
 
 query_gnn:
-  message_func: "gine" # choices are "gine" or "deepset" or "deepset"
-  model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN"
+  message_func: "gine" # choices are "gine" or "deepset" or "triple"
+  model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel" or "ProductTripleModel"
   skip_connection: False
+  readout: "sum" # choices are "sum" or "attention"
   layer_norm: True
   dropout: 0.0
+  num_layers: 2
+  message_activation: "relu" # choices are "relu" or "silu" or "linear"
 
 scheduler:
-  enabled: True
+  enabled: False
   min_lr: 1.0e-6
