@@ -321,9 +321,17 @@ class NTQueries(InMemoryDataset):
         raw_dir = pathlib.Path(self.root) / "raw"
         raw_dir.mkdir(parents=True, exist_ok=True)
 
-        raw_file_name = Path(urlparse(self.url).path).name
-        if raw_file_name is None or raw_file_name == "":
-            raw_file_name = "raw_queries.json"
+        # For file:// URLs (local-only datasets), find the actual JSON in raw/
+        if self.url.startswith("file://"):
+            existing = list(raw_dir.glob("*.json"))
+            if existing:
+                raw_file_name = existing[0].name
+            else:
+                raw_file_name = "queries.json"
+        else:
+            raw_file_name = Path(urlparse(self.url).path).name
+            if raw_file_name is None or raw_file_name == "":
+                raw_file_name = "raw_queries.json"
 
         self.raw_file_path = raw_dir / raw_file_name
         self.dataset_name = (
