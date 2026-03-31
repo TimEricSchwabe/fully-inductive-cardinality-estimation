@@ -553,20 +553,6 @@ class MetricLogger:
             }
             self._wandb_log_retry(qs_log_data)
             
-            # Log per-query-set-name q-error boxplot
-            self._log_q_error_boxplot(
-                qs_metrics['q_errors_array'],
-                qs_metrics['true_values'],
-                epoch, f"{stage}/per_query_set_name/{dataset_name}_{query_set_name}"
-            )
-            
-            # Log per-query-set-name predictions scatter plot
-            self._log_predictions_scatter(
-                qs_metrics['predictions_log'],
-                qs_metrics['true_values_log'],
-                epoch, stage, f"per_query_set_name/{dataset_name}_{query_set_name}"
-            )
-            
         # Log overall predictions scatter plot
         self._log_predictions_scatter(
             overall_metrics['predictions_log'],
