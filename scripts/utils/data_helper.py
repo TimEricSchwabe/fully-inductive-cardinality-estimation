@@ -97,7 +97,6 @@ QUERY_REGISTRY = {
     "dbpedia100k_diamond_queries": datasets.dbpedia100k_diamond_queries,
     "dbpedia100k_flower_queries": datasets.dbpedia100k_flower_queries,
     "dbpedia100k_snowflake_queries": datasets.dbpedia100k_snowflake_queries,
-    "dbpedia100k_binary_tree_queries": datasets.dbpedia100k_binary_tree_queries,
     "dbpedia100k_path_star_ends_queries": datasets.dbpedia100k_path_star_ends_queries,
 
     # Yago

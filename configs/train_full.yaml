@@ -365,11 +365,6 @@ data:
     num_queries: *nq
     type: "validation"
   - dataset: "dbpedia100k"
-    queries: "dbpedia100k_binary_tree_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
-  - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
