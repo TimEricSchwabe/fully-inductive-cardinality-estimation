@@ -1458,7 +1458,7 @@ class wn18rr_v4_tree_queries(NTQueries):
     ):
         super().__init__(
             url="file:///wn18rr_v4_binary_tree.json",
-            dataset_name="wn18rr_v4_tree_queries",
+            dataset_name="wn18rr_v4_binary_tree_queries",
             entity_occurrences=entity_occurrences,
             relation_occurrences=relation_occurrences,
             global_entity_mapping=global_entity_mapping,
