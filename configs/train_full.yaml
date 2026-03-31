@@ -200,7 +200,6 @@ data:
     batch_size: *bs
     num_queries: *nq
     type: "train-val"
-  # wn18rr_v4_binary_tree_queries: EMPTY
   # wn18rr_v4_path_star_ends_queries: EMPTY
 
   # === Yago (train-val) ===
