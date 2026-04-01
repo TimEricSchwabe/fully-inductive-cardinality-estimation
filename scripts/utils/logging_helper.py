@@ -494,21 +494,20 @@ class MetricLogger:
                 'epoch': epoch
             }
             self._wandb_log_retry(graph_log_data)
-            
-            # Log per-graph q-error boxplot
-            self._log_q_error_boxplot(
-                graph_metrics['q_errors_array'],
-                graph_metrics['true_values'],
-                epoch, f"{stage}/per_graph/{dataset_name}"
-            )
 
-            # Log predictions scatter plot (sampled)
-            self._log_predictions_scatter(
-                graph_metrics['predictions_log'], 
-                graph_metrics['true_values_log'], 
-                epoch, stage, f"per_graph/{dataset_name}"
-            )
-        
+            # # Log per-graph q-error boxplot (disabled: too many open files with ~55 query sets)
+            # self._log_q_error_boxplot(
+            #     graph_metrics['q_errors_array'],
+            #     graph_metrics['true_values'],
+            #     epoch, f"{stage}/per_graph/{dataset_name}"
+            # )
+            # # Log predictions scatter plot (sampled)
+            # self._log_predictions_scatter(
+            #     graph_metrics['predictions_log'],
+            #     graph_metrics['true_values_log'],
+            #     epoch, stage, f"per_graph/{dataset_name}"
+            # )
+
         # Log per-query-type metrics
         for (dataset_name, query_type), qt_metrics in per_query_type_metrics.items():
             qt_log_data = {
@@ -523,21 +522,20 @@ class MetricLogger:
                 'epoch': epoch
             }
             self._wandb_log_retry(qt_log_data)
-            
-            # Log per-query-type q-error boxplot
-            self._log_q_error_boxplot(
-                qt_metrics['q_errors_array'],
-                qt_metrics['true_values'],
-                epoch, f"{stage}/per_query_type/{dataset_name}_{query_type}"
-            )
-            
-            # Log per-query-type predictions scatter plot
-            self._log_predictions_scatter(
-                qt_metrics['predictions_log'],
-                qt_metrics['true_values_log'],
-                epoch, stage, f"per_query_type/{dataset_name}_{query_type}"
-            )
-        
+
+            # # Log per-query-type q-error boxplot (disabled: too many open files with ~55 query sets)
+            # self._log_q_error_boxplot(
+            #     qt_metrics['q_errors_array'],
+            #     qt_metrics['true_values'],
+            #     epoch, f"{stage}/per_query_type/{dataset_name}_{query_type}"
+            # )
+            # # Log per-query-type predictions scatter plot
+            # self._log_predictions_scatter(
+            #     qt_metrics['predictions_log'],
+            #     qt_metrics['true_values_log'],
+            #     epoch, stage, f"per_query_type/{dataset_name}_{query_type}"
+            # )
+
         # Log per-query-set-name metrics
         for (dataset_name, query_set_name), qs_metrics in per_query_set_name_metrics.items():
             qs_log_data = {
