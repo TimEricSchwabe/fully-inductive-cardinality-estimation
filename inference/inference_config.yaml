@@ -2,7 +2,7 @@
 # Points to a trained model checkpoint and the graph to generate embeddings for.
 
 # Path to a trained FICE checkpoint (.pt file from training output)
-checkpoint: /home/tim/fully-inductive-cardinality-estimation/output/RelationalGNN/checkpoints/best_model.pt
+checkpoint: /home/tim/fully-inductive-cardinality-estimation/output/BigModel/checkpoints/best_model.pt
 
 # Dataset name (must match a key in DATASET_REGISTRY, e.g. wn18rr_v4, fb237_v4, SWDF, etc.)
 graph_dataset: fb237_v4

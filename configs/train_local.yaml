@@ -1,56 +1,16 @@
 # Example YAML config for local training (updated to new Config/DataConfig schema)
 data:
  
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_star_queries"
-    batch_size: &bs 32
-    num_queries: &nq 1000
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries"
+    batch_size: 2
+    num_queries: 1000
     type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_cycle_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_diamond_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_flower_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_snowflake_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4"
-    queries: "wn18rr_v4_tree_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "validation"
 
 
-epochs: 100
-wandb: True
-wandb_run_name: "RelationalGNN-wn18-complex"
+epochs: 10
+wandb: False
+wandb_run_name: "RelationalGNN-local"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
