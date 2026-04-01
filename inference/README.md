@@ -122,7 +122,7 @@ Options:
 
 ### 6. Run the C++ benchmark
 
-Measures per-query timing broken down by graph construction and model inference, and produces a boxplot figure grouped by query size:
+Measures per-query timing broken down by query graph construction and model inference, and produces a boxplot figure grouped by query size:
 
 ```bash
 cd scripts

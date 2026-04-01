@@ -396,12 +396,16 @@ def prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class
         if use_bipartite_entity:
             if bipartite_graph is not None and bipartite_mapping is not None:
                 entity_graph = bipartite_graph
-                query_nodes = query_batch.node_embedding_indices.detach().cpu()
-                mapped = torch.where(
-                    query_nodes >= 0, bipartite_mapping[query_nodes],
-                    torch.full_like(query_nodes, -1),
-                ).to(torch.long)
-                query_batch.node_embedding_indices = mapped
+                # THIS WAS THE BUG! node_embedding_indices were already correctly
+                # remapped from global→local in prepare_bipartite_relation_graph().
+                # This second remap treated the local IDs as global IDs, pointing
+                # to wrong entities. Only node indices affected (not edge indices).
+                # query_nodes = query_batch.node_embedding_indices.detach().cpu()
+                # mapped = torch.where(
+                #     query_nodes >= 0, bipartite_mapping[query_nodes],
+                #     torch.full_like(query_nodes, -1),
+                # ).to(torch.long)
+                # query_batch.node_embedding_indices = mapped
         else:
             # KG mode
             if config.GNNNeighborhood is not None:
