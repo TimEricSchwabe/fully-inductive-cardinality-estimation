@@ -40,7 +40,7 @@ def write_bgp_file(queries, output_path):
 
 def main():
     parser = argparse.ArgumentParser(description="Benchmark C++ FICE inference")
-    parser.add_argument("--queries", type=str, required=True)
+    parser.add_argument("--queries", type=str, required=True) # e.g. ../data/fb237_v4_star_queries/raw/fb237_v4_star_queries
     parser.add_argument("--cpp-binary", type=str, default="inference/build/fice_inference")
     parser.add_argument("--artifacts-dir", type=str, default="output/inference/")
     parser.add_argument("--output-dir", type=str, default="output/benchmark/")
