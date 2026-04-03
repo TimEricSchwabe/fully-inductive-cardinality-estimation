@@ -53,6 +53,16 @@ run_*.zip
 # VS Code
 .vscode/
 benchmarks/gcare/gcare
+benchmarks/lss/LSS/data/dataset/**
+benchmarks/lss/LSS/data/n2v/**
+benchmarks/lss/LSS/data/nrp/**
+benchmarks/lss/LSS/data/prone/**
+benchmarks/lss/LSS/data/queryset_homo/**
+benchmarks/lss/LSS/data/true_homo/**
+benchmarks/lss/LSS/models/
+benchmarks/lss/ProNE/data/
+benchmarks/lss/ProNE/emb/
+benchmarks/lss/results/
 # gcare/
 logs/
 
