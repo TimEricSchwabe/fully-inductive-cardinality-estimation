@@ -1,3 +1,4 @@
+import argparse
 import json
 import random
 import shutil
@@ -527,9 +528,12 @@ def compute_embeddings(graph_paths):
 # Phase 4: Training and evaluation
 # ---------------------------------------------------------------------------
 
+_EXTRA_LSS_ARGS: list[str] = []
+
+
 def _run_lss(args, cwd):
     """Run active_train.py with given args as a subprocess."""
-    cmd = [sys.executable, "active_train.py"] + args
+    cmd = [sys.executable, "active_train.py"] + args + _EXTRA_LSS_ARGS
     print(f"  Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=cwd)
     if result.returncode != 0:
@@ -603,6 +607,13 @@ def _run_experiment(experiment, results_dir, trained_ids, max_eval_queries=None)
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--no-cuda", action="store_true", default=False,
+                        help="Disable CUDA and run on CPU (forwarded to active_train.py)")
+    cli_args = parser.parse_args()
+    if cli_args.no_cuda:
+        _EXTRA_LSS_ARGS.append("--no-cuda")
+
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
 
