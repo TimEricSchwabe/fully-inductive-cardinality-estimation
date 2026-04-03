@@ -415,7 +415,7 @@ query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel" or "ProductTripleModel"
   skip_connection: False
-  readout: "sum" # choices are "sum" or "attention"
+  readout: "attention" # choices are "sum" or "attention"
   layer_norm: True
   dropout: 0.0
   num_layers: 2
