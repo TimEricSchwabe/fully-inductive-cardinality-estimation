@@ -12,10 +12,19 @@ from pathlib import Path
 
 CONFIG_PATH = Path(__file__).parent / "experiments_config.yaml"
 LSS_PATH = Path(__file__).parent / "LSS"
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATASET_BASE_PATH = LSS_PATH / "data" / "dataset"
 QUERYSET_PATH = LSS_PATH / "data" / "queryset_homo"
 TRUE_CARD_PATH = LSS_PATH / "data" / "true_homo"
 RESULTS_PATH = Path(__file__).parent / "results"
+
+
+def _resolve_project_path(path_value):
+    """Resolve config paths relative to the FICE project root."""
+    path = Path(path_value)
+    if path.is_absolute():
+        return path
+    return (PROJECT_ROOT / path).resolve()
 
 
 def _resolve_pool(experiment, all_dataset_names):
@@ -63,7 +72,7 @@ def _ensure_graph(ds_name, ds_config, dataset_mappings):
         with open(type_label_mapping_file) as f:
             type_label_mapping = json.load(f)
     else:
-        graph_path = Path(ds_config["graph_path"])
+        graph_path = _resolve_project_path(ds_config["graph_path"])
         rdf_type_uri = ds_config["rdf_type_uri"]
         print(f"[{ds_name}] Transforming graph...")
         _, _, id_to_id_mapping, id_to_id_mapping_predicate, type_label_mapping = transform_graph.transform_ttl_to_gcare(
@@ -138,7 +147,7 @@ def _ensure_queries(ds_name, ds_config, query_configs, dataset_mappings):
 
     for q in query_configs:
         query_type = q["query_type"]
-        query_path = Path(q["path"])
+        query_path = _resolve_project_path(q["path"])
 
         print(f"[{ds_name}/{query_type}] Loading queries from {query_path}...")
         with open(query_path) as f:
