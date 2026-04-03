@@ -442,6 +442,7 @@ PRONE_PATH = (Path(__file__).parent / "ProNE").resolve()
 
 def gcare_to_prone(path):
     PRONE_DATASET_PATH = PRONE_PATH / "data"
+    PRONE_DATASET_PATH.mkdir(parents=True, exist_ok=True)
     edges = []
     with open(path) as f:
         for line in f:
