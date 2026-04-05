@@ -332,7 +332,7 @@ data:
     num_queries: *nq
     type: "train-val"
 
-  # === dbpedia100k (validation) ===
+  # === dbpedia100k ===
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: *bs
