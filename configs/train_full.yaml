@@ -85,32 +85,32 @@ data:
     queries: "WIKIDATA_Star_Queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "Wikidata"
     queries: "wikidata_tree_queries"
     batch_size: *bs
@@ -120,7 +120,7 @@ data:
     queries: "wikidata_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
   # === fb237_v4 (train-val) ===
   - dataset: "fb237_v4"
@@ -313,61 +313,61 @@ data:
     queries: "fb237_v4_ind_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "fb237_v4_ind"
     queries: "fb237_v4_ind_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
 
   # === wn18rr_v4_ind (validation) ===
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4_ind"
     queries: "wn18rr_v4_ind_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
 
   # === dbpedia100k (validation) ===
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
 
 
 epochs: 100
