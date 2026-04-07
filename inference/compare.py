@@ -20,10 +20,12 @@ import sys
 import json
 import argparse
 import logging
+import random
 import time
 import subprocess
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 from torch_geometric.data import Data, Batch
@@ -219,7 +221,8 @@ def main():
                         help="Path to star queries JSON file")
     parser.add_argument("--cpp-binary", type=str, default=None,
                         help="Path to compiled fice_inference binary (skip C++ if omitted)")
-    parser.add_argument("--output-dir", type=str, default="output/comparison/")
+    default_out = str(Path(__file__).resolve().parent.parent / "output" / "comparison")
+    parser.add_argument("--output-dir", type=str, default=default_out)
     parser.add_argument("--max-queries", type=int, default=0,
                         help="Limit number of queries (0 = all)")
     parser.add_argument("--warmup", type=int, default=100,
@@ -234,13 +237,20 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
     artifacts_dir = Path(inf_cfg["output_dir"])
 
-    # ---- Load queries ----
+    # ---- Load queries (same val split as diagnose_qerror.py) ----
     logger.info(f"Loading queries from {args.queries}")
     with open(args.queries) as f:
-        all_queries = json.load(f)
+        raw_queries = json.load(f)
+
+    num_queries = 20000
+    random.seed(42)
+    indices = list(range(num_queries))
+    random.shuffle(indices)
+    val_indices = indices[int(num_queries * 0.8):]
+    all_queries = [raw_queries[i] for i in val_indices]
     if args.max_queries > 0:
         all_queries = all_queries[:args.max_queries]
-    logger.info(f"Loaded {len(all_queries)} queries")
+    logger.info(f"Loaded {len(all_queries)} val queries (same split as diagnose_qerror.py)")
 
     # ---- Load FICE model (Path A) ----
     logger.info("Loading FICE model from checkpoint...")
@@ -469,6 +479,50 @@ def main():
 
     logger.info(f"Per-query results written to {tsv_path}")
     print("\n" + "=" * 70)
+
+    # ---- Scatter plots: true vs predicted cardinality ----
+    gt = np.maximum(np.array(ground_truths, dtype=np.float64), 1.0)
+
+    methods = [
+        ("Python native\n(full-graph emb)", native_preds),
+        ("TorchScript\n(batched emb)", ts_preds),
+    ]
+    if cpp_preds is not None and len(cpp_preds) == len(native_preds):
+        methods.append(("C++ libtorch\n(batched emb)", cpp_preds))
+
+    fig, axes = plt.subplots(1, len(methods), figsize=(5 * len(methods), 5))
+    if len(methods) == 1:
+        axes = [axes]
+
+    all_pred_cards = []
+    for name, preds in methods:
+        pc = np.maximum(np.expm1(np.clip(preds, 0, None)), 1.0)
+        all_pred_cards.append(pc)
+
+    all_vals = np.concatenate([gt] + all_pred_cards)
+    lo = max(all_vals[all_vals > 0].min() * 0.5, 0.5)
+    hi = all_vals.max() * 2
+
+    for ax, (name, preds), pred_card in zip(axes, methods, all_pred_cards):
+        qe = compute_q_errors(preds, ground_truths)
+        ax.scatter(gt, pred_card, alpha=0.5, s=15, edgecolors='none')
+        ax.plot([lo, hi], [lo, hi], 'k--', linewidth=0.8, label='y=x')
+        ax.set_xscale('log')
+        ax.set_yscale('log')
+        ax.set_xlim(lo, hi)
+        ax.set_ylim(lo, hi)
+        ax.set_xlabel('True cardinality')
+        ax.set_ylabel('Predicted cardinality')
+        ax.set_title(f"{name}\nmed q={np.median(qe):.2f}, mean q={qe.mean():.1f}")
+        ax.set_aspect('equal')
+        ax.legend(fontsize=8)
+
+    n = len(all_queries)
+    fig.suptitle(f"True vs Predicted — {graph_dataset_name} star queries (n={n})", y=1.02)
+    fig.tight_layout()
+    scatter_path = output_dir / "compare_scatter.png"
+    fig.savefig(str(scatter_path), dpi=150, bbox_inches='tight')
+    print(f"\nScatter plot saved to {scatter_path}")
 
 
 if __name__ == "__main__":
