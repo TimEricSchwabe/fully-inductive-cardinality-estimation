@@ -1,4 +1,3 @@
-max_eval_queries: 100
 
 queries:
   - id: lubm_path
