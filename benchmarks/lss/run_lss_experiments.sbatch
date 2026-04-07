@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="/storage/home/lukasketzer/fully-inductive-cardinality-estimation/benchmarks/lss"
 VENV_PYTHON="$SCRIPT_DIR/.venv/bin/python"
 RUNNER="$SCRIPT_DIR/run_all_experiments.py"
 
