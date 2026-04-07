@@ -8,7 +8,7 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 BENCHMARKS_LMKG = PROJECT_ROOT / "benchmarks/lmkg"
 LMKG_S_DIR = BENCHMARKS_LMKG / "LMKG-Code/lmkg-s"
-CONFIG_PATH = BENCHMARKS_LMKG / "experiments_config.yaml"
+CONFIG_PATH = PROJECT_ROOT / "benchmarks/experiments_config.yaml"
 
 sys.path.insert(0, str(BENCHMARKS_LMKG))
 
@@ -254,7 +254,7 @@ def convert_all_datasets(seed):
         config = yaml.safe_load(f)
 
     dataset_stats = {}
-    for exp in config["experiments"]:
+    for exp in config["queries"]:
         by_size, num_entities, num_relations = fice_to_lmkg.process_experiment(exp)
         dname = exp["dataset_name"]
         qtype = exp["query_type"]

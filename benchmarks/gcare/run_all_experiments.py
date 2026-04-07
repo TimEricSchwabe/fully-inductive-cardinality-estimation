@@ -15,12 +15,28 @@ from pathlib import Path
 
 import yaml
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def load_config(config_path):
-    """Load experiment configuration from YAML file."""
-    with open(config_path, 'r') as f:
-        config = yaml.safe_load(f)
-    return config['experiments']
+    """Load experiment configuration from shared experiments_config.yaml."""
+    with open(config_path) as f:
+        cfg = yaml.safe_load(f)
+    datasets_by_name = {d["name"]: d for d in cfg["datasets"]}
+    experiments = []
+    for q in cfg["queries"]:
+        ds = datasets_by_name[q["dataset_name"]]
+        experiments.append({
+            "name": q["id"],
+            "dataset_name": q["dataset_name"],
+            "query_type": q["query_type"],
+            "query_path": str(PROJECT_ROOT / q["path"]),
+            "graph_path": str(PROJECT_ROOT / ds["graph_path"]),
+            "rdf_type_uri": ds["rdf_type_uri"],
+            "num_queries": 500,
+            "timeout_hours": 2,
+        })
+    return experiments
 
 
 def clear_gcare_directories(workspace_root):
@@ -245,13 +261,18 @@ def build_docker_image(gcare_root):
 
 def main():
     parser = argparse.ArgumentParser(description="Run G-Care benchmark experiments")
-    parser.add_argument("--config", type=Path, default=Path("experiments_config.yaml"),
+    parser.add_argument("--config", type=Path,
+                       default=PROJECT_ROOT / "benchmarks/experiments_config.yaml",
                        help="Experiment configuration YAML file")
     parser.add_argument("--max-parallel", type=int, default=5,
                        help="Maximum parallel Docker containers (default: 5)")
     parser.add_argument("--workspace-root", type=Path,
                        default=Path(__file__).resolve().parent.parent.parent,
                        help="Workspace root directory")
+    parser.add_argument("--skip-preprocess", action="store_true",
+                       help="Skip clearing/copying transformed graph and query inputs")
+    parser.add_argument("--skip-build", action="store_true",
+                       help="Skip Docker image build and use existing gcare-benchmark:latest")
     
     args = parser.parse_args()
     
@@ -274,11 +295,18 @@ def main():
     print(f"Loaded {len(experiments)} experiments\n")
     
     # Build Docker image
-    build_docker_image(gcare_root)
-    
-    # Clear directories and run
-    # clear_gcare_directories(workspace_root)
-    # preprocess_graphs(experiments, workspace_root)
+    if not args.skip_build:
+        build_docker_image(gcare_root)
+    else:
+        print("Skipping Docker build (using existing image)\n")
+
+    # Clear directories and preprocess by default so all datasets have required files.
+    if not args.skip_preprocess:
+        clear_gcare_directories(workspace_root)
+        preprocess_graphs(experiments, workspace_root)
+    else:
+        print("Skipping preprocessing (using existing transformed files)\n")
+
     run_experiments(experiments, results_dir, workspace_root, args.max_parallel)
     
     print("\n✓ All experiments completed successfully!")

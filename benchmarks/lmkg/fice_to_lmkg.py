@@ -250,10 +250,10 @@ def write_stats_file(dataset_name, num_entities, num_relations, star_sizes, path
 # ---------------------------------------------------------------------------
 
 def process_experiment(exp: dict):
-    name = exp["name"]
+    name = exp["id"]
     dataset_name = exp["dataset_name"]
     query_type = exp["query_type"]  # "star" or "path"
-    query_path = exp["query_path"]
+    query_path = str(PROJECT_ROOT / exp["path"])
 
     print(f"\n=== {name} (dataset={dataset_name}, type={query_type}) ===")
 
@@ -289,7 +289,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert FICE data to LMKG-S format")
     parser.add_argument(
         "--config",
-        default="benchmarks/lmkg/experiments_config.yaml",
+        default="benchmarks/experiments_config.yaml",
         help="Path to experiments_config.yaml",
     )
     parser.add_argument(
@@ -311,10 +311,10 @@ def main():
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    experiments = config["experiments"]
+    experiments = config["queries"]
     if args.experiments:
-        experiments = [e for e in experiments if e["name"] in args.experiments]
-        print(f"Running {len(experiments)} experiment(s): {[e['name'] for e in experiments]}")
+        experiments = [e for e in experiments if e["id"] in args.experiments]
+        print(f"Running {len(experiments)} experiment(s): {[e['id'] for e in experiments]}")
 
     # Accumulate per-dataset stats across star + path experiments
     dataset_stats = {}

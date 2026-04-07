@@ -7,7 +7,6 @@ import json
 from transform_query import query_to_gcare
 import random
 from pathlib import Path
-import glob
 import shutil
 import logging
 
@@ -20,14 +19,37 @@ RDF_TYPE_URI = os.environ.get('RDF_TYPE_URI', '0')
 logging.basicConfig(level=logging.INFO)
 
 
+def find_query_json(query_root: Path) -> Path:
+    """Find a query JSON file in the given directory (or nested directories)."""
+    candidates = sorted(query_root.glob('*.json'))
+    if not candidates:
+        candidates = sorted(query_root.rglob('*.json'))
+    if not candidates:
+        existing = []
+        if query_root.exists():
+            existing = sorted(str(p.relative_to(query_root)) for p in query_root.rglob('*'))
+        preview = existing[:20]
+        raise FileNotFoundError(
+            f"No query JSON file found under {query_root}. "
+            f"Found {len(existing)} entries. Sample: {preview}"
+        )
+    return candidates[0]
+
+
 def run_gcare(dataset, eval_folder, query_root, dataset_root, inductive, num_queries: int = 100):
     methods = ['wj', 'cset']
     #methods = ['impr']
     # Loading Queries and IDX transform mappings
 
-    query_path = Path(glob.glob(str(query_root / '*.json'))[0])
+    query_path = find_query_json(query_root)
     id2id_mapping_path = dataset_root / 'id_to_id_mapping.json'
     id2id_mapping_predicate_path = dataset_root / 'id_to_id_mapping_predicate.json'
+
+    if not id2id_mapping_path.exists() or not id2id_mapping_predicate_path.exists():
+        raise FileNotFoundError(
+            f"Missing ID mapping files in {dataset_root}. "
+            f"Expected {id2id_mapping_path.name} and {id2id_mapping_predicate_path.name}."
+        )
 
 
     print('Loading Queries from:')
@@ -35,7 +57,8 @@ def run_gcare(dataset, eval_folder, query_root, dataset_root, inductive, num_que
     with query_path.open() as f:
         raw_data = json.load(f)
     
-    data = random.sample(raw_data, num_queries)
+    sample_size = min(num_queries, len(raw_data))
+    data = random.sample(raw_data, sample_size)
     # Same split as other methods
     if not inductive == 'full':
         random.Random(4).shuffle(data)
@@ -165,12 +188,16 @@ def main():
     #     cwd=Path(f'{GCARE_HOME}/scripts')
     # )
     num_queries = int(os.environ.get('NUM_QUERIES', '150'))
-    run_gcare(dataset=dataset_name,
-              eval_folder=eval_folder,
-              query_root=queries_path,
-              dataset_root=graph_path,
-              inductive='full',
-              num_queries=num_queries)
+    try:
+        run_gcare(dataset=dataset_name,
+                  eval_folder=eval_folder,
+                  query_root=queries_path,
+                  dataset_root=graph_path,
+                  inductive='full',
+                  num_queries=num_queries)
+    except FileNotFoundError as e:
+        logging.error(str(e))
+        raise
 
 if __name__ == "__main__":
     main()

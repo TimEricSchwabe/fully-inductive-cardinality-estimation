@@ -26,18 +26,13 @@ import yaml
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LMKG_S_DIR = PROJECT_ROOT / "benchmarks/lmkg/LMKG-Code/lmkg-s"
+_CONFIG_PATH = PROJECT_ROOT / "benchmarks/experiments_config.yaml"
 
-# Datasets in a stable order for consistent global ID assignment
-DATASETS = [
-    "lubm",
-    "swdf",
-    "wikidata",
-    "dbpedia100k",
-    "fb237_v4",
-    "fb237_v4_ind",
-    "wn18rr_v4",
-    "wn18rr_v4_ind",
-]
+# Datasets in a stable order for consistent global ID assignment — loaded from
+# shared config so the list stays in sync with experiments_config.yaml.
+with open(_CONFIG_PATH) as _f:
+    _cfg = yaml.safe_load(_f)
+DATASETS = [d["name"] for d in _cfg["datasets"]]
 
 
 def load_stats(dataset_name):

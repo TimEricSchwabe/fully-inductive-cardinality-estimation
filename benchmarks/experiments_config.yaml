@@ -1,0 +1,170 @@
+
+queries:
+  - id: lubm_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/lubm_path_queries/raw/60037037
+    dataset_name: lubm
+
+  - id: lubm_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/lubm_queries/raw/59410580
+    dataset_name: lubm
+
+  - id: swdf_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/swdf_path_queries/raw/60037112
+    dataset_name: swdf
+
+  - id: swdf_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/swdf_star_queries/raw/59320652
+    dataset_name: swdf
+
+  - id: wikidata_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/wikidata_path_queries/raw/60037220
+    dataset_name: wikidata
+
+  - id: wikidata_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/wikidata_queries/raw/59320583
+    dataset_name: wikidata
+
+  - id: dbpedia100k_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/dbpedia100k_path_queries/raw/59898644
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/dbpedia100k_star_queries/raw/59687708
+    dataset_name: dbpedia100k
+
+  - id: fb237_v4_ind_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/fb237_v4_ind_path_queries/raw/59900708
+    dataset_name: fb237_v4_ind
+
+  - id: fb237_v4_ind_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/fb237_v4_ind_star_queries/raw/59731859
+    dataset_name: fb237_v4_ind
+
+  - id: fb237_v4_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/fb237_v4_path_queries/raw/59900678
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/fb237_v4_star_queries/raw/59651327
+    dataset_name: fb237_v4
+
+  - id: wn18rr_v4_ind_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/wn18rr_v4_ind_path_queries/raw/59898623
+    dataset_name: wn18rr_v4_ind
+
+  - id: wn18rr_v4_ind_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/wn18rr_v4_ind_star_queries/raw/59731889
+    dataset_name: wn18rr_v4_ind
+
+  - id: wn18rr_v4_path
+    query_type: path
+    max_train_queries: 4000
+    path: data/wn18rr_v4_path_queries/raw/59898641
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_star
+    query_type: star
+    max_train_queries: 4000
+    path: data/wn18rr_v4_star_queries/raw/59731877
+    dataset_name: wn18rr_v4
+
+
+datasets:
+  - name: lubm
+    graph_path: data/lubm/raw/59410577
+    rdf_type_uri: "<http://example.org/1>"
+
+  - name: swdf
+    graph_path: data/swdf/raw/59320634
+    rdf_type_uri: "<http://ex.org/03>"
+
+  - name: wikidata
+    graph_path: data/wikidata/raw/59320361
+    rdf_type_uri: "<http://www.wikidata.org/prop/direct/P31>"
+
+  - name: dbpedia100k
+    graph_path: data/dbpedia100k/raw/59622674
+    rdf_type_uri: "<http://example.orggenre>"
+
+  - name: fb237_v4_ind
+    graph_path: data/fb237_v4_ind/raw/59621825
+    rdf_type_uri: "0"
+
+  - name: fb237_v4
+    graph_path: data/fb237_v4/raw/59621618
+    rdf_type_uri: "0"
+
+  - name: wn18rr_v4_ind
+    graph_path: data/wn18rr_v4_ind/raw/59622656
+    rdf_type_uri: "0"
+
+  - name: wn18rr_v4
+    graph_path: data/wn18rr_v4/raw/59622641
+    rdf_type_uri: "0"
+
+
+experiments:
+  - id: swdf_test_new
+    pool: ["fb237_v4", "dbpedia100k"]
+    left_out: swdf
+
+
+  # - id: loco_swdf
+  #   pool: "*"
+  #   left_out: swdf
+
+  # - id: loco_lubm
+  #   pool: "*"
+  #   left_out: lubm
+
+  # - id: loco_wikidata
+  #   pool: "*"
+  #   left_out: wikidata
+
+  # - id: loco_dbpedia100k
+  #   pool: "*"
+  #   left_out: dbpedia100k
+
+  # - id: loco_fb237_v4_ind
+  #   pool: "*"
+  #   left_out: fb237_v4_ind
+
+  # - id: loco_fb237_v4
+  #   pool: "*"
+  #   left_out: fb237_v4
+
+  # - id: loco_wn18rr_v4_ind
+  #   pool: "*"
+  #   left_out: wn18rr_v4_ind
+
+  # - id: loco_wn18rr_v4
+  #   pool: "*"
+  #   left_out: wn18rr_v4
