@@ -192,12 +192,12 @@ def model_checkpoint(args, model, optimizer, scheduler=None, model_dir = None):
 		model_snapshot = {
 			"model": model.state_dict(),
 			"optimizer": optimizer.state_dict(),
-			"scheduler": scheduler.state_dict()
+			"scheduler": scheduler.state_dict(),
 		}
 	else:
 		model_snapshot = {
 			"model": model.state_dict(),
-			"optimizer": optimizer.state_dict()
+			"optimizer": optimizer.state_dict(),
 		}
 	model_save_path = os.path.join(args.model_save_dir, args.dataset)
 	make_dir(model_save_path)

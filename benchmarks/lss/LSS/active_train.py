@@ -66,10 +66,23 @@ def main(args):
 		model_checkpoint(args=args, model=model, optimizer=optimizer, scheduler=scheduler)
 
 	elif args.mode == "test":
+		import csv, math
+		from util import make_dir
 		print("loading model ...")
-		load_model(args = args, model=model, device=args.device, optimizer= optimizer)
+		load_model(args=args, model=model, device=args.device, optimizer=optimizer)
 		print("make prediction ...")
-		active_learner.evaluate(model=model, criterion= criterion, eval_datasets=val_datasets, print_res=True)
+		all_eval_res = active_learner.evaluate(model=model, criterion=criterion, eval_datasets=test_datasets, print_res=True)
+		make_dir(args.save_res_dir)
+		pred_path = os.path.join(args.save_res_dir, "predictions.csv")
+		with open(pred_path, "w", newline="") as f:
+			writer = csv.writer(f)
+			writer.writerow(["query_id", "ground_truth", "prediction"])
+			qid = 0
+			for res, _loss, _l1, _elapsed in all_eval_res:
+				for card, output in res:
+					writer.writerow([qid, round(math.pow(2, card)), round(math.pow(2, output))])
+					qid += 1
+		print(f"Predictions saved to {pred_path}")
 
 def ensemble_learn(args):
 	"""

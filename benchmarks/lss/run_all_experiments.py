@@ -11,7 +11,7 @@ import numpy as np
 from datetime import datetime
 from pathlib import Path
 
-CONFIG_PATH = Path(__file__).parent / "experiments_config.yaml"
+CONFIG_PATH = Path(__file__).parent.parent / "experiments_config.yaml"
 LSS_PATH = Path(__file__).parent / "LSS"
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DATASET_BASE_PATH = LSS_PATH / "data" / "dataset"
@@ -351,15 +351,73 @@ def _build_loco_queryset(train_datasets, dataset_mappings, node_offsets, pred_of
                     dst_card.write_text(tc_file.read_text())
 
 
-def _build_capped_eval_queryset(left_out, max_eval_queries, seed=42):
-    """Create a capped evaluation queryset under {left_out}_eval.
+def _build_padded_eval_graph(left_out, dataset_mappings, train_datasets):
+    """Create a padded copy of the eval data graph that covers all mega-graph label IDs.
 
-    Samples min(available, max_eval_queries) non-single-edge query files from
-    queryset_homo/{left_out}/ and writes them to queryset_homo/{left_out}_eval/,
-    with matching cardinality files in true_homo/{left_out}_eval/.
-    Also creates the required data graph and embedding symlinks.
+    The mega-graph (N-1 training datasets merged) has more unique predicate and type-label
+    IDs than any single held-out dataset.  LSS's Queryset builds feature vectors sized by
+    len(edge_label_card) / len(node_label_card) of the data graph — so without padding the
+    eval graph the feature dimension would be smaller than the trained model expects.
+
+    This function writes a copy of {left_out}.txt with dummy self-loop edges for every
+    missing predicate ID and dummy isolated vertices for every missing type-label ID, so
+    that Queryset naturally produces feature vectors of the correct (mega-graph) dimension.
     """
     eval_name = f"{left_out}_eval"
+    eval_graph_dir = DATASET_BASE_PATH / eval_name
+    eval_graph_dir.mkdir(parents=True, exist_ok=True)
+    eval_graph_file = eval_graph_dir / f"{eval_name}.txt"
+
+    if eval_graph_file.exists():
+        return eval_name, eval_graph_file
+
+    src_graph = DATASET_BASE_PATH / left_out / f"{left_out}.txt"
+    vertices, edges = _parse_gcare_graph(src_graph)
+
+    # Feature counts for the eval (held-out) dataset
+    _, eval_pred_map, eval_type_map = dataset_mappings[left_out]
+    eval_pred_count = len(eval_pred_map)   # pred IDs: 0 .. eval_pred_count-1
+    eval_type_count = len(eval_type_map)   # type label IDs: 1 .. eval_type_count
+
+    # Feature counts for the training mega-graph
+    mega_pred_count = sum(len(dataset_mappings[ds][1]) for ds in train_datasets)
+    mega_type_count = sum(len(dataset_mappings[ds][2]) for ds in train_datasets)
+
+    existing_preds = {l for _, _, el in edges for l in el}
+    max_vid = max((v for v, _ in vertices), default=-1)
+
+    with open(eval_graph_file, "w") as f:
+        f.write("t # 1\n")
+        for vid, labels in vertices:
+            f.write(f"v {vid} {' '.join(map(str, labels))}\n")
+        for src, dst, edge_labels in edges:
+            f.write(f"e {src} {dst} {' '.join(map(str, edge_labels))}\n")
+
+        # Pad type-label IDs: add isolated dummy vertices for each missing label
+        dummy_vid = max_vid + 1
+        for label_id in range(eval_type_count + 1, mega_type_count + 1):
+            f.write(f"v {dummy_vid} {label_id}\n")
+            dummy_vid += 1
+
+        # Pad predicate IDs: add dummy self-loops for each missing predicate
+        for pred_id in range(eval_pred_count, mega_pred_count):
+            if pred_id not in existing_preds:
+                f.write(f"e 0 0 {pred_id}\n")
+
+    print(f"[{eval_name}] Padded eval graph written: "
+          f"pred {eval_pred_count}→{mega_pred_count}, "
+          f"type {eval_type_count}→{mega_type_count}")
+    return eval_name, eval_graph_file
+
+
+def _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, train_datasets, seed=42):
+    """Create a padded evaluation queryset under {left_out}_eval.
+
+    Builds a padded data graph so feature dimensions match the training mega-graph,
+    then samples min(available, max_eval_queries) non-single-edge query files (or all
+    queries when max_eval_queries is None).
+    """
+    eval_name, eval_graph_file = _build_padded_eval_graph(left_out, dataset_mappings, train_datasets)
     dst_qs_root = QUERYSET_PATH / eval_name
     dst_tc_root = TRUE_CARD_PATH / eval_name
 
@@ -368,8 +426,12 @@ def _build_capped_eval_queryset(left_out, max_eval_queries, seed=42):
         if not _is_single_edge(f)
     ]
 
+    if max_eval_queries is not None:
+        target_count = min(len(all_query_files), max_eval_queries)
+    else:
+        target_count = len(all_query_files)
+
     existing_count = len(list(dst_qs_root.rglob("*.txt"))) if dst_qs_root.exists() else 0
-    target_count = min(len(all_query_files), max_eval_queries)
     if existing_count == target_count:
         print(f"[{eval_name}] Eval queryset already built ({existing_count} queries), skipping.")
     else:
@@ -394,13 +456,6 @@ def _build_capped_eval_queryset(left_out, max_eval_queries, seed=42):
                 shutil.copy2(tc_file, dst_tc_dir / query_file.name)
 
         print(f"[{eval_name}] Built eval queryset with {target_count} queries.")
-
-    eval_graph_dir = DATASET_BASE_PATH / eval_name
-    eval_graph_file = eval_graph_dir / f"{eval_name}.txt"
-    if not eval_graph_file.exists():
-        eval_graph_dir.mkdir(parents=True, exist_ok=True)
-        src_graph = DATASET_BASE_PATH / left_out / f"{left_out}.txt"
-        eval_graph_file.symlink_to(src_graph.resolve())
 
     prone_dir = LSS_PATH / "data" / "prone"
     eval_emb = prone_dir / f"{eval_name}.emb.npy"
@@ -528,7 +583,7 @@ def compute_embeddings(graph_paths):
 # Phase 4: Training and evaluation
 # ---------------------------------------------------------------------------
 
-_EXTRA_LSS_ARGS: list[str] = []
+_EXTRA_LSS_ARGS = []
 
 
 def _run_lss(args, cwd):
@@ -541,7 +596,7 @@ def _run_lss(args, cwd):
     return result.returncode
 
 
-def _run_experiment(experiment, results_dir, trained_ids, max_eval_queries=None):
+def _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, train_datasets, max_eval_queries=None):
     """Train (if needed) and evaluate a single experiment."""
     train_id = _get_train_id(experiment)
     exp_id = experiment["id"]
@@ -572,19 +627,23 @@ def _run_experiment(experiment, results_dir, trained_ids, max_eval_queries=None)
                 "--dataset", train_id,
                 "--full_data_dir", "./data/",
                 "--mode", "train",
-                "--model_save_dir", f"./models/{train_id}/",
+                "--model_save_dir", "./models/",
                 "--save_res_dir", str(train_res),
                 "--embed_type", "freq",
                 "--edge_embed_type", "freq",
                 "--matching", "homo",
             ], cwd=LSS_PATH)
+            # Copy the saved checkpoint to a fixed name so the test phase can find it.
+            if not model_path.exists():
+                pth_files = list((LSS_PATH / "models" / train_id).glob("model_*.pth"))
+                if pth_files:
+                    latest = max(pth_files, key=lambda p: p.stat().st_mtime)
+                    shutil.copy2(latest, model_path)
         trained_ids.add(train_id)
     else:
         print(f"[{train_id}] Already trained this session, skipping.")
 
-    eval_dataset = left_out
-    if max_eval_queries is not None:
-        eval_dataset = _build_capped_eval_queryset(left_out, max_eval_queries)
+    eval_dataset = _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, train_datasets)
 
     eval_res = fold_results / "eval"
     eval_res.mkdir(parents=True, exist_ok=True)
@@ -592,7 +651,8 @@ def _run_experiment(experiment, results_dir, trained_ids, max_eval_queries=None)
         "--dataset", eval_dataset,
         "--full_data_dir", "./data/",
         "--mode", "test",
-        "--model_file", f"models/{train_id}/best.pth",
+        # Pass an absolute path so os.path.join in load_model ignores model_save_dir/dataset.
+        "--model_file", str((LSS_PATH / "models" / train_id / "best.pth").resolve()),
         "--save_res_dir", str(eval_res),
         "--embed_type", "freq",
         "--edge_embed_type", "freq",
@@ -610,9 +670,30 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-cuda", action="store_true", default=False,
                         help="Disable CUDA and run on CPU (forwarded to active_train.py)")
+    parser.add_argument("--epochs", type=int, default=None,
+                        help="Override active_train.py --epochs for faster/slower runs")
+    parser.add_argument("--active-epochs", type=int, default=None,
+                        help="Override active_train.py --active_epochs for active-learning rounds")
+    parser.add_argument("--active-iters", type=int, default=None,
+                        help="Override active_train.py --active_iters")
+    parser.add_argument("--quick-test", action="store_true", default=False,
+                        help="Run a smoke test configuration (epochs=2, active_epochs=1, active_iters=1)")
     cli_args = parser.parse_args()
     if cli_args.no_cuda:
         _EXTRA_LSS_ARGS.append("--no-cuda")
+    if cli_args.quick_test:
+        _EXTRA_LSS_ARGS.extend([
+            "--epochs", "2",
+            "--active_epochs", "1",
+            "--active_iters", "1",
+        ])
+    else:
+        if cli_args.epochs is not None:
+            _EXTRA_LSS_ARGS.extend(["--epochs", str(cli_args.epochs)])
+        if cli_args.active_epochs is not None:
+            _EXTRA_LSS_ARGS.extend(["--active_epochs", str(cli_args.active_epochs)])
+        if cli_args.active_iters is not None:
+            _EXTRA_LSS_ARGS.extend(["--active_iters", str(cli_args.active_iters)])
 
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
@@ -668,7 +749,7 @@ if __name__ == "__main__":
         })
 
         # Phase 4: train + evaluate
-        _run_experiment(experiment, results_dir, trained_ids, max_eval_queries=max_eval_queries)
+        _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, train_datasets, max_eval_queries=max_eval_queries)
 
     print("\nAll experiments complete.")
     print(f"Results saved in: {results_dir}")

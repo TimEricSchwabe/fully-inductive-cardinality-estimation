@@ -57,7 +57,6 @@ class Queryset(object):
 			self.edge_embed_feat = torch.from_numpy(edge_embed_feat)
 			self.num_edge_feat = self.edge_embed_dim
 
-
 		# transform the decomposed query to torch tensor
 		self.all_subsets = self.transform_query_to_tensors(all_subsets)
 
@@ -213,10 +212,11 @@ class Queryset(object):
 		return node_attr
 
 	def _get_nodes_attr_freq(self, graph):
-		node_attr = torch.ones(size=(graph.number_of_nodes(), len(self.node_label_card)), dtype=torch.float)
+		node_attr = torch.ones(size=(graph.number_of_nodes(), self.num_node_feat), dtype=torch.float)
 		for v in graph.nodes():
 			for label in graph.nodes[v]["labels"]:
-				node_attr[v][self.label_dict[label]] = self.node_label_card[label]
+				idx = self.label_dict[label]
+				node_attr[v][idx] = self.node_label_card[label]
 				self.node_label_fre += 1
 		return node_attr
 
@@ -233,7 +233,7 @@ class Queryset(object):
 
 	def _get_edges_index_freq(self, graph):
 		edge_index = torch.ones(size= (2, graph.number_of_edges()), dtype = torch.long)
-		edge_attr = torch.zeros(size= (graph.number_of_edges(), len(self.edge_label_card)), dtype=torch.float)
+		edge_attr = torch.zeros(size= (graph.number_of_edges(), self.num_edge_feat), dtype=torch.float)
 		cnt = 0
 		for e in graph.edges():
 			edge_index[0][cnt], edge_index[1][cnt] = e[0], e[1]

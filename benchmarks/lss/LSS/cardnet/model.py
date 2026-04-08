@@ -170,7 +170,7 @@ class CardNet(nn.Module):
 		g, output_cla = None, None
 
 		for x, edge_index, edge_attr in zip(decomp_x, decomp_edge_index, decomp_edge_attr):
-			x, edge_index, edge_attr = x.squeeze(), edge_index.squeeze(), edge_attr.squeeze()
+			x, edge_index, edge_attr = x.squeeze(0), edge_index.squeeze(0), edge_attr.squeeze(0)
 			if g is None:
 				g = self.graph2vec(x, edge_index, edge_attr)
 			else:
