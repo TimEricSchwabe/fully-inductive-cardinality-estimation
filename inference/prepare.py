@@ -132,6 +132,7 @@ def build_fice_from_config(config: Config, state_dict: dict = None) -> FICE:
         pe_dim=pe_dim,
         prediction_mode=config.prediction_mode,
         embedding_space=config.embedding_space,
+        count_features=getattr(config, 'count_features', 'raw'),
     )
 
 

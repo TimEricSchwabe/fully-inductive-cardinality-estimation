@@ -70,6 +70,7 @@ class Config(BaseSettings):
     gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
     prediction_mode: Literal['log-cardinality', 'log-selectivity'] = 'log-cardinality'
     embedding_space: Literal['euclidean', 'box', 'gaussian', 'hyperbolic', 'hgcn', 'product'] = 'euclidean'
+    count_features: Literal['raw', 'normalized', 'none'] = 'raw'  # How to use occurrence counts in query GNN
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()

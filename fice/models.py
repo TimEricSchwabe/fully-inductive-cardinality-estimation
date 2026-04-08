@@ -769,10 +769,12 @@ class FICE(nn.Module):
                  relation_dropout=0.0,
                  prediction_mode='log-cardinality',
                  embedding_space='euclidean',
+                 count_features='raw',
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
         self.prediction_mode = prediction_mode
+        self.count_features = count_features
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
         self.use_unified_bipartite_graph = (entity_graph_mode in ("bipartite", "factor"))
         # Use n_embedding_layers to create the list of hidden dimensions
@@ -845,10 +847,12 @@ class FICE(nn.Module):
         # Hyperbolic BipartiteGNN outputs Euclidean tangent vectors — query GNN stays Euclidean
         query_embedding_space = 'euclidean' if embedding_space in ('hyperbolic', 'hgcn', 'product') else embedding_space
 
+        # count_features='none' disables both occurrence counts and graph_size
+        use_gs = (prediction_mode != 'log-selectivity') and (count_features != 'none')
+
         if self.query_gnn_type == 'QueryCardinalityGNN':
             self.query_gnn = QueryCardinalityGNN(feat_dim=self.vector_dim + 3, num_layers=3, embedding_space=query_embedding_space)
         elif self.query_gnn_type == 'TripleModel':
-            use_gs = (prediction_mode != 'log-selectivity')
             use_sp = (prediction_mode == 'log-selectivity')
             self.query_gnn = TripleModel(
                 feat_dim=self.vector_dim + 3,
@@ -864,7 +868,6 @@ class FICE(nn.Module):
                 embedding_space=query_embedding_space,
             )
         elif self.query_gnn_type == 'BoxTripleModel':
-            use_gs = (prediction_mode != 'log-selectivity')
             self.query_gnn = BoxTripleModel(
                 feat_dim=self.vector_dim + 3,
                 num_layers=query_gnn_num_layers,
@@ -873,7 +876,6 @@ class FICE(nn.Module):
             )
         elif self.query_gnn_type == 'ProductTripleModel':
             from fice.product_space import ProductTripleModel
-            use_gs = (prediction_mode != 'log-selectivity')
             use_sp = (prediction_mode == 'log-selectivity')
             self.query_gnn = ProductTripleModel(
                 feat_dim=self.vector_dim + 3,
@@ -1049,9 +1051,18 @@ class FICE(nn.Module):
             edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
             batch.edge_attr = edge_features
         
-        # Universal log-transform for counts
-        x_counts = torch.log1p(batch.x[:, :3])
-        e_counts = torch.log1p(batch.edge_attr[:, :3])
+        # Count feature processing based on count_features mode
+        if self.count_features == 'none':
+            x_counts = torch.zeros_like(batch.x[:, :3])
+            e_counts = torch.zeros_like(batch.edge_attr[:, :3])
+        elif self.count_features == 'normalized':
+            # Normalize by graph size before log1p — makes counts graph-size-invariant
+            gs = graph_size.float().clamp(min=1.0)
+            x_counts = torch.log1p(batch.x[:, :3] / gs)
+            e_counts = torch.log1p(batch.edge_attr[:, :3] / gs)
+        else:  # 'raw' (default)
+            x_counts = torch.log1p(batch.x[:, :3])
+            e_counts = torch.log1p(batch.edge_attr[:, :3])
 
         if self.prediction_mode == 'log-selectivity':
             src = batch.edge_index[0]  # subject nodes

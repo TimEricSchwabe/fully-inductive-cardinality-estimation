@@ -1,9 +1,9 @@
-"""Compare FICE inference: Python native vs TorchScript vs C++ binary.
+"""Compare FICE inference: training-identical vs TorchScript vs C++ binary.
 
-Runs all fb237_v4 star queries through three paths:
-  A) Python native: precomputed embeddings + PyG TripleModel (query_gnn)
-  B) TorchScript: precomputed .bin artifacts + scripted model (same as C++)
-  C) C++ binary: batch mode via subprocess
+Runs fb237_v4 star queries (val split) through three paths:
+  A) Training-identical: per-query neighbor sampling + full model (EntityGNN + RelationGNN + QueryGNN)
+  B) TorchScript: precomputed .bin embeddings + scripted QueryGNN
+  C) C++ binary: precomputed .bin embeddings + libtorch QueryGNN (batch mode)
 
 Reports prediction agreement and per-query timing.
 
@@ -37,10 +37,12 @@ sys.path.insert(0, str(SCRIPTS_DIR))
 from utils.config import Config
 from utils.checkpoint_helper import load_checkpoint
 from utils.data_helper import load_dataset, load_occurrences, get_or_build_graph
+from utils.neighborhood_sampler import MultigraphNeighborSampler
 
 # Import from sibling inference module
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from prepare import build_fice_from_config, compute_embeddings_full_graph
+from prepare import build_fice_from_config
+from diagnose_qerror import run_full_model_per_query
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
@@ -252,7 +254,7 @@ def main():
         all_queries = all_queries[:args.max_queries]
     logger.info(f"Loaded {len(all_queries)} val queries (same split as diagnose_qerror.py)")
 
-    # ---- Load FICE model (Path A) ----
+    # ---- Load FICE model (Path A: training-identical) ----
     logger.info("Loading FICE model from checkpoint...")
     checkpoint_path = Path(inf_cfg["checkpoint"])
     checkpoint = load_checkpoint(checkpoint_path)
@@ -262,7 +264,7 @@ def main():
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
-    # Load graph and compute embeddings once
+    # Load graph
     graph_dataset_name = inf_cfg["graph_dataset"]
     graph = load_dataset(graph_dataset_name)
     graph_num_edges = int(graph.num_edges)
@@ -271,14 +273,12 @@ def main():
     graph_type = "factor" if relation_source == "factor" else "bipartite"
     graph_data = get_or_build_graph(graph, graph_dataset_name, graph_type)
 
-    logger.info("Computing embeddings (full-graph mode)...")
-    entity_emb, relation_emb = compute_embeddings_full_graph(
-        model, graph_data, torch.device("cpu"))
-
-    # Load occurrence dicts (angle-bracket keys)
+    # Load occurrence dicts
     entity_occ_dict, relation_occ_dict, entity_mapping, relation_mapping = \
         load_occurrences(graph_dataset_name)
 
+    num_neighbors = config.GNNNeighborhood or [100, 100]
+    sampler = MultigraphNeighborSampler(num_neighbors=num_neighbors)
     feat_dim = config.embedding_dim + 3
 
     # ---- Load TorchScript model + precomputed artifacts (Path B) ----
@@ -308,52 +308,42 @@ def main():
         str(artifacts_dir / "relation_occurrences.bin"), dtype=np.float32
     ).reshape(num_relations, 3)
 
-    # ---- Warmup ----
-    logger.info(f"Warming up with {args.warmup} queries...")
+    # ---- Warmup TorchScript ----
+    logger.info(f"Warming up TorchScript with {args.warmup} queries...")
     warmup_n = min(args.warmup, len(all_queries))
-    graph_size_t = torch.tensor([float(graph_num_edges)])
     with torch.no_grad():
         for q in all_queries[:warmup_n]:
-            data_a = build_query_graph_native(
-                q, entity_emb, relation_emb,
-                entity_occ_dict, relation_occ_dict,
-                entity_mapping, relation_mapping, feat_dim)
-            batch_a = Batch.from_data_list([data_a])
-            model.query_gnn(batch=batch_a, graph_size=graph_size_t)
-
             x, ei, ea, bt, gs = build_query_graph_torchscript(
                 q, entity_emb_np, relation_emb_np,
                 entity_occ_np, relation_occ_np,
                 uri_to_id, feat_dim, graph_num_edges)
             scripted_model(x, ei, ea, bt, gs)
 
-    # ---- Run Path A and Path B ----
-    logger.info(f"Running {len(all_queries)} queries through Python paths...")
+    # ---- Run Path A (training-identical) and Path B (TorchScript) ----
+    logger.info(f"Running {len(all_queries)} queries...")
     native_preds = []
     ts_preds = []
     native_times = []
     ts_times = []
     ground_truths = []
 
-    with torch.no_grad():
-        for i, q in enumerate(all_queries):
-            ground_truths.append(q["y"])
+    for i, q in enumerate(all_queries):
+        ground_truths.append(q["y"])
 
-            # Path A: native Python query_gnn
-            data_a = build_query_graph_native(
-                q, entity_emb, relation_emb,
-                entity_occ_dict, relation_occ_dict,
-                entity_mapping, relation_mapping, feat_dim)
-            batch_a = Batch.from_data_list([data_a])
+        # Path A: training-identical (per-query full model)
+        t0 = time.perf_counter()
+        out_a = run_full_model_per_query(
+            q["triples"], model, graph_data,
+            entity_occ_dict, relation_occ_dict,
+            entity_mapping, relation_mapping,
+            graph_num_edges, sampler)
+        t1 = time.perf_counter()
 
-            t0 = time.perf_counter()
-            out_a = model.query_gnn(batch=batch_a, graph_size=graph_size_t)
-            t1 = time.perf_counter()
+        native_preds.append(out_a)
+        native_times.append((t1 - t0) * 1e6)
 
-            native_preds.append(out_a.item())
-            native_times.append((t1 - t0) * 1e6)
-
-            # Path B: TorchScript
+        # Path B: TorchScript (precomputed embeddings)
+        with torch.no_grad():
             x, ei, ea, bt, gs = build_query_graph_torchscript(
                 q, entity_emb_np, relation_emb_np,
                 entity_occ_np, relation_occ_np,
@@ -363,11 +353,11 @@ def main():
             out_b = scripted_model(x, ei, ea, bt, gs)
             t1 = time.perf_counter()
 
-            ts_preds.append(out_b.item())
-            ts_times.append((t1 - t0) * 1e6)
+        ts_preds.append(out_b.item())
+        ts_times.append((t1 - t0) * 1e6)
 
-            if (i + 1) % 5000 == 0:
-                logger.info(f"  {i + 1}/{len(all_queries)}")
+        if (i + 1) % 100 == 0:
+            logger.info(f"  {i + 1}/{len(all_queries)}")
 
     native_preds = np.array(native_preds)
     ts_preds = np.array(ts_preds)
@@ -415,14 +405,14 @@ def main():
     # Prediction agreement
     diff_ab = np.abs(native_preds - ts_preds)
     print("\n--- Prediction Agreement (log-cardinality space) ---")
-    print(f"\nPython native vs TorchScript:")
+    print(f"\nTraining-identical vs TorchScript:")
     print(f"  MAE: {diff_ab.mean():.6e}  Max: {diff_ab.max():.6e}  "
           f"Correlation: {np.corrcoef(native_preds, ts_preds)[0,1]:.8f}")
 
     if cpp_preds is not None and len(cpp_preds) == len(native_preds):
         diff_ac = np.abs(native_preds - cpp_preds)
         diff_bc = np.abs(ts_preds - cpp_preds)
-        print(f"\nPython native vs C++:")
+        print(f"\nTraining-identical vs C++:")
         print(f"  MAE: {diff_ac.mean():.6e}  Max: {diff_ac.max():.6e}  "
               f"Correlation: {np.corrcoef(native_preds, cpp_preds)[0,1]:.8f}")
         print(f"\nTorchScript vs C++ (should be ~0):")
@@ -431,7 +421,7 @@ def main():
 
     # Q-error vs ground truth
     print("\n--- Q-Error vs Ground Truth ---")
-    for name, preds in [("Python native", native_preds), ("TorchScript", ts_preds)]:
+    for name, preds in [("Training-identical", native_preds), ("TorchScript", ts_preds)]:
         q_errors = compute_q_errors(preds, ground_truths)
         print(f"\n{name}:")
         print(f"  Mean: {q_errors.mean():.2f}  Median: {np.median(q_errors):.2f}")
@@ -451,12 +441,12 @@ def main():
 
     # Timing
     print("\n--- Per-Query Inference Time (microseconds) ---")
-    print_stats("Python native (query_gnn only)", native_times)
+    print_stats("Training-identical (full model)", native_times)
     print_stats("TorchScript (Python)", ts_times)
 
     if cpp_times is not None and len(cpp_times) > 0:
         print_stats("C++ (libtorch)", cpp_times)
-        print(f"\n  Speedup C++ vs Python native: "
+        print(f"\n  Speedup C++ vs Training-identical: "
               f"{np.mean(native_times) / np.mean(cpp_times):.2f}x")
         print(f"  Speedup C++ vs TorchScript:   "
               f"{np.mean(ts_times) / np.mean(cpp_times):.2f}x")
@@ -464,8 +454,8 @@ def main():
     # ---- Write per-query TSV ----
     tsv_path = output_dir / "compare_per_query.tsv"
     with open(tsv_path, "w") as f:
-        header = "query_idx\tground_truth\tnative_log_pred\tts_log_pred"
-        header += "\tnative_time_us\tts_time_us"
+        header = "query_idx\tground_truth\ttraining_identical_log_pred\tts_log_pred"
+        header += "\ttraining_identical_time_us\tts_time_us"
         if cpp_preds is not None and len(cpp_preds) == len(native_preds):
             header += "\tcpp_log_pred\tcpp_time_us"
         f.write(header + "\n")
@@ -484,7 +474,7 @@ def main():
     gt = np.maximum(np.array(ground_truths, dtype=np.float64), 1.0)
 
     methods = [
-        ("Python native\n(full-graph emb)", native_preds),
+        ("Training-identical\n(per-query emb)", native_preds),
         ("TorchScript\n(batched emb)", ts_preds),
     ]
     if cpp_preds is not None and len(cpp_preds) == len(native_preds):
