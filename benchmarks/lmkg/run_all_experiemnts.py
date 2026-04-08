@@ -42,6 +42,24 @@ DATASETS = [d["name"] for d in _cfg["datasets"]]
 # LOCO experiment folds to run
 EXPERIMENTS = _cfg["experiments"]
 
+def _to_list(value):
+    """Normalize a string or list config value to a list."""
+    return value if isinstance(value, list) else [value]
+
+
+def _get_eval_datasets(experiment):
+    """Datasets to evaluate on — must be explicitly set via the 'eval' key.
+
+    Independent of 'left_out': a dataset listed here is NOT excluded from the
+    training pool unless it also appears in 'left_out'.
+    Returns an empty list when 'eval' is absent or null (no evaluation runs).
+    """
+    raw = experiment.get("eval")
+    if not raw:
+        return []
+    return _to_list(raw)
+
+
 SKIP_CONVERT = False
 SKIP_PREPARE = False
 EPOCHS = 100
@@ -75,27 +93,29 @@ def step2_prepare():
         all_eval[ds] = mega_graph.read_eval_queries(ds, entity_offsets[ds], relation_offsets[ds])
 
     for exp in EXPERIMENTS:
-        eval_ds = exp["left_out"]
+        left_out_set = set(_to_list(exp["left_out"]))
+        eval_list = _get_eval_datasets(exp)
         pool = exp["pool"]
         if pool == "*":
-            pool_datasets = [ds for ds in DATASETS if ds != eval_ds]
+            pool_datasets = [ds for ds in DATASETS if ds not in left_out_set]
         else:
-            pool_datasets = pool
+            pool_datasets = [ds for ds in pool if ds not in left_out_set]
 
-        print(f"\n=== Fold: mega_no_{eval_ds} (pool={pool_datasets}) ===")
         merged_train = {"star": defaultdict(list), "path": defaultdict(list)}
         for ds in pool_datasets:
             for qtype in ("star", "path"):
                 for size, lines in all_train[ds][qtype].items():
                     merged_train[qtype][size].extend(lines)
 
-        mega_graph.write_star_path_folds(
-            eval_ds=eval_ds,
-            train_queries=merged_train,
-            eval_queries=all_eval[eval_ds],
-            mega_d=mega_d,
-            mega_b=mega_b,
-        )
+        for eval_ds in eval_list:
+            print(f"\n=== Fold: mega_no_{eval_ds} (pool={pool_datasets}) ===")
+            mega_graph.write_star_path_folds(
+                eval_ds=eval_ds,
+                train_queries=merged_train,
+                eval_queries=all_eval[eval_ds],
+                mega_d=mega_d,
+                mega_b=mega_b,
+            )
 
 
 # ---------------------------------------------------------------------------
@@ -134,14 +154,14 @@ def main():
     print("=" * 60)
 
     for exp in EXPERIMENTS:
-        eval_ds = exp["left_out"]
-        fold_name = f"mega_no_{eval_ds}"
-        print(f"\n--- Training fold: {fold_name}_star (alltypessizes) ---")
-        train_model_star_only(fold_name, errors,
-                              epochs=EPOCHS, batch_size=BATCH_SIZE, layers=LAYERS, neurons=NEURONS)
-        print(f"\n--- Training fold: {fold_name}_path (alltypessizes) ---")
-        train_model_path_only(fold_name, errors,
-                              epochs=EPOCHS, batch_size=BATCH_SIZE, layers=LAYERS, neurons=NEURONS)
+        for eval_ds in _get_eval_datasets(exp):
+            fold_name = f"mega_no_{eval_ds}"
+            print(f"\n--- Training fold: {fold_name}_star (alltypessizes) ---")
+            train_model_star_only(fold_name, errors,
+                                  epochs=EPOCHS, batch_size=BATCH_SIZE, layers=LAYERS, neurons=NEURONS)
+            print(f"\n--- Training fold: {fold_name}_path (alltypessizes) ---")
+            train_model_path_only(fold_name, errors,
+                                  epochs=EPOCHS, batch_size=BATCH_SIZE, layers=LAYERS, neurons=NEURONS)
 
     # ------------------------------------------------------------------
     # Step 4: Evaluate on held-out datasets
@@ -151,12 +171,12 @@ def main():
     print("=" * 60)
 
     for exp in EXPERIMENTS:
-        eval_ds = exp["left_out"]
-        fold_name = f"mega_no_{eval_ds}"
-        print(f"\n--- Evaluating fold: {fold_name}_star (held-out: {eval_ds}, star queries) ---")
-        eval_model_star_only(fold_name, errors, layers=LAYERS, neurons=NEURONS)
-        print(f"\n--- Evaluating fold: {fold_name}_path (held-out: {eval_ds}, path queries) ---")
-        eval_model_path_only(fold_name, errors, layers=LAYERS, neurons=NEURONS)
+        for eval_ds in _get_eval_datasets(exp):
+            fold_name = f"mega_no_{eval_ds}"
+            print(f"\n--- Evaluating fold: {fold_name}_star (held-out: {eval_ds}, star queries) ---")
+            eval_model_star_only(fold_name, errors, layers=LAYERS, neurons=NEURONS)
+            print(f"\n--- Evaluating fold: {fold_name}_path (held-out: {eval_ds}, path queries) ---")
+            eval_model_path_only(fold_name, errors, layers=LAYERS, neurons=NEURONS)
 
     # ------------------------------------------------------------------
     # Summary

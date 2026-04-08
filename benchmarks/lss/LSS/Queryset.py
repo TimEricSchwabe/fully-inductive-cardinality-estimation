@@ -62,7 +62,7 @@ class Queryset(object):
 
 		self.all_queries = []
 		# split by query patterns and sizes
-		self.all_sizes = {} # { size -> [(graphs, true_card]} // all queries subset indexed by query size
+		self.all_sizes = {} # { (pattern, size) -> [(graphs, true_card)]} // all queries subset indexed by query type + size
 		self.all_patterns = {} # { pattern -> [(graphs, true_card)]} // all queries subset index by query pattern
 
 		for (pattern, size), graphs_card_pairs in self.all_subsets.items():
@@ -70,9 +70,9 @@ class Queryset(object):
 			if pattern not in self.all_patterns.keys():
 				self.all_patterns[pattern] = []
 			self.all_patterns[pattern] += graphs_card_pairs
-			if size not in self.all_sizes.keys():
-				self.all_sizes[size] = []
-			self.all_sizes[size] += graphs_card_pairs
+			if (pattern, size) not in self.all_sizes:
+				self.all_sizes[(pattern, size)] = []
+			self.all_sizes[(pattern, size)] += graphs_card_pairs
 
 
 		# split to train, val, test query set
@@ -150,16 +150,22 @@ class Queryset(object):
 
 	def to_dataloader(self, all_sets, batch_size = 1, shuffle = True):
 		datasets = []
-		size_order = sorted(self.all_sizes.keys())
+		key_order = sorted(self.all_sizes.keys())
 		for idx, queries in enumerate(all_sets):
 			if len(all_sets) == 1:
 				query_set_name = f"{self.dataset}_train"
 				query_type = "train"
 				query_size = None
 			else:
-				query_size = size_order[idx] if idx < len(size_order) else None
-				query_set_name = f"{self.dataset}_size_{query_size}" if query_size is not None else self.dataset
-				query_type = f"size_{query_size}" if query_size is not None else "unknown"
+				key = key_order[idx] if idx < len(key_order) else None
+				if key is not None:
+					pattern, query_size = key
+					query_set_name = f"{self.dataset}_{pattern}_{query_size}"
+					query_type = pattern
+				else:
+					query_size = None
+					query_set_name = self.dataset
+					query_type = "unknown"
 			datasets.append(QueryDataset(queries=queries, query_set_name=query_set_name, query_type=query_type, query_size=query_size))
 		dataloaders = [ DataLoader(dataset= dataset, batch_size = batch_size, shuffle= shuffle)
 						for dataset in datasets]

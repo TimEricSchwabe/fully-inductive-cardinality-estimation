@@ -74,13 +74,21 @@ def main(args):
 		all_eval_res = active_learner.evaluate(model=model, criterion=criterion, eval_datasets=test_datasets, print_res=True)
 		make_dir(args.save_res_dir)
 		pred_path = os.path.join(args.save_res_dir, "predictions.csv")
+		# sorted_keys[i] = (pattern, size) for the i-th test dataset
+		sorted_keys = sorted(QS.all_subsets.keys())
+		dataset_name = args.dataset_name if args.dataset_name else args.dataset.removesuffix("_eval")
 		with open(pred_path, "w", newline="") as f:
 			writer = csv.writer(f)
-			writer.writerow(["query_id", "ground_truth", "prediction"])
+			writer.writerow(["query_id", "stage", "epoch", "dataset", "query_set", "query_type", "ground_truth", "prediction"])
 			qid = 0
-			for res, _loss, _l1, _elapsed in all_eval_res:
+			for group_idx, (res, _loss, _l1, _elapsed) in enumerate(all_eval_res):
+				if group_idx < len(sorted_keys):
+					pattern, size = sorted_keys[group_idx]
+				else:
+					pattern, size = "unknown", "unknown"
+				query_set = f"{pattern}_{size}"
 				for card, output in res:
-					writer.writerow([qid, round(math.pow(2, card)), round(math.pow(2, output))])
+					writer.writerow([qid, args.stage, args.epoch, dataset_name, query_set, pattern, round(math.pow(2, card)), round(math.pow(2, output))])
 					qid += 1
 		print(f"Predictions saved to {pred_path}")
 
@@ -277,6 +285,13 @@ if __name__ == "__main__":
 	parser.add_argument("--verbose", default=True, type=bool)
 	parser.add_argument("--mode", default="cross_val", type=str,
 						help="The running mode") # train (train & test) or test (only test) or pretrain or ensemble or cross_val
+	# Metadata for predictions CSV
+	parser.add_argument("--stage", default="eval", type=str,
+						help="Pipeline stage label written to predictions.csv (e.g. 'train', 'eval')")
+	parser.add_argument("--epoch", default=1, type=int,
+						help="Epoch/iteration label written to predictions.csv")
+	parser.add_argument("--dataset_name", default=None, type=str,
+						help="Human-readable dataset name for predictions.csv (defaults to --dataset with _eval stripped)")
 	args = parser.parse_args()
 
 	# set the hardware parameter

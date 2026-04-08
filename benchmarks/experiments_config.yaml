@@ -132,39 +132,33 @@ datasets:
 
 
 experiments:
-  - id: swdf_test_new
-    pool: ["fb237_v4", "dbpedia100k"]
+
+  - id: loco_swdf
+    pool: "*"
     left_out: swdf
+    eval: swdf
 
+  - id: loco_lubm
+    pool: "*"
+    left_out: lubm
+    eval: lubm
 
-  # - id: loco_swdf
-  #   pool: "*"
-  #   left_out: swdf
+  - id: loco_wikidata
+    pool: "*"
+    left_out: wikidata
+    eval: wikidata
 
-  # - id: loco_lubm
-  #   pool: "*"
-  #   left_out: lubm
+  - id: loco_dbpedia100k
+    pool: "*"
+    left_out: dbpedia100k
+    eval: dbpedia100k
 
-  # - id: loco_wikidata
-  #   pool: "*"
-  #   left_out: wikidata
+  - id: loco_fb237_v4
+    pool: "*"
+    left_out: [fb237_v4, fb237_v4_ind]
+    eval: [fb237_v4]
 
-  # - id: loco_dbpedia100k
-  #   pool: "*"
-  #   left_out: dbpedia100k
-
-  # - id: loco_fb237_v4_ind
-  #   pool: "*"
-  #   left_out: fb237_v4_ind
-
-  # - id: loco_fb237_v4
-  #   pool: "*"
-  #   left_out: fb237_v4
-
-  # - id: loco_wn18rr_v4_ind
-  #   pool: "*"
-  #   left_out: wn18rr_v4_ind
-
-  # - id: loco_wn18rr_v4
-  #   pool: "*"
-  #   left_out: wn18rr_v4
+  - id: loco_wn18rr_v4
+    pool: "*"
+    left_out: [wn18rr_v4, wn18rr_v4_ind]
+    eval: [wn18rr_v4]

@@ -28,13 +28,31 @@ def _resolve_project_path(path_value):
     return (PROJECT_ROOT / path).resolve()
 
 
+def _to_list(value):
+    """Normalize a string or list config value to a list."""
+    return value if isinstance(value, list) else [value]
+
+
+def _get_eval_datasets(experiment):
+    """Datasets to evaluate on — must be explicitly set via the 'eval' key.
+
+    Independent of 'left_out': a dataset listed here is NOT excluded from the
+    training pool unless it also appears in 'left_out'.
+    Returns an empty list when 'eval' is absent or null (no evaluation runs).
+    """
+    raw = experiment.get("eval")
+    if not raw:
+        return []
+    return _to_list(raw)
+
+
 def _resolve_pool(experiment, all_dataset_names):
     """Resolve pool: '*' expands to all datasets except left_out."""
-    left_out = experiment["left_out"]
+    left_out_set = set(_to_list(experiment["left_out"]))
     pool = experiment["pool"]
     if pool == "*":
-        return [d for d in all_dataset_names if d != left_out]
-    return [d for d in pool if d != left_out]
+        return [d for d in all_dataset_names if d not in left_out_set]
+    return [d for d in pool if d not in left_out_set]
 
 
 def _get_train_id(experiment):
@@ -657,6 +675,8 @@ def _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, trai
         "--embed_type", "freq",
         "--edge_embed_type", "freq",
         "--matching", "homo",
+        "--stage", "eval",
+        "--dataset_name", left_out,
     ], cwd=LSS_PATH)
 
     print(f"[{exp_id}] Done. Results in {fold_results}")
@@ -721,10 +741,12 @@ if __name__ == "__main__":
     results_dir.mkdir(parents=True, exist_ok=True)
 
     for experiment in config["experiments"]:
-        left_out = experiment["left_out"]
+        left_out_list = _to_list(experiment["left_out"])
+        eval_list = _get_eval_datasets(experiment)
         train_id = _get_train_id(experiment)
         train_datasets = _resolve_pool(experiment, all_dataset_names)
-        needed_datasets = train_datasets + [left_out]
+        # deduplicated list of all datasets that need graph/query transformation
+        needed_datasets = list(dict.fromkeys(train_datasets + left_out_list + eval_list))
 
         print("=" * 70)
         print(f"Experiment '{experiment['id']}': preparing datasets {needed_datasets}")
@@ -742,14 +764,19 @@ if __name__ == "__main__":
         # Phase 3: build LOCO mega-graph and queryset
         mega_graph_file = _ensure_mega_graph(train_id, train_datasets, dataset_mappings, dataset_caps=max_train_queries_per_dataset)
 
-        # Phase 3.5: compute embeddings
-        compute_embeddings({
-            train_id: mega_graph_file,
-            left_out: DATASET_BASE_PATH / left_out / f"{left_out}.txt",
-        })
+        if not eval_list:
+            print(f"[{experiment['id']}] No eval datasets specified, skipping phases 3.5 and 4.")
+            continue
 
-        # Phase 4: train + evaluate
-        _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, train_datasets, max_eval_queries=max_eval_queries)
+        # Phase 3.5: compute embeddings for train + all eval datasets
+        emb_graphs = {train_id: mega_graph_file}
+        for lo in eval_list:
+            emb_graphs[lo] = DATASET_BASE_PATH / lo / f"{lo}.txt"
+        compute_embeddings(emb_graphs)
+
+        # Phase 4: train + evaluate on each eval dataset
+        for lo in eval_list:
+            _run_experiment({**experiment, "left_out": lo}, results_dir, trained_ids, dataset_mappings, train_datasets, max_eval_queries=max_eval_queries)
 
     print("\nAll experiments complete.")
     print(f"Results saved in: {results_dir}")
