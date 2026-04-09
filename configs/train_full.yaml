@@ -85,42 +85,42 @@ data:
     queries: "WIKIDATA_Star_Queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "Wikidata"
     queries: "wikidata_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
 
   # === fb237_v4 (train-val) ===
   - dataset: "fb237_v4"
@@ -169,37 +169,37 @@ data:
     queries: "wn18rr_v4_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   # wn18rr_v4_path_star_ends_queries: EMPTY
 
   # === Yago (train-val) ===
@@ -275,51 +275,51 @@ data:
     queries: "codex_l_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_binary_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "codex_l"
     queries: "codex_l_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   # codex_l_snowflake_queries: NOT GENERATED
 
 
   # === wn18rr_v4_ind (validation) ===
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_star_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
-  - dataset: "wn18rr_v4_ind"
-    queries: "wn18rr_v4_ind_path_queries"
-    batch_size: *bs
-    num_queries: *nq
-    type: "train-val"
+  #- dataset: "wn18rr_v4_ind"
+  #  queries: "wn18rr_v4_ind_star_queries"
+  #  batch_size: *bs
+  #  num_queries: *nq
+  #  type: "train-val"
+  #- dataset: "wn18rr_v4_ind"
+  #  queries: "wn18rr_v4_ind_path_queries"
+  #  batch_size: *bs
+  #  num_queries: *nq
+  #  type: "train-val"
 
   # === dbpedia100k ===
   - dataset: "dbpedia100k"
@@ -361,7 +361,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-attention-wikidata-codex-occurrences-normalized"
+wandb_run_name: "RelationalGNN-attention-wn18rr"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
@@ -382,7 +382,7 @@ random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product"
-count_features: "none" # "raw", "normalized", or "none"
+count_features: "raw" # "raw", "normalized", or "none"
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
