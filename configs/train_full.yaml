@@ -43,42 +43,42 @@ data:
     queries: "SWDF_Star_Queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "SWDF"
     queries: "swdf_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
   # === Wikidata (train-val) ===
   - dataset: "Wikidata"
@@ -169,37 +169,37 @@ data:
     queries: "wn18rr_v4_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "wn18rr_v4"
     queries: "wn18rr_v4_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   # wn18rr_v4_path_star_ends_queries: EMPTY
 
   # === Yago (train-val) ===
@@ -361,7 +361,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-attention-wn18rr"
+wandb_run_name: "RelationalGNN-attention-swdf"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
