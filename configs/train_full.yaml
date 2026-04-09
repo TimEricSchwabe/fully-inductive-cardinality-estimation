@@ -382,7 +382,7 @@ random_walk_pe: 0
 gradient_clipping: 1.0
 prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
 embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product"
-count_features: "normalized" # "raw", "normalized", or "none"
+count_features: "none" # "raw", "normalized", or "none"
 
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
@@ -405,7 +405,7 @@ query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
   model: "TripleModel" # choices are "QueryCardinalityGNN", "TripleModel", "QueryTransformer", "SimpleSumGNN", "BoxTripleModel" or "ProductTripleModel"
   skip_connection: False
-  readout: "sum" # choices are "sum" or "attention"
+  readout: "attention" # choices are "sum" or "attention"
   layer_norm: True
   dropout: 0.0
   num_layers: 2
