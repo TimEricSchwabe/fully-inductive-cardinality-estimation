@@ -43,42 +43,42 @@ data:
     queries: "SWDF_Star_Queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "SWDF"
     queries: "swdf_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
 
   # === Wikidata (train-val) ===
   - dataset: "Wikidata"
@@ -326,42 +326,42 @@ data:
     queries: "dbpedia100k_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "dbpedia100k"
     queries: "dbpedia100k_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-attention-swdf"
+wandb_run_name: "RelationalGNN-attention-dbpedia-4-hop"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
