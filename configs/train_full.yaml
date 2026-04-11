@@ -5,37 +5,37 @@ data:
     queries: "LUBMQueries"
     batch_size: &bs 32
     num_queries: &nq 20000
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "LUBM"
     queries: "lubm_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   # lubm_cycle_queries: EMPTY
 
   # === SWDF (train-val) ===
@@ -262,12 +262,12 @@ data:
     queries: "hetionet_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "hetionet"
     queries: "hetionet_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   # hetionet_flower_queries: EMPTY
 
   # === CodexL (train-val) ===
@@ -361,7 +361,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-attention-dbpedia-4-hop"
+wandb_run_name: "RelationalGNN-attention-hetionet-4-hop"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
