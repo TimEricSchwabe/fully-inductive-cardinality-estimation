@@ -18,7 +18,13 @@ DATASET_BASE_PATH = LSS_PATH / "data" / "dataset"
 QUERYSET_PATH = LSS_PATH / "data" / "queryset_homo"
 TRUE_CARD_PATH = LSS_PATH / "data" / "true_homo"
 RESULTS_PATH = Path(__file__).parent / "results"
+# Queries with fewer nodes than this are excluded (matches LSS paper: no 2-node queries).
 MIN_SUPPORTED_QUERY_SIZE = 3
+# Minimum query counts before passing a dataset to active_train.py.
+# QuerySampler divides by num_queries and Queryset does an 80/10/10 split, so
+# too few queries cause ZeroDivisionError or empty test sets inside LSS.
+MIN_TRAIN_QUERIES = 20
+MIN_EVAL_QUERIES = 10
 
 
 def _resolve_project_path(path_value):
@@ -134,6 +140,18 @@ def _query_file_has_supported_size(query_file):
     return size is not None and size >= MIN_SUPPORTED_QUERY_SIZE
 
 
+def _count_valid_query_files(root: Path) -> int:
+    """Count query files with a supported size in a queryset directory.
+
+    Works for both per-dataset querysets (query_*.txt) and LOCO querysets
+    ({ds}_query_*.txt) because it matches any .txt file under a valid
+    size-encoded subdirectory.
+    """
+    if not root.exists():
+        return 0
+    return sum(1 for f in root.rglob("*.txt") if _query_file_has_supported_size(f))
+
+
 def _purge_unsupported_query_size_dirs(dataset_name):
     """Remove generated queryset/cardinality subdirs smaller than supported size."""
     for root in [QUERYSET_PATH / dataset_name, TRUE_CARD_PATH / dataset_name]:
@@ -200,13 +218,19 @@ def _ensure_queries(ds_name, ds_config, query_configs, dataset_mappings):
         with open(query_path) as f:
             queries = json.load(f)
 
+        skipped_few_triples = 0
+        skipped_few_nodes = 0
+        written = 0
         for i, query in enumerate(queries):
             triples = query["triples"]
             if len(triples) < 2:
+                skipped_few_triples += 1
                 continue
             cardinality = query["y"]
             num_nodes = _count_unique_nodes(triples)
             if num_nodes < MIN_SUPPORTED_QUERY_SIZE:
+                # Excludes 2-node queries (star_2, path_2) — matches LSS paper.
+                skipped_few_nodes += 1
                 continue
             subdir = f"{query_type}_{num_nodes}"
 
@@ -219,6 +243,7 @@ def _ensure_queries(ds_name, ds_config, query_configs, dataset_mappings):
             card_file = tc_dir / f"query_{i}.txt"
 
             if query_file.exists() and card_file.exists():
+                written += 1
                 continue
 
             _write_lss_query(
@@ -232,8 +257,13 @@ def _ensure_queries(ds_name, ds_config, query_configs, dataset_mappings):
             )
             with open(card_file, "w") as f:
                 f.write(f"{cardinality}\n")
+            written += 1
 
-        print(f"[{ds_name}/{query_type}] Done ({len(queries)} queries).")
+        print(
+            f"[{ds_name}/{query_type}] Done: {written} queries kept, "
+            f"{skipped_few_nodes} excluded (< {MIN_SUPPORTED_QUERY_SIZE} nodes, "
+            f"incl. 2-node queries), {skipped_few_triples} excluded (< 2 triples)."
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -372,10 +402,16 @@ def _build_loco_queryset(train_datasets, dataset_mappings, node_offsets, pred_of
             print(f"  WARNING: No queryset found for {ds}, skipping.")
             continue
 
+        candidate_files = list(ds_qs_root.rglob("query_*.txt"))
+        size_excluded = [f for f in candidate_files if not _query_file_has_supported_size(f)]
+        edge_excluded = [f for f in candidate_files if _query_file_has_supported_size(f) and _is_single_edge(f)]
         all_query_files = [
-            f for f in ds_qs_root.rglob("query_*.txt")
+            f for f in candidate_files
             if _query_file_has_supported_size(f) and not _is_single_edge(f)
         ]
+        if size_excluded or edge_excluded:
+            print(f"  [{ds}] Excluded {len(size_excluded)} small-size and "
+                  f"{len(edge_excluded)} single-edge query files.")
 
         cap = dataset_caps.get(ds) if dataset_caps else None
         if cap is not None and len(all_query_files) > cap:
@@ -475,18 +511,29 @@ def _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, tr
     # Ensure stale size-2 folders from previous runs never get used.
     _purge_unsupported_query_size_dirs(eval_name)
 
+    candidate_files = list((QUERYSET_PATH / left_out).rglob("query_*.txt"))
+    size_excl = [f for f in candidate_files if not _query_file_has_supported_size(f)]
+    edge_excl = [f for f in candidate_files if _query_file_has_supported_size(f) and _is_single_edge(f)]
     all_query_files = [
-        f for f in (QUERYSET_PATH / left_out).rglob("query_*.txt")
+        f for f in candidate_files
         if _query_file_has_supported_size(f) and not _is_single_edge(f)
     ]
+    if size_excl or edge_excl:
+        print(f"[{eval_name}] Excluded {len(size_excl)} small-size and "
+              f"{len(edge_excl)} single-edge query files from eval pool.")
 
     if max_eval_queries is not None:
         target_count = min(len(all_query_files), max_eval_queries)
     else:
         target_count = len(all_query_files)
 
+    if target_count == 0:
+        print(f"[{eval_name}] WARNING: 0 valid eval queries found for {left_out} "
+              f"after size/edge filtering. Evaluation will be skipped by pre-flight check.")
+        return eval_name
+
     existing_count = len(list(dst_qs_root.rglob("*.txt"))) if dst_qs_root.exists() else 0
-    if existing_count == target_count:
+    if existing_count >= target_count:
         print(f"[{eval_name}] Eval queryset already built ({existing_count} queries), skipping.")
     else:
         if dst_qs_root.exists():
@@ -513,10 +560,16 @@ def _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, tr
 
     prone_dir = LSS_PATH / "data" / "prone"
     eval_emb = prone_dir / f"{eval_name}.emb.npy"
+    # Remove dangling symlink before checking existence so we can recreate it.
+    if eval_emb.is_symlink() and not eval_emb.exists():
+        eval_emb.unlink()
     if not eval_emb.exists():
         src_emb = prone_dir / f"{left_out}.emb.npy"
         if src_emb.exists():
             eval_emb.symlink_to(src_emb.resolve())
+        else:
+            print(f"[{eval_name}] WARNING: source embedding {src_emb} missing; "
+                  f"evaluation will fail when LSS tries to load it.")
 
     return eval_name
 
@@ -572,9 +625,8 @@ def gcare_to_prone(path):
 
 
 def _run_prone(graph_path, out_path):
-    script_path = "proNE.py"
     result = subprocess.run([
-        sys.executable, script_path,
+        sys.executable, "proNE.py",
         "-graph", str(graph_path),
         "-emb2", str(out_path),
         "-dimension", "128",
@@ -670,8 +722,16 @@ def _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, trai
         print(f"[{exp_id}] Skipping: missing ProNE embeddings for: {missing_emb}")
         return
 
+    # Pre-flight: ensure the LOCO training queryset has enough queries before
+    # calling active_train.py (QuerySampler divides by num_queries internally).
+    loco_count = _count_valid_query_files(QUERYSET_PATH / train_id)
+    if loco_count < MIN_TRAIN_QUERIES:
+        print(f"[{exp_id}] Skipping: LOCO queryset has only {loco_count} valid "
+              f"queries (need {MIN_TRAIN_QUERIES}). Check dataset query paths.")
+        return
+
+    model_path = LSS_PATH / "models" / train_id / "best.pth"
     if train_id not in trained_ids:
-        model_path = LSS_PATH / "models" / train_id / "best.pth"
         if model_path.exists():
             print(f"[{train_id}] Model already exists on disk, skipping training.")
         else:
@@ -689,15 +749,32 @@ def _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, trai
             ], cwd=LSS_PATH)
             # Copy the saved checkpoint to a fixed name so the test phase can find it.
             if not model_path.exists():
-                pth_files = list((LSS_PATH / "models" / train_id).glob("model_*.pth"))
+                pth_files = list((LSS_PATH / "models" / train_id).glob("*.pth"))
                 if pth_files:
                     latest = max(pth_files, key=lambda p: p.stat().st_mtime)
                     shutil.copy2(latest, model_path)
+                    print(f"[{train_id}] Copied {latest.name} → best.pth")
+                else:
+                    print(f"[{train_id}] ERROR: training produced no checkpoint in "
+                          f"{LSS_PATH / 'models' / train_id}. Skipping evaluation.")
+                    return
         trained_ids.add(train_id)
     else:
         print(f"[{train_id}] Already trained this session, skipping.")
 
+    if not model_path.exists():
+        print(f"[{exp_id}] ERROR: model checkpoint not found at {model_path}. "
+              f"Skipping evaluation.")
+        return
+
     eval_dataset = _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, train_datasets)
+
+    # Pre-flight: ensure the eval queryset has enough queries.
+    eval_count = _count_valid_query_files(QUERYSET_PATH / eval_dataset)
+    if eval_count < MIN_EVAL_QUERIES:
+        print(f"[{exp_id}] Skipping evaluation on {left_out}: eval queryset has only "
+              f"{eval_count} valid queries (need {MIN_EVAL_QUERIES}).")
+        return
 
     eval_res = fold_results / "eval"
     eval_res.mkdir(parents=True, exist_ok=True)
@@ -706,7 +783,7 @@ def _run_experiment(experiment, results_dir, trained_ids, dataset_mappings, trai
         "--full_data_dir", "./data/",
         "--mode", "test",
         # Pass an absolute path so os.path.join in load_model ignores model_save_dir/dataset.
-        "--model_file", str((LSS_PATH / "models" / train_id / "best.pth").resolve()),
+        "--model_file", str(model_path.resolve()),
         "--save_res_dir", str(eval_res),
         "--embed_type", "freq",
         "--edge_embed_type", "freq",
