@@ -207,12 +207,12 @@ data:
     queries: "yago_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "yago"
     queries: "yago_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   # yago complex queries: ALL EMPTY
 
   # === AIDS (train-val) ===
@@ -262,12 +262,12 @@ data:
     queries: "hetionet_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "hetionet"
     queries: "hetionet_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   # hetionet_flower_queries: EMPTY
 
   # === CodexL (train-val) ===
@@ -361,7 +361,7 @@ data:
 
 epochs: 100
 wandb: True
-wandb_run_name: "RelationalGNN-attention-hetionet-4-hop"
+wandb_run_name: "RelationalGNN-attention-yago-4-hop"
 #wandb_run_id: "b9588a2d"
 learning_rate: 1e-4
 train_ratio: 0.8
