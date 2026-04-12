@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH -J lss_benchmark
-#SBATCH -w gpu-nvidia-200-2
+#SBATCH -w gpu-nvidia-h100
 #SBATCH --gres=gpu:nvidia:1        # request 1 GPU
 #SBATCH -t 24:00:00                # walltime (hh:mm:ss)
 

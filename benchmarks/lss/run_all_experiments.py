@@ -18,6 +18,7 @@ DATASET_BASE_PATH = LSS_PATH / "data" / "dataset"
 QUERYSET_PATH = LSS_PATH / "data" / "queryset_homo"
 TRUE_CARD_PATH = LSS_PATH / "data" / "true_homo"
 RESULTS_PATH = Path(__file__).parent / "results"
+MIN_SUPPORTED_QUERY_SIZE = 3
 
 
 def _resolve_project_path(path_value):
@@ -119,6 +120,33 @@ def _count_unique_nodes(triples):
     return len(nodes)
 
 
+def _query_size_from_subdir_name(subdir_name):
+    """Extract numeric query size from '<query_type>_<size>' directory names."""
+    try:
+        return int(subdir_name.rsplit("_", 1)[1])
+    except (IndexError, ValueError):
+        return None
+
+
+def _query_file_has_supported_size(query_file):
+    """Return True when query file's parent subdir encodes a supported query size."""
+    size = _query_size_from_subdir_name(query_file.parent.name)
+    return size is not None and size >= MIN_SUPPORTED_QUERY_SIZE
+
+
+def _purge_unsupported_query_size_dirs(dataset_name):
+    """Remove generated queryset/cardinality subdirs smaller than supported size."""
+    for root in [QUERYSET_PATH / dataset_name, TRUE_CARD_PATH / dataset_name]:
+        if not root.exists():
+            continue
+        for subdir in root.iterdir():
+            if not subdir.is_dir():
+                continue
+            size = _query_size_from_subdir_name(subdir.name)
+            if size is not None and size < MIN_SUPPORTED_QUERY_SIZE:
+                shutil.rmtree(subdir)
+
+
 def _write_lss_query(query_path, query_idx, triples, id_to_id_mapping, id_to_id_mapping_predicate, rdf_type_uri, type_label_mapping):
     """Write a single query in LSS/G-Care text format."""
     vertices = set()
@@ -178,6 +206,8 @@ def _ensure_queries(ds_name, ds_config, query_configs, dataset_mappings):
                 continue
             cardinality = query["y"]
             num_nodes = _count_unique_nodes(triples)
+            if num_nodes < MIN_SUPPORTED_QUERY_SIZE:
+                continue
             subdir = f"{query_type}_{num_nodes}"
 
             qs_dir = QUERYSET_PATH / ds_name / subdir
@@ -328,6 +358,9 @@ def _build_loco_queryset(train_datasets, dataset_mappings, node_offsets, pred_of
         if loco_tc_root.exists():
             shutil.rmtree(loco_tc_root)
 
+    # Ensure stale size-2 folders from previous runs never get used.
+    _purge_unsupported_query_size_dirs(loco_name)
+
     for ds in train_datasets:
         n_off = node_offsets[ds]
         p_off = pred_offsets[ds]
@@ -341,7 +374,7 @@ def _build_loco_queryset(train_datasets, dataset_mappings, node_offsets, pred_of
 
         all_query_files = [
             f for f in ds_qs_root.rglob("query_*.txt")
-            if not _is_single_edge(f)
+            if _query_file_has_supported_size(f) and not _is_single_edge(f)
         ]
 
         cap = dataset_caps.get(ds) if dataset_caps else None
@@ -439,9 +472,12 @@ def _build_capped_eval_queryset(left_out, max_eval_queries, dataset_mappings, tr
     dst_qs_root = QUERYSET_PATH / eval_name
     dst_tc_root = TRUE_CARD_PATH / eval_name
 
+    # Ensure stale size-2 folders from previous runs never get used.
+    _purge_unsupported_query_size_dirs(eval_name)
+
     all_query_files = [
         f for f in (QUERYSET_PATH / left_out).rglob("query_*.txt")
-        if not _is_single_edge(f)
+        if _query_file_has_supported_size(f) and not _is_single_edge(f)
     ]
 
     if max_eval_queries is not None:
