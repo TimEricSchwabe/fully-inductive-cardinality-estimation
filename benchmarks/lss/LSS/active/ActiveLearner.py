@@ -36,7 +36,8 @@ class ActiveLearner(object):
 						card, label = card.cuda(), label.cuda()
 
 					output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-					output = output.squeeze()
+					output = output.reshape(-1)
+					card = card.reshape(-1)
 					# print("output_cla", output_cla)
 					# print("label", label)
 					loss = criterion(output, card)
@@ -83,7 +84,8 @@ class ActiveLearner(object):
 
 				# print(decomp_x)
 				output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-				output = output.squeeze()
+				output = output.reshape(-1)
+				card = card.reshape(-1)
 				loss += criterion(card, output).item()
 				l1 += torch.abs(card - output).item()
 
@@ -229,7 +231,8 @@ class ActiveLearner(object):
 				outputs, losses, l1s = [], [], []
 				for model in models:
 					output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-					output = output.squeeze()
+					output = output.reshape(-1)
+					card = card.reshape(-1)
 					outputs.append(output.item())
 					losses.append(criterion(card, output).item())
 					l1s.append(torch.abs(card - output).item())

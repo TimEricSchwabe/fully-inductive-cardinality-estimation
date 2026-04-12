@@ -31,7 +31,8 @@ def evaluate(args, model, criterion, eval_loaders):
 
 			#print(decomp_x)
 			output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-			output = output.squeeze()
+			output = output.reshape(-1)
+			card = card.reshape(-1)
 			loss += criterion(card, output).item()
 			l1 += torch.abs(card - output).item()
 
@@ -67,7 +68,8 @@ def train(args, model, criterion, train_loaders, val_loaders, optimizer,  schedu
 					card, label = card.cuda(), label.cuda()
 
 				output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-				output= output.squeeze()
+				output = output.reshape(-1)
+				card = card.reshape(-1)
 				#print("output_cla", output_cla)
 				#print("label", label)
 				loss = criterion(output, card)
