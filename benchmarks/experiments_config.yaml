@@ -14,13 +14,13 @@ queries:
 
   - id: swdf_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: 20
     path: data/swdf_path_queries/raw/60037112
     dataset_name: swdf
 
   - id: swdf_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: 20
     path: data/swdf_star_queries/raw/59320652
     dataset_name: swdf
 
@@ -132,33 +132,36 @@ datasets:
 
 
 experiments:
-
+  - id: swdf_test
+    pool: ["swdf"]
+    left_out: []
+    eval: ["swdf"]
   - id: loco_swdf
     pool: "*"
     left_out: swdf
     eval: swdf
 
-  # - id: loco_lubm
-  #   pool: "*"
-  #   left_out: lubm
-  #   eval: lubm
+  - id: loco_lubm
+    pool: "*"
+    left_out: lubm
+    eval: lubm
 
-  # - id: loco_wikidata
-  #   pool: "*"
-  #   left_out: wikidata
-  #   eval: wikidata
+  - id: loco_wikidata
+    pool: "*"
+    left_out: wikidata
+    eval: wikidata
 
-  # - id: loco_dbpedia100k
-  #   pool: "*"
-  #   left_out: dbpedia100k
-  #   eval: dbpedia100k
+  - id: loco_dbpedia100k
+    pool: "*"
+    left_out: dbpedia100k
+    eval: dbpedia100k
 
-  # - id: loco_fb237_v4
-  #   pool: "*"
-  #   left_out: [fb237_v4, fb237_v4_ind]
-  #   eval: [fb237_v4]
+  - id: loco_fb237_v4
+    pool: "*"
+    left_out: [fb237_v4, fb237_v4_ind]
+    eval: [fb237_v4]
 
-  # - id: loco_wn18rr_v4
-  #   pool: "*"
-  #   left_out: [wn18rr_v4, wn18rr_v4_ind]
-  #   eval: [wn18rr_v4]
+  - id: loco_wn18rr_v4
+    pool: "*"
+    left_out: [wn18rr_v4, wn18rr_v4_ind]
+    eval: [wn18rr_v4]

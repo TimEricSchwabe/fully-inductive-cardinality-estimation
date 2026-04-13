@@ -57,12 +57,13 @@ class Queryset(object):
 			self.edge_embed_feat = torch.from_numpy(edge_embed_feat)
 			self.num_edge_feat = self.edge_embed_dim
 
+
 		# transform the decomposed query to torch tensor
 		self.all_subsets = self.transform_query_to_tensors(all_subsets)
 
 		self.all_queries = []
 		# split by query patterns and sizes
-		self.all_sizes = {} # { (pattern, size) -> [(graphs, true_card)]} // all queries subset indexed by query type + size
+		self.all_sizes = {} # { size -> [(graphs, true_card]} // all queries subset indexed by query size
 		self.all_patterns = {} # { pattern -> [(graphs, true_card)]} // all queries subset index by query pattern
 
 		for (pattern, size), graphs_card_pairs in self.all_subsets.items():
@@ -70,9 +71,9 @@ class Queryset(object):
 			if pattern not in self.all_patterns.keys():
 				self.all_patterns[pattern] = []
 			self.all_patterns[pattern] += graphs_card_pairs
-			if (pattern, size) not in self.all_sizes:
-				self.all_sizes[(pattern, size)] = []
-			self.all_sizes[(pattern, size)] += graphs_card_pairs
+			if size not in self.all_sizes.keys():
+				self.all_sizes[size] = []
+			self.all_sizes[size] += graphs_card_pairs
 
 
 		# split to train, val, test query set
@@ -81,10 +82,10 @@ class Queryset(object):
 		#train_sets, val_sets, test_sets, all_train_sets = self.uneven_data_split(self.all_sizes, train_ratio=0.5,
 		#																  val_ratio=0.4)
 
-		self.train_loaders = self.to_dataloader(all_sets=train_sets)
-		self.val_loaders = self.to_dataloader(all_sets=val_sets)
-		self.test_loaders = self.to_dataloader(all_sets=test_sets)
-		self.all_train_loaders = self.to_dataloader(all_sets=all_train_sets)
+		self.train_loaders = self.to_dataloader(all_sets= train_sets)
+		self.val_loaders = self.to_dataloader(all_sets= val_sets)
+		self.test_loaders = self.to_dataloader(all_sets= test_sets)
+		self.all_train_loaders = self.to_dataloader(all_sets = all_train_sets)
 		self.train_sets, self.val_sets, self.test_sets, self.all_train_sets = train_sets, val_sets, test_sets, all_train_sets
 
 
@@ -149,24 +150,8 @@ class Queryset(object):
 
 
 	def to_dataloader(self, all_sets, batch_size = 1, shuffle = True):
-		datasets = []
-		key_order = sorted(self.all_sizes.keys())
-		for idx, queries in enumerate(all_sets):
-			if len(all_sets) == 1:
-				query_set_name = f"{self.dataset}_train"
-				query_type = "train"
-				query_size = None
-			else:
-				key = key_order[idx] if idx < len(key_order) else None
-				if key is not None:
-					pattern, query_size = key
-					query_set_name = f"{self.dataset}_{pattern}_{query_size}"
-					query_type = pattern
-				else:
-					query_size = None
-					query_set_name = self.dataset
-					query_type = "unknown"
-			datasets.append(QueryDataset(queries=queries, query_set_name=query_set_name, query_type=query_type, query_size=query_size))
+		datasets = [ QueryDataset(queries= queries)
+					 for queries in all_sets]
 		dataloaders = [ DataLoader(dataset= dataset, batch_size = batch_size, shuffle= shuffle)
 						for dataset in datasets]
 		return dataloaders
@@ -218,11 +203,10 @@ class Queryset(object):
 		return node_attr
 
 	def _get_nodes_attr_freq(self, graph):
-		node_attr = torch.ones(size=(graph.number_of_nodes(), self.num_node_feat), dtype=torch.float)
+		node_attr = torch.ones(size=(graph.number_of_nodes(), len(self.node_label_card)), dtype=torch.float)
 		for v in graph.nodes():
 			for label in graph.nodes[v]["labels"]:
-				idx = self.label_dict[label]
-				node_attr[v][idx] = self.node_label_card[label]
+				node_attr[v][self.label_dict[label]] = self.node_label_card[label]
 				self.node_label_fre += 1
 		return node_attr
 
@@ -239,7 +223,7 @@ class Queryset(object):
 
 	def _get_edges_index_freq(self, graph):
 		edge_index = torch.ones(size= (2, graph.number_of_edges()), dtype = torch.long)
-		edge_attr = torch.zeros(size= (graph.number_of_edges(), self.num_edge_feat), dtype=torch.float)
+		edge_attr = torch.zeros(size= (graph.number_of_edges(), len(self.edge_label_card)), dtype=torch.float)
 		cnt = 0
 		for e in graph.edges():
 			edge_index[0][cnt], edge_index[1][cnt] = e[0], e[1]
@@ -307,6 +291,19 @@ class DataGraph(object):
 
 
 	def load_graph(self):
+		import pickle
+		cache_path = self.data_load_path.replace(".txt", ".pkl")
+		if (os.path.exists(cache_path)
+				and os.path.getmtime(cache_path) >= os.path.getmtime(self.data_load_path)):
+			print("Loading DataGraph from cache: {}".format(cache_path))
+			with open(cache_path, "rb") as f:
+				graph, node_label_card, edge_label_card, stats = pickle.load(f)
+			self.max_node_label_num = stats["max_node_label_num"]
+			self.min_node_label_num = stats["min_node_label_num"]
+			self.max_edge_label_num = stats["max_edge_label_num"]
+			self.min_edge_label_num = stats["min_edge_label_num"]
+			return graph, node_label_card, edge_label_card
+
 		file = open(self.data_load_path)
 		nodes_list = []
 		edges_list = []
@@ -358,6 +355,17 @@ class DataGraph(object):
 
 		for key, val in edge_label_card.items():
 			edge_label_card[key] = val / graph.number_of_edges()
+
+		stats = {
+			"max_node_label_num": self.max_node_label_num,
+			"min_node_label_num": self.min_node_label_num,
+			"max_edge_label_num": self.max_edge_label_num,
+			"min_edge_label_num": self.min_edge_label_num,
+		}
+		print("Saving DataGraph cache: {}".format(cache_path))
+		with open(cache_path, "wb") as f:
+			pickle.dump((graph, node_label_card, edge_label_card, stats), f, protocol=4)
+
 		return graph, node_label_card, edge_label_card
 
 	def print_data_graph_info(self):
@@ -374,7 +382,7 @@ class DataGraph(object):
 
 
 class QueryDataset(Dataset):
-	def __init__(self, queries, num_classes = 10, query_set_name = None, query_type = None, query_size = None):
+	def __init__(self, queries, num_classes = 10):
 		"""
 		parameter:
 		all_queries =[(decomp_x, decomp_edge_attr, decomp_edge_attr, card)]
@@ -383,9 +391,6 @@ class QueryDataset(Dataset):
 		self.queries = queries
 		self.label_base = 10
 		self.num_classes = num_classes
-		self.query_set_name = query_set_name
-		self.query_type = query_type
-		self.query_size = query_size
 
 	def __len__(self):
 		return len(self.queries)

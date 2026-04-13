@@ -5,6 +5,7 @@ from util import get_prediction_statistics
 import torch.optim as optim
 import torch
 from cardnet import CardNet
+from tqdm import tqdm
 
 
 def _to_cuda(l):
@@ -31,8 +32,7 @@ def evaluate(args, model, criterion, eval_loaders):
 
 			#print(decomp_x)
 			output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-			output = output.reshape(-1)
-			card = card.reshape(-1)
+			output = output.squeeze()
 			loss += criterion(card, output).item()
 			l1 += torch.abs(card - output).item()
 
@@ -58,7 +58,8 @@ def train(args, model, criterion, train_loaders, val_loaders, optimizer,  schedu
 	for loader_idx, dataloader in enumerate(train_loaders):
 		model.train()
 		print("Training the {}/{} Training set".format(loader_idx, len(train_loaders)))
-		for epoch in range(args.epochs):
+		epoch_bar = tqdm(range(args.epochs), desc=f"QuerySet {loader_idx+1}/{len(train_loaders)}")
+		for epoch in epoch_bar:
 			epoch_loss, epoch_loss_cla = 0.0, 0.0
 			for i , (decomp_x, decomp_edge_index, decomp_edge_attr, card, label) in \
 				enumerate(dataloader):
@@ -68,8 +69,7 @@ def train(args, model, criterion, train_loaders, val_loaders, optimizer,  schedu
 					card, label = card.cuda(), label.cuda()
 
 				output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-				output = output.reshape(-1)
-				card = card.reshape(-1)
+				output= output.squeeze()
 				#print("output_cla", output_cla)
 				#print("label", label)
 				loss = criterion(output, card)
@@ -87,8 +87,7 @@ def train(args, model, criterion, train_loaders, val_loaders, optimizer,  schedu
 
 			if scheduler is not None and (epoch + 1) % args.decay_patience == 0:
 				scheduler.step()
-			print("{}-th QuerySet, {}-th Epoch: Reg. Loss={:.4f}, Cla. Loss={:.4f}"
-				  .format(loader_idx, epoch, epoch_loss, epoch_loss_cla))
+			epoch_bar.set_postfix(reg_loss=f"{epoch_loss:.4f}", cla_loss=f"{epoch_loss_cla:.4f}")
 
 		# Evaluation the model
 		all_eval_res = evaluate(args, model, criterion, val_loaders)

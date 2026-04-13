@@ -5,6 +5,7 @@ from .active_util import _to_cuda, _to_dataloaders, _to_datasets, print_eval_res
 from scipy.stats import  entropy, gmean
 import datetime
 import math
+from tqdm import tqdm
 
 class ActiveLearner(object):
 	def __init__(self, args):
@@ -26,7 +27,8 @@ class ActiveLearner(object):
 		for loader_idx, dataloader in enumerate(train_loaders):
 			model.train()
 			print("Training the {}/{} Training set".format(loader_idx, len(train_loaders)))
-			for epoch in range(epochs):
+			epoch_bar = tqdm(range(epochs), desc=f"QuerySet {loader_idx+1}/{len(train_loaders)}")
+			for epoch in epoch_bar:
 				epoch_loss, epoch_loss_cla = 0.0, 0.0
 				for i, (decomp_x, decomp_edge_index, decomp_edge_attr, card, label) in \
 						enumerate(dataloader):
@@ -36,8 +38,7 @@ class ActiveLearner(object):
 						card, label = card.cuda(), label.cuda()
 
 					output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-					output = output.reshape(-1)
-					card = card.reshape(-1)
+					output = output.squeeze()
 					# print("output_cla", output_cla)
 					# print("label", label)
 					loss = criterion(output, card)
@@ -55,8 +56,7 @@ class ActiveLearner(object):
 
 				if scheduler is not None and (epoch + 1) % self.args.decay_patience == 0:
 					scheduler.step()
-				print("{}-th QuerySet, {}-th Epoch: Reg. Loss={:.4f}, Cla. Loss={:.4f}"
-					  .format(loader_idx, epoch, epoch_loss, epoch_loss_cla))
+				epoch_bar.set_postfix(reg_loss=f"{epoch_loss:.4f}", cla_loss=f"{epoch_loss_cla:.4f}")
 
 			# Evaluation the model
 			all_eval_res = self.evaluate(model, criterion, val_datasets, print_res = True)
@@ -84,8 +84,7 @@ class ActiveLearner(object):
 
 				# print(decomp_x)
 				output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-				output = output.reshape(-1)
-				card = card.reshape(-1)
+				output = output.squeeze()
 				loss += criterion(card, output).item()
 				l1 += torch.abs(card - output).item()
 
@@ -231,8 +230,7 @@ class ActiveLearner(object):
 				outputs, losses, l1s = [], [], []
 				for model in models:
 					output, output_cla = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-					output = output.reshape(-1)
-					card = card.reshape(-1)
+					output = output.squeeze()
 					outputs.append(output.item())
 					losses.append(criterion(card, output).item())
 					l1s.append(torch.abs(card - output).item())

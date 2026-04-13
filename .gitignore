@@ -63,6 +63,7 @@ benchmarks/lss/LSS/models/
 benchmarks/lss/ProNE/data/
 benchmarks/lss/ProNE/emb/
 benchmarks/lss/results/
+benchmarks/lss/data/**
 # gcare/
 logs/
 
