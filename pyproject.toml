@@ -3,21 +3,56 @@ name = "fice"
 version = "0.1.0"
 description = "Fully Inductive Cardinality Estimation (FICE)"
 authors = [
-    { name = "Lukas Ketzer" }
+    { name = "Lukas Ketzer" },
 ]
 readme = "README.md"
 requires-python = ">=3.12"
 
+dependencies = [
+    # Core tensor / GNN stack
+    "torch>=2.8,<2.9",
+    "torchvision>=0.23,<0.24",
+    "torchaudio>=2.8,<2.9",
+    "torch-geometric>=2.7,<2.8",
 
-[[tool.uv.index]]
-url = "https://pypi.org/simple"
-default = true
+    # Numerics
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "networkx>=3.3",
 
-[[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cpu"
+    # Geometry / hyperbolic embeddings
+    "geoopt>=0.5",
 
-[tool.uv]
-index-strategy = "unsafe-best-match"
+    # Plotting
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+
+    # Config / IO
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "pyyaml>=6.0",
+    "requests>=2.32",
+    "tqdm>=4.66",
+
+    # Experiment tracking
+    "wandb>=0.18",
+]
+
+[project.optional-dependencies]
+# Compiled PyG extensions — speed up some ops but not required.
+# Install matching wheels for your platform from:
+#   https://data.pyg.org/whl/torch-2.8.0+<cpu|cu121|...>.html
+# e.g.  uv pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv \
+#         --find-links https://data.pyg.org/whl/torch-2.8.0+cpu.html
+pyg-extras = [
+    "pyg-lib",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-cluster",
+    "torch-spline-conv",
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

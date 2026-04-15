@@ -207,12 +207,12 @@ data:
     queries: "yago_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   - dataset: "yago"
     queries: "yago_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "validation"
+    type: "train-val"
   # yago complex queries: ALL EMPTY
 
   # === AIDS (train-val) ===
@@ -220,42 +220,42 @@ data:
     queries: "aids_star_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_path_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_cycle_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_diamond_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_flower_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_snowflake_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_binary_tree_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
   - dataset: "aids"
     queries: "aids_path_star_ends_queries"
     batch_size: *bs
     num_queries: *nq
-    type: "train-val"
+    type: "validation"
 
   # === Hetionet (train-val) ===
   - dataset: "hetionet"
