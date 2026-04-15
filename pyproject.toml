@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Fully Inductive Cardinality Estimation (FICE)"
 authors = [
     { name = "Lukas Ketzer" },
+    { name = "Lukas Ketzer" },
 ]
 readme = "README.md"
 requires-python = ">=3.12"
@@ -41,17 +42,28 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Compiled PyG extensions — speed up some ops but not required.
-# Install matching wheels for your platform from:
-#   https://data.pyg.org/whl/torch-2.8.0+<cpu|cu121|...>.html
-# e.g.  uv pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv \
-#         --find-links https://data.pyg.org/whl/torch-2.8.0+cpu.html
+# Compiled PyG extensions — required by fice/gnce/models.py and fice/tasks.py
+# (they import scatter_max / scatter_min / scatter_add directly from torch_scatter).
+# Wheels are not on PyPI; they live on the PyG wheel index:
+#   https://data.pyg.org/whl/torch-2.8.0+<cpu|cu121|cu126|...>.html
 pyg-extras = [
     "pyg-lib",
     "torch-scatter",
     "torch-sparse",
     "torch-cluster",
     "torch-spline-conv",
+]
+
+[tool.uv]
+# Point uv at the PyG wheel index so `pyg-lib` and the *compiled* torch-* extensions
+# can be resolved (they're not on PyPI).
+find-links = ["https://data.pyg.org/whl/torch-2.8.0+cpu.html"]
+# Restrict lock resolution to the platforms we actually build on. Without this,
+# uv tries to resolve for Windows / Python 3.14 too and fails because there are
+# no pyg-lib wheels for those splits.
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux'",
 ]
 
 [build-system]

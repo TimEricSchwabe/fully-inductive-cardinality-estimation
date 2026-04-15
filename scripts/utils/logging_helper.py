@@ -3,6 +3,7 @@ Helper functions for logging metrics, saving CSVs, and managing training data.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, Literal
 
@@ -31,6 +32,12 @@ TEST_METRICS_PER_QUERY_TYPE_FILE_NAME = "test_metrics_per_query_type.csv"
 TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME = "train_metrics_per_query_set_name.csv"
 TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME = "test_metrics_per_query_set_name.csv"
 PREDICTIONS_FILE_NAME = "predictions.csv"
+
+# predictions.csv grows to multi-GB and takes tens of seconds to rewrite each
+# time. If the job is killed mid-write, the file is left truncated. We throttle
+# writes to every N test epochs and use an atomic replace so any kill leaves
+# the previous complete file intact.
+PREDICTIONS_SAVE_EVERY_N_EPOCHS = 5
 
 
 # ============================================================================
@@ -333,10 +340,16 @@ class MetricLogger:
         if self.use_wandb and save:
             self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics, per_query_type_metrics, per_query_set_name_metrics)
 
-        # Save CSVs
+        # Save CSVs. Aggregated metrics are small and cheap; predictions CSV is
+        # large and expensive, so only flush it every N test epochs (and always
+        # on final_test).
         if save:
-            self.save_csvs()
-            
+            save_predictions = (
+                stage == 'final_test'
+                or (stage == 'test' and epoch % PREDICTIONS_SAVE_EVERY_N_EPOCHS == 0)
+            )
+            self.save_csvs(save_predictions=save_predictions)
+
         return overall_metrics
     
     def _wandb_log_retry(self, data):
@@ -625,8 +638,13 @@ class MetricLogger:
         except Exception as e:
             logger.error(f"Error logging predictions to wandb: {e}")
 
-    def save_csvs(self):
-        """Save all accumulated metrics and predictions to CSV files."""
+    def save_csvs(self, save_predictions: bool = True):
+        """Save all accumulated metrics and (optionally) predictions to CSV.
+
+        predictions.csv is written atomically (tmp + os.replace) because it is
+        large enough that a kill mid-write can truncate it. The previous
+        complete file survives any interruption.
+        """
         files_map = {
             'train_metrics': TRAIN_METRICS_FILE_NAME,
             'test_metrics': TEST_METRICS_FILE_NAME,
@@ -648,10 +666,13 @@ class MetricLogger:
                 df = pd.DataFrame(data)
                 df.to_csv(self.log_dir / filename, index=False)
         
-        # Save predictions with pandas
-        if self.predictions:
+        # Save predictions (atomic write)
+        if save_predictions and self.predictions:
             df = pd.DataFrame(self.predictions)
-            df.to_csv(self.log_dir / PREDICTIONS_FILE_NAME, index=False)
+            final_path = self.log_dir / PREDICTIONS_FILE_NAME
+            tmp_path = final_path.with_suffix(final_path.suffix + ".tmp")
+            df.to_csv(tmp_path, index=False)
+            os.replace(tmp_path, final_path)
 
     def get_best_test_loss(self) -> float:
         """Returns the best test loss recorded so far."""
