@@ -865,6 +865,7 @@ def run_loco_fold(exp_id, train_datasets, eval_datasets,
             "query_id": query_id,
             "query_type": pattern,
             "dataset": ds_name,
+            "epoch": args.epochs,
             "ground_truth": true_card,
             "prediction": pred_card,
         })
@@ -883,7 +884,15 @@ def save_predictions_csv(predictions, results_dir):
     out_path = results_dir / "predictions.csv"
     with open(out_path, "w", newline="") as f:
         writer = csv.DictWriter(
-            f, fieldnames=["query_id", "query_type", "dataset", "ground_truth", "prediction"]
+            f,
+            fieldnames=[
+                "query_id",
+                "query_type",
+                "dataset",
+                "epoch",
+                "ground_truth",
+                "prediction",
+            ],
         )
         writer.writeheader()
         writer.writerows(predictions)

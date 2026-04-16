@@ -1,100 +1,427 @@
 
+max_train_query_values:
+  default: &max_train_queries_default 20000
+
 queries:
   - id: lubm_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/lubm_path_queries/raw/60037037
     dataset_name: lubm
 
   - id: lubm_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/lubm_queries/raw/59410580
     dataset_name: lubm
 
   - id: swdf_path
     query_type: path
-    max_train_queries: 20
+    max_train_queries: *max_train_queries_default
     path: data/swdf_path_queries/raw/60037112
     dataset_name: swdf
 
   - id: swdf_star
     query_type: star
-    max_train_queries: 20
+    max_train_queries: *max_train_queries_default
     path: data/swdf_star_queries/raw/59320652
     dataset_name: swdf
 
   - id: wikidata_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wikidata_path_queries/raw/60037220
     dataset_name: wikidata
 
   - id: wikidata_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wikidata_queries/raw/59320583
     dataset_name: wikidata
 
   - id: dbpedia100k_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/dbpedia100k_path_queries/raw/59898644
     dataset_name: dbpedia100k
 
   - id: dbpedia100k_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/dbpedia100k_star_queries/raw/59687708
     dataset_name: dbpedia100k
 
   - id: fb237_v4_ind_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/fb237_v4_ind_path_queries/raw/59900708
     dataset_name: fb237_v4_ind
 
   - id: fb237_v4_ind_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/fb237_v4_ind_star_queries/raw/59731859
     dataset_name: fb237_v4_ind
 
   - id: fb237_v4_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/fb237_v4_path_queries/raw/59900678
     dataset_name: fb237_v4
 
   - id: fb237_v4_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/fb237_v4_star_queries/raw/59651327
     dataset_name: fb237_v4
 
   - id: wn18rr_v4_ind_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wn18rr_v4_ind_path_queries/raw/59898623
     dataset_name: wn18rr_v4_ind
 
   - id: wn18rr_v4_ind_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wn18rr_v4_ind_star_queries/raw/59731889
     dataset_name: wn18rr_v4_ind
 
   - id: wn18rr_v4_path
     query_type: path
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wn18rr_v4_path_queries/raw/59898641
     dataset_name: wn18rr_v4
 
   - id: wn18rr_v4_star
     query_type: star
-    max_train_queries: 20000
+    max_train_queries: *max_train_queries_default
     path: data/wn18rr_v4_star_queries/raw/59731877
     dataset_name: wn18rr_v4
+
+  - id: aids_path
+    query_type: path
+    max_train_queries: *max_train_queries_default
+    path: data/aids_path_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_star
+    query_type: star
+    max_train_queries: *max_train_queries_default
+    path: data/aids_star_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: codex_l_path
+    query_type: path
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_path_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: codex_l_star
+    query_type: star
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_star_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: hetionet_path
+    query_type: path
+    max_train_queries: *max_train_queries_default
+    path: data/hetionet_path_queries/raw/queries.json
+    dataset_name: hetionet
+
+  - id: hetionet_star
+    query_type: star
+    max_train_queries: *max_train_queries_default
+    path: data/hetionet_star_queries/raw/queries.json
+    dataset_name: hetionet
+
+  - id: yago_path
+    query_type: path
+    max_train_queries: *max_train_queries_default
+    path: data/yago_path_queries/raw/queries.json
+    dataset_name: yago
+
+  - id: yago_star
+    query_type: star
+    max_train_queries: *max_train_queries_default
+    path: data/yago_star_queries/raw/queries.json
+    dataset_name: yago
+
+  - id: lubm_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/lubm_binary_tree_queries/raw/queries.json
+    dataset_name: lubm
+
+  - id: lubm_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/lubm_diamond_queries/raw/queries.json
+    dataset_name: lubm
+
+  - id: lubm_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/lubm_flower_queries/raw/queries.json
+    dataset_name: lubm
+
+  - id: lubm_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/lubm_path_star_ends_queries/raw/queries.json
+    dataset_name: lubm
+
+  - id: lubm_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/lubm_snowflake_queries/raw/queries.json
+    dataset_name: lubm
+
+  - id: swdf_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_binary_tree_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: swdf_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_cycle_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: swdf_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_diamond_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: swdf_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_flower_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: swdf_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_path_star_ends_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: swdf_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/swdf_snowflake_queries/raw/queries.json
+    dataset_name: swdf
+
+  - id: wikidata_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_binary_tree_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: wikidata_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_cycle_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: wikidata_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_diamond_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: wikidata_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_flower_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: wikidata_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_path_star_ends_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: wikidata_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/wikidata_snowflake_queries/raw/queries.json
+    dataset_name: wikidata
+
+  - id: dbpedia100k_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_binary_tree_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_cycle_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_diamond_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_flower_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_path_star_ends_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: dbpedia100k_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/dbpedia100k_snowflake_queries/raw/queries.json
+    dataset_name: dbpedia100k
+
+  - id: fb237_v4_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_binary_tree_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_cycle_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_diamond_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_flower_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_path_star_ends_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: fb237_v4_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/fb237_v4_snowflake_queries/raw/queries.json
+    dataset_name: fb237_v4
+
+  - id: wn18rr_v4_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_binary_tree_queries/raw/wn18rr_v4_binary_tree.json
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_cycle_queries/raw/wn18rr_v4_cycle.json
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_diamond_queries/raw/wn18rr_v4_diamond.json
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_flower_queries/raw/wn18rr_v4_flower.json
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_snowflake_queries/raw/wn18rr_v4_snowflake.json
+    dataset_name: wn18rr_v4
+
+  - id: wn18rr_v4_tree
+    query_type: tree
+    max_train_queries: *max_train_queries_default
+    path: data/wn18rr_v4_tree_queries/raw/wn18rr_v4_binary_tree.json
+    dataset_name: wn18rr_v4
+
+  - id: aids_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/aids_binary_tree_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/aids_cycle_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/aids_diamond_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/aids_flower_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/aids_path_star_ends_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: aids_snowflake
+    query_type: snowflake
+    max_train_queries: *max_train_queries_default
+    path: data/aids_snowflake_queries/raw/queries.json
+    dataset_name: aids
+
+  - id: codex_l_binary_tree
+    query_type: binary_tree
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_binary_tree_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: codex_l_cycle
+    query_type: cycle
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_cycle_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: codex_l_diamond
+    query_type: diamond
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_diamond_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: codex_l_flower
+    query_type: flower
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_flower_queries/raw/queries.json
+    dataset_name: codex_l
+
+  - id: codex_l_path_star_ends
+    query_type: path_star_ends
+    max_train_queries: *max_train_queries_default
+    path: data/codex_l_path_star_ends_queries/raw/queries.json
+    dataset_name: codex_l
 
 
 datasets:
@@ -130,12 +457,24 @@ datasets:
     graph_path: data/wn18rr_v4/raw/59622641
     rdf_type_uri: "0"
 
+  - name: aids
+    graph_path: data/aids/raw/AIDS.nt
+    rdf_type_uri: "0"
+
+  - name: codex_l
+    graph_path: data/codex_l/raw/codex_l.nt
+    rdf_type_uri: "0"
+
+  - name: hetionet
+    graph_path: data/hetionet/raw/hetionet.nt
+    rdf_type_uri: "0"
+
+  - name: yago
+    graph_path: data/yago/raw/Yago.nt
+    rdf_type_uri: "<http://example.com/13000179>"
+
 
 experiments:
-  - id: swdf_test
-    pool: ["swdf"]
-    left_out: []
-    eval: ["swdf"]
   - id: loco_swdf
     pool: "*"
     left_out: swdf
@@ -165,3 +504,23 @@ experiments:
     pool: "*"
     left_out: [wn18rr_v4, wn18rr_v4_ind]
     eval: [wn18rr_v4]
+
+  - id: loco_aids
+    pool: "*"
+    left_out: aids
+    eval: aids
+
+  - id: loco_codex_l
+    pool: "*"
+    left_out: codex_l
+    eval: codex_l
+
+  - id: loco_hetionet
+    pool: "*"
+    left_out: hetionet
+    eval: hetionet
+
+  - id: loco_yago
+    pool: "*"
+    left_out: yago
+    eval: yago

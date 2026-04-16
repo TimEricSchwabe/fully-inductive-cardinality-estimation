@@ -52,7 +52,7 @@ run_*.zip
 
 # VS Code
 .vscode/
-benchmarks/gcare/gcare
+benchmarks/gcare/gcare/data/**
 benchmarks/lss/LSS/data/dataset/**
 benchmarks/lss/LSS/data/n2v/**
 benchmarks/lss/LSS/data/nrp/**
