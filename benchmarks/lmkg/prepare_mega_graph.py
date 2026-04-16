@@ -174,7 +174,7 @@ def read_eval_queries(dataset_name, entity_offset, relation_offset):
         if not type_dir.exists():
             continue
 
-        for eval_file in sorted(type_dir.glob(f"eval_600_{prefix}_*.txt")):
+        for eval_file in sorted(type_dir.glob(f"eval_*_{prefix}_*.txt")):
             try:
                 size = int(eval_file.stem.split("_")[-1])
             except ValueError:
@@ -209,8 +209,8 @@ def write_fold(eval_ds, train_queries, eval_queries, mega_d, mega_b):
 
         # Write eval files
         for size, lines in sorted(eval_queries[qtype].items()):
-            n_eval = min(600, len(lines))
-            eval_path = type_dir / f"eval_600_{prefix}_{size}.txt"
+            n_eval = len(lines)
+            eval_path = type_dir / f"eval_{n_eval}_{prefix}_{size}.txt"
             with open(eval_path, "w") as f:
                 f.write("\n".join(lines) + "\n")
             print(f"  [eval]  {eval_path.relative_to(LMKG_S_DIR)}: {n_eval} queries")

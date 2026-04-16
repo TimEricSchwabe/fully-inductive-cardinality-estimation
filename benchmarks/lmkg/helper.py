@@ -253,9 +253,21 @@ def convert_all_datasets(seed):
     with open(CONFIG_PATH) as f:
         config = yaml.safe_load(f)
 
+    dataset_graph_paths = fice_to_lmkg.build_dataset_graph_path_map(config)
+
     dataset_stats = {}
-    for exp in config["queries"]:
-        by_size, num_entities, num_relations = fice_to_lmkg.process_experiment(exp)
+    experiments = [
+        exp for exp in config["queries"]
+        if exp.get("query_type") in fice_to_lmkg.SUPPORTED_QUERY_TYPES
+    ]
+    skipped = len(config["queries"]) - len(experiments)
+    if skipped:
+        print(f"Skipping {skipped} non-LMKG query configs (only star/path are supported)")
+
+    for exp in experiments:
+        by_size, num_entities, num_relations = fice_to_lmkg.process_experiment(
+            exp, dataset_graph_paths=dataset_graph_paths
+        )
         dname = exp["dataset_name"]
         qtype = exp["query_type"]
         if dname not in dataset_stats:
