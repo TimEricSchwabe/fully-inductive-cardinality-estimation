@@ -28,17 +28,20 @@ From: ubuntu:24.04
 
 %post
     export DEBIAN_FRONTEND=noninteractive
-    apt-get update -y
+    # The build environment may not have working IPv6 connectivity, so force
+    # apt to use IPv4 for all archive downloads.
+    printf 'Acquire::ForceIPv4 "true";\n' >/etc/apt/apt.conf.d/99force-ipv4
+    apt-get -o Acquire::ForceIPv4=true update -y
 
     # ---- C++ build toolchain ------------------------------------------------
-    apt-get install -y \
+    apt-get -o Acquire::ForceIPv4=true install -y \
         build-essential \
         cmake \
         libboost-all-dev \
         libgomp1
 
     # ---- Python ---------------------------------------------------------------
-    apt-get install -y \
+    apt-get -o Acquire::ForceIPv4=true install -y \
         python3 \
         python3-pip \
         python3-numpy \
