@@ -1,0 +1,59 @@
+# Apptainer definition for the G-Care benchmark.
+#
+# Provides:
+#   - Boost 1.83 (build + runtime)          ← fixes libboost_program_options.so.1.83.0
+#   - CMake + GCC/G++ for (re)compilation
+#   - OpenMP runtime
+#   - Python 3 + numpy + PyYAML for the benchmark scripts
+#
+# Build image:
+#   apptainer build gcare.sif gcare.def
+#
+# Rebuild G-Care binaries inside the container (run from benchmarks/gcare/):
+#   apptainer exec gcare.sif bash -c "
+#       cd gcare && rm -rf build && mkdir build && cd build && cmake .. && make -j$(nproc)"
+#
+# Run benchmark (run from project root):
+#   apptainer exec benchmarks/gcare/gcare.sif \
+#       python3 benchmarks/gcare/run_all_experiments.py [--max-parallel 5]
+#
+# Run as a SLURM job: see gcare_slurm.sh
+
+Bootstrap: docker
+From: ubuntu:24.04
+
+%labels
+    Author      FICE G-Care Benchmark
+    Description Runtime + build environment for G-Care cardinality estimation
+
+%post
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -y
+
+    # ---- C++ build toolchain ------------------------------------------------
+    apt-get install -y \
+        build-essential \
+        cmake \
+        libboost-all-dev \
+        libgomp1
+
+    # ---- Python ---------------------------------------------------------------
+    apt-get install -y \
+        python3 \
+        python3-pip \
+        python3-numpy \
+        python3-yaml
+
+    # Clean up apt cache to keep the image small
+    apt-get clean
+    rm -rf /var/lib/apt/lists/*
+
+%environment
+    export LC_ALL=C.UTF-8
+    export LANG=C.UTF-8
+    # Make sure the Boost 1.83 shared libs are always found even when the
+    # binary was compiled against them dynamically.
+    export LD_LIBRARY_PATH=/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH:-}
+
+%runscript
+    exec python3 "$@"
