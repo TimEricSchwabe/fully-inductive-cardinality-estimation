@@ -8,7 +8,7 @@ notebooks/gnce_runs/
 notebooks/plots_output/
 benchmarks/gcare/results/*
 benchmarks/gcare/*.sif
-benchmarks/gcare/gcare/build/*
+benchmarks/gcare/gcare/build/
 benchmarks/gnce/GNCE/
 benchmarks/gnce/data/
 graphen.zip
