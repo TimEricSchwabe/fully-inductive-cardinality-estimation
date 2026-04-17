@@ -599,5 +599,8 @@ if __name__ == '__main__':
 
         '''storing just the weights of the model'''
         weights = nn_model.get_weights()
-        with open('weights/' + model_name + '_size.txt', "w") as f:
+        weights_path = 'weights/'
+        if not os.path.exists(weights_path):
+            os.makedirs(weights_path)
+        with open(weights_path + model_name + '_size.txt', "w") as f:
             f.write(str(weights))

@@ -45,7 +45,8 @@ From: ubuntu:24.04
         python3 \
         python3-pip \
         python3-numpy \
-        python3-yaml
+        python3-yaml \
+        python3-tqdm 
 
     # Clean up apt cache to keep the image small
     apt-get clean

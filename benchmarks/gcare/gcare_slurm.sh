@@ -7,11 +7,6 @@
 # Adjust the resource settings below to match what the cluster allows.
 
 #SBATCH --job-name=gcare-benchmark
-#SBATCH --output=logs/slurm-%j.out
-#SBATCH --error=logs/slurm-%j.err
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G
 #SBATCH --time=24:00:00
 
 set -euo pipefail
@@ -32,16 +27,19 @@ mkdir -p "${SCRIPT_DIR}/logs"
 
 # ---- Optional: rebuild G-Care binaries inside the container ----------------
 # Uncomment if the binaries are missing or you want a clean rebuild.
-# apptainer exec "${SIF}" bash -c "
-#     cd '${SCRIPT_DIR}/gcare' && rm -rf build && mkdir build && cd build && cmake .. && make -j\$(nproc)"
+apptainer exec "${SIF}" bash -c "
+    cd '${SCRIPT_DIR}/gcare' && rm -rf build && mkdir build && cd build && cmake .. && make -j\$(nproc)"
 
 # ---- Run benchmark ----------------------------------------------------------
 echo "Starting G-Care benchmark at $(date)"
 
+PYTHON="python3"
+
+
 apptainer exec \
     --bind "${PROJECT_ROOT}:${PROJECT_ROOT}" \
     "${SIF}" \
-    python3 "${SCRIPT_DIR}/run_all_experiments.py" \
+    $PYTHON "${SCRIPT_DIR}/run_all_experiments.py" \
         --max-parallel "${SLURM_CPUS_PER_TASK:-4}" \
         "$@"
 

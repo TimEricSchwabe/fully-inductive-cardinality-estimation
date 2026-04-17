@@ -192,7 +192,12 @@ class QueryDecompose(object):
 			queries_dir = os.path.join(self.queryset_load_path, subset_dir)
 			if not os.path.isdir(queries_dir):
 				continue
-			pattern, size = subset_dir.split("_")[0], int(subset_dir.split("_")[1])
+			# Extract size as last underscore-separated component, pattern is everything before
+			parts = subset_dir.rsplit("_", 1)  # Split from right, max 1 split
+			if len(parts) != 2:
+				print(f"Warning: Skipping directory {subset_dir} - unexpected format")
+				continue
+			pattern, size = parts[0], int(parts[1])
 			self.all_subsets[(pattern, size)] = []
 			self.all_queries[(pattern, size)] = []
 			for query_dir in os.listdir(queries_dir):
