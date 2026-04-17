@@ -476,52 +476,52 @@ datasets:
 
 experiments:
   - id: swdf
-    pool: swdf
+    pool: [swdf]
     left_out: []
-    eval: swdf
+    eval: [swdf]
 
   - id: lubm
-    pool: lubm
+    pool: [lubm]
     left_out: []
-    eval: lubm
+    eval: [lubm]
 
   - id: wikidata
-    pool: wikidata
+    pool: [wikidata]
     left_out: []
-    eval: wikidata
+    eval: [wikidata]
 
   - id: dbpedia100k
-    pool: dbpedia100k
+    pool: [dbpedia100k]
     left_out: []
-    eval: dbpedia100k
+    eval: [dbpedia100k]
 
   - id: fb237_v4
-    pool: fb237_v4
+    pool: [fb237_v4]
     left_out: []
-    eval: fb237_v4
+    eval: [fb237_v4]
 
   - id: wn18rr_v4
-    pool: wn18rr_v4
+    pool: [wn18rr_v4]
     left_out: []
-    eval: wn18rr_v4
+    eval: [wn18rr_v4]
 
   - id: aids
-    pool: aids
+    pool: [aids]
     left_out: []
-    eval: aids
+    eval: [aids]
 
   - id: codex_l
-    pool: codex_l
+    pool: [codex_l]
     left_out: []
-    eval: codex_l
+    eval: [codex_l]
 
   - id: hetionet
-    pool: hetionet
+    pool: [hetionet]
     left_out: []
-    eval: hetionet
+    eval: [hetionet]
 
   - id: yago
-    pool: yago
+    pool: [yago]
     left_out: []
-    eval: yago
+    eval: [yago]
 
