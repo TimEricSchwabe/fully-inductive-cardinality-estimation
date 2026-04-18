@@ -8,8 +8,6 @@ import sys
 import os
 import json
 import csv
-import math
-import argparse
 import tempfile
 import shutil
 from pathlib import Path
@@ -23,6 +21,7 @@ LSS_DIR = Path(__file__).resolve().parent
 LSS_CODE_DIR = LSS_DIR / "LSS"
 PRONE_DIR = LSS_DIR / "ProNE"
 DATA_DIR = LSS_DIR / "data"
+# DATA_DIR = "/storage/nobackup/lukasketzer/fice/lss/data"
 
 MIN_BUCKET_SIZE = 5  # skip query size buckets smaller than this
 
@@ -475,13 +474,13 @@ def _remap_query_files(src_dataset_dir, dest_qs_dir, dest_tc_dir,
                 shutil.copy2(card_src, out_c)
 
 
-def build_mega_graph_files(exp_id, all_dataset_names, train_datasets, eval_datasets,
+def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
                            per_ds_dir, mega_dir, global_map, all_stats):
     """
     Build mega-graph files for one LOCO fold.
 
-    DataGraph:      all 8 datasets (for consistent feature space)
-    Train queries:  N-1 datasets only
+    DataGraph:      training datasets only (no eval leakage)
+    Train queries:  training datasets only
     Eval queries:   held-out dataset(s) only
     """
     mega_dir = Path(mega_dir)
@@ -490,12 +489,16 @@ def build_mega_graph_files(exp_id, all_dataset_names, train_datasets, eval_datas
     train_name = f"train_{exp_id}"
     eval_name = f"eval_{exp_id}"
 
-    # ── Mega DataGraph (ALL datasets) ─────────────────────────────────────────
+    # ── Mega DataGraph (training datasets only) ───────────────────────────────
     graph_out = mega_dir / "dataset" / train_name / f"{train_name}.txt"
     graph_out.parent.mkdir(parents=True, exist_ok=True)
-    print(f"    Writing mega DataGraph ({len(all_dataset_names)} datasets)...")
+    # Remove stale pickle so DataGraph re-parses the new .txt file
+    pkl_path = graph_out.with_suffix(".pkl")
+    if pkl_path.exists():
+        pkl_path.unlink()
+    print(f"    Writing mega DataGraph ({len(train_datasets)} datasets)...")
     with open(graph_out, "w") as f:
-        for ds in all_dataset_names:
+        for ds in train_datasets:
             src = per_ds_dir / ds / "graph" / f"{ds}.txt"
             if not src.exists():
                 raise FileNotFoundError(f"DataGraph missing: {src}")
@@ -504,9 +507,26 @@ def build_mega_graph_files(exp_id, all_dataset_names, train_datasets, eval_datas
             r_off = global_map["rel_offsets"][ds]
             _append_gcare_graph(f, src, e_off, t_off, r_off)
 
+        # Dummy node pair with one edge per global relation ID.
+        # LSS indexes edge features by raw label value, not position, so edge_attr
+        # must be at least (max_global_rel_id + 1) wide. Adding these dummy edges
+        # ensures DataGraph.edge_label_card covers 0..num_global_rels-1; the
+        # held-out dataset's unseen relations get frequency 0 (correct semantics).
+        num_global_rels = global_map["num_global_rels"]
+        dummy_v0 = global_map["num_global_entities"]
+        dummy_v1 = global_map["num_global_entities"] + 1
+        f.write(f"v {dummy_v0} 0\n")
+        f.write(f"v {dummy_v1} 0\n")
+        for rel_id in range(num_global_rels):
+            f.write(f"e {dummy_v0} {dummy_v1} {rel_id}\n")
+
     # ── Training queries (N-1 datasets) ───────────────────────────────────────
     train_qs_dir = mega_dir / "queryset_homo" / train_name
     train_tc_dir = mega_dir / "true_homo" / train_name
+    if train_qs_dir.exists():
+        shutil.rmtree(train_qs_dir)
+    if train_tc_dir.exists():
+        shutil.rmtree(train_tc_dir)
     print(f"    Writing training queries from {len(train_datasets)} datasets...")
     for ds in train_datasets:
         t_off = global_map["type_offsets"][ds]
@@ -611,269 +631,59 @@ def generate_prone_embeddings(mega_graph_path, num_global_types, emb_out_path,
             os.unlink(p)
 
 
-# ── LSS args builder ──────────────────────────────────────────────────────────
-
-def build_lss_args(train_name, mega_dir, cuda=False):
-    """Build an argparse.Namespace matching active_train.py's defaults."""
-    mega_dir = Path(mega_dir)
-    args = argparse.Namespace(
-        # Model
-        num_layers=3,
-        model_type="NNGINConcat",
-        embed_type="prone",
-        edge_embed_type="freq",
-        num_g_hid=128,
-        num_e_hid=32,
-        out_g_ch=128,
-        num_expert=64,
-        num_att_hid=64,
-        num_mlp_hid=128,
-        pool_type="att",
-        dropout=0.2,
-        # Training
-        cumulative=False,
-        num_fold=5,
-        epochs=80,
-        batch_size=2,
-        learning_rate=1e-4,
-        weight_decay=5e-4,
-        decay_factor=0.1,
-        decay_patience=50,
-        weight_exp=1.0,
-        num_workers=4,
-        # Multi-task
-        multi_task=True,
-        max_classes=10,
-        coeff=0.5,
-        # Active learning (disabled)
-        uncertainty="consist",
-        biased_sample=True,
-        active_iters=0,
-        budget=50,
-        active_epochs=50,
-        ensemble_num=5,
-        # Paths
-        dataset=train_name,
-        full_data_dir=str(mega_dir),
-        save_res_dir=str(mega_dir / "result"),
-        model_file=f"{train_name}.pth",
-        model_save_dir=str(mega_dir / "models"),
-        # Other
-        matching="homo",
-        k=3,
-        verbose=False,
-        mode="pretrain",
-    )
-    # Derived dirs (mirrors active_train.py logic)
-    args.queryset_homo_dir = str(mega_dir / "queryset_homo")
-    args.queryset_iso_dir = str(mega_dir / "queryset_iso")
-    args.true_homo_dir = str(mega_dir / "true_homo")
-    args.true_iso_dir = str(mega_dir / "true_iso")
-    args.data_dir = str(mega_dir / "dataset")
-    args.prone_feat_dir = str(mega_dir / "prone")
-    args.n2v_feat_dir = str(mega_dir / "n2v")
-    args.nrp_feat_dir = str(mega_dir / "nrp")
-    args.embed_feat_dir = args.prone_feat_dir
-    args.queryset_dir = args.queryset_homo_dir
-    args.true_card_dir = args.true_homo_dir
-    # Hardware
-    import torch
-    args.cuda = cuda and torch.cuda.is_available()
-    args.device = __import__("torch").device("cuda" if args.cuda else "cpu")
-    return args
-
-
-# ── QuerysetEval ──────────────────────────────────────────────────────────────
-
-class QuerysetEval:
-    """
-    Converts eval queries to tensors using an existing Queryset's label stats.
-    Avoids re-loading the DataGraph or embedding file.
-    """
-
-    def __init__(self, train_qs, all_subsets):
-        self._qs = train_qs
-        # Use sorted key order so flat_list and metadata are always aligned.
-        self._ordered_keys = sorted(all_subsets.keys())
-        self.converted = self._convert(all_subsets)
-
-    def _convert(self, all_subsets):
-        converted = {}
-        for key in self._ordered_keys:
-            pairs = all_subsets[key]
-            converted[key] = []
-            for graphs, card in pairs:
-                decomp_x, decomp_edge_index, decomp_edge_attr, _ = \
-                    self._qs._get_decomposed_graph_data(graphs)
-                converted[key].append((decomp_x, decomp_edge_index, decomp_edge_attr, card))
-        return converted
-
-    def to_flat_dataset(self):
-        """Return all eval queries as a single QueryDataset (sorted key order)."""
-        from Queryset import QueryDataset  # noqa: LSS module
-        all_q = []
-        for key in self._ordered_keys:
-            all_q.extend(self.converted[key])
-        return QueryDataset(queries=all_q, num_classes=self._qs.args.max_classes)
-
-    def metadata(self):
-        """Return list of (pattern, size) for each eval query (sorted key order)."""
-        meta = []
-        for (pattern, size) in self._ordered_keys:
-            for _ in self.converted[(pattern, size)]:
-                meta.append((pattern, size))
-        return meta
-
-
 # ── Fold runner ───────────────────────────────────────────────────────────────
 
-def run_loco_fold(exp_id, train_datasets, eval_datasets,
-                  mega_dir, all_stats, global_map, fold_results_dir,
-                  epochs_override=None):
-    """
-    Full LOCO fold pipeline:
-      1. Build Queryset for training (mega DataGraph + N-1 train queries)
-      2. Build QuerysetEval for evaluation (same DataGraph + held-out queries)
-      3. Train CardNet (pretrain, no active iterations)
-      4. Evaluate on held-out queries
-      5. Save predictions CSV
-    """
-    import torch
-    import torch.optim as optim
-    from Queryset import Queryset
-    from QuerySampler import QueryDecompose
-    import cardnet
-    from active import ActiveLearner, _to_datasets
+def run_loco_fold(exp_id, _train_datasets, eval_datasets,
+                  mega_dir, _all_stats, _global_map, fold_results_dir,
+                  epochs_override=None, prone_time_s=0.0):
+    import subprocess
+    import json
 
     mega_dir = Path(mega_dir)
     fold_results_dir = Path(fold_results_dir)
     fold_results_dir.mkdir(parents=True, exist_ok=True)
 
     train_name = f"train_{exp_id}"
-    eval_name = f"eval_{exp_id}"
+    epochs = epochs_override if epochs_override is not None else 80
+    model_save_dir = fold_results_dir / "checkpoint"
+    model_save_dir.mkdir(parents=True, exist_ok=True)
 
-    cuda = torch.cuda.is_available()
-    args = build_lss_args(train_name, mega_dir, cuda=cuda)
-    if epochs_override is not None:
-        args.epochs = epochs_override
+    # ── Train via LSS native entry point ──────────────────────────────────────
+    cmd_train = [
+        sys.executable, "active_train.py",
+        "--mode", "pretrain",
+        "--dataset", train_name,
+        "--embed_type", "prone",
+        "--full_data_dir", str(mega_dir),
+        "--model_save_dir", str(model_save_dir),
+        "--epochs", str(epochs),
+        "--matching", "homo",
+    ]
+    print(f"  Training CardNet via subprocess ({epochs} epochs)...")
+    subprocess.run(cmd_train, cwd=str(LSS_CODE_DIR), check=True)
 
-    # ── Training Queryset ─────────────────────────────────────────────────────
-    print(f"  Decomposing training queries ({train_name})...")
-    train_qd = QueryDecompose(
-        queryset_dir=args.queryset_dir,
-        true_card_dir=args.true_card_dir,
-        dataset=train_name,
-        k=args.k,
-    )
-    train_qd.decomose_queries()
+    # ── Eval via eval_loco.py ─────────────────────────────────────────────────
+    ds_name = eval_datasets[0] if len(eval_datasets) == 1 else "eval"
+    out_json = fold_results_dir / "predictions_raw.json"
+    cmd_eval = [
+        sys.executable, str(LSS_DIR / "eval_loco.py"),
+        "--exp_id",           exp_id,
+        "--mega_dir",         str(mega_dir),
+        "--fold_results_dir", str(fold_results_dir),
+        "--eval_ds",          ds_name,
+        "--epochs",           str(epochs),
+        "--prone_time_s",     str(prone_time_s),
+        "--out",              str(out_json),
+    ]
+    print(f"  Evaluating via eval_loco.py...")
+    subprocess.run(cmd_eval, cwd=str(LSS_DIR), check=True)
 
-    if not train_qd.all_subsets:
-        raise RuntimeError(f"No training queries found for {train_name}")
-
-    print(f"  Loading training Queryset...")
-    train_qs = Queryset(args=args, all_subsets=train_qd.all_subsets)
-    train_qs.print_queryset_info()
-
-    num_node_feat = train_qs.num_node_feat
-    num_edge_feat = train_qs.num_edge_feat
-
-    train_datasets_list = _to_datasets(train_qs.all_train_sets, args.max_classes)
-    val_datasets_list = _to_datasets(train_qs.val_sets, args.max_classes)
-
-    # ── Eval Queryset ─────────────────────────────────────────────────────────
-    print(f"  Decomposing eval queries ({eval_name})...")
-    eval_qd = QueryDecompose(
-        queryset_dir=args.queryset_dir,
-        true_card_dir=args.true_card_dir,
-        dataset=eval_name,
-        k=args.k,
-    )
-    eval_qd.decomose_queries()
-
-    if not eval_qd.all_subsets:
-        raise RuntimeError(f"No eval queries found for {eval_name}")
-
-    # Filter single-triple queries (size == 1) — they decompose into single-edge
-    # subgraphs that CardNet's squeeze() collapses to 1-D, causing a PyG error.
-    # Mirrors the load_fice_queries filter applied during training.
-    eval_subsets = {k: v for k, v in eval_qd.all_subsets.items() if k[1] >= 2}
-
-    print(f"  Converting eval queries...")
-    eval_qs = QuerysetEval(train_qs, eval_subsets)
-    eval_dataset = eval_qs.to_flat_dataset()
-    eval_meta = eval_qs.metadata()
-
-    # ── Model and optimiser ───────────────────────────────────────────────────
-    model = cardnet.CardNet(args, num_node_feat=num_node_feat, num_edge_feat=num_edge_feat)
-    criterion = torch.nn.MSELoss()
-    criterion_cla = torch.nn.NLLLoss()
-    optimizer = optim.Adam(model.parameters(), lr=args.learning_rate,
-                           weight_decay=args.weight_decay)
-    scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=args.decay_factor)
-
-    # ── Training ──────────────────────────────────────────────────────────────
-    print(f"  Training CardNet for {args.epochs} epochs...")
-    learner = ActiveLearner(args)
-    learner.train(
-        model=model,
-        criterion=criterion,
-        criterion_cal=criterion_cla,
-        train_datasets=train_datasets_list,
-        val_datasets=val_datasets_list,
-        optimizer=optimizer,
-        scheduler=scheduler,
-        active=False,
-    )
-
-    # Save checkpoint
-    Path(args.model_save_dir).mkdir(parents=True, exist_ok=True)
-    import torch as _torch
-    _torch.save({"model": model.state_dict(), "optimizer": optimizer.state_dict()},
-                Path(args.model_save_dir) / args.model_file)
-
-    # ── Evaluation ────────────────────────────────────────────────────────────
-    print(f"  Evaluating on held-out queries ({eval_name})...")
-    model.eval()
-    if args.cuda:
-        model.to(args.device)
-
-    from torch.utils.data import DataLoader
-    eval_loader = DataLoader(eval_dataset, batch_size=1, shuffle=False)
-
-    predictions = []
-    query_id = 0
-    for decomp_x, decomp_edge_index, decomp_edge_attr, card, label in eval_loader:
-        if args.cuda:
-            from active.active_util import _to_cuda
-            decomp_x = _to_cuda(decomp_x)
-            decomp_edge_index = _to_cuda(decomp_edge_index)
-            decomp_edge_attr = _to_cuda(decomp_edge_attr)
-
-        with _torch.no_grad():
-            output, _ = model(decomp_x, decomp_edge_index, decomp_edge_attr)
-            output = output.reshape(-1)
-
-        true_log2 = card.item()
-        pred_log2 = output.item()
-        true_card = int(round(math.pow(2, true_log2)))
-        pred_card = max(1, int(round(math.pow(2, pred_log2))))
-
-        pattern, size = eval_meta[query_id]
-        # Determine dataset (from eval_datasets, use first if single)
-        ds_name = eval_datasets[0] if len(eval_datasets) == 1 else "eval"
-        predictions.append({
-            "query_id": query_id,
-            "query_type": pattern,
-            "dataset": ds_name,
-            "epoch": args.epochs,
-            "ground_truth": true_card,
-            "prediction": pred_card,
-        })
-        query_id += 1
+    # ── Collect results ───────────────────────────────────────────────────────
+    with open(out_json) as f:
+        predictions = json.load(f)
 
     save_predictions_csv(predictions, fold_results_dir)
     print(f"  Saved {len(predictions)} predictions → {fold_results_dir / 'predictions.csv'}")
-    return predictions
 
 
 # ── Results export ────────────────────────────────────────────────────────────
@@ -892,6 +702,10 @@ def save_predictions_csv(predictions, results_dir):
                 "epoch",
                 "ground_truth",
                 "prediction",
+                "query_size",
+                "prone_time_s",
+                "data_load_time_s",
+                "eval_time_s",
             ],
         )
         writer.writeheader()

@@ -10,6 +10,7 @@ Writes: benchmarks/lss/results/run_{timestamp}/{exp_id}/predictions.csv
 """
 import sys
 import json
+import time
 import traceback
 from datetime import datetime
 from pathlib import Path
@@ -38,13 +39,12 @@ def main():
     parser.add_argument("--epochs", type=int, default=None,
                         help="Override training epochs (default: 80)")
     parser.add_argument("--experiments", nargs="*", default=None,
-                        help="Run only specific experiment IDs")
+                        help="Run only specific experiment IDs (e.g. loco_swdf loco_lubm)")
     cli = parser.parse_args()
 
     config = load_config()
 
     all_dataset_names = [ds["name"] for ds in config["datasets"]]
-    dataset_by_name = {ds["name"]: ds for ds in config["datasets"]}
     queries_by_dataset = {}
     for q in config["queries"]:
         queries_by_dataset.setdefault(q["dataset_name"], []).append(q)
@@ -113,7 +113,7 @@ def main():
         print(f"Experiment: {exp_id}")
         print("=" * 60)
 
-        train_ds, left_out, eval_ds = resolve_experiment_datasets(
+        train_ds, _, eval_ds = resolve_experiment_datasets(
             exp_cfg, all_dataset_names
         )
         print(f"  Train datasets : {train_ds}")
@@ -130,21 +130,25 @@ def main():
         else:
             print("  Building mega-graph files...")
             build_mega_graph_files(
-                exp_id, all_dataset_names, train_ds, eval_ds,
+                exp_id, train_ds, eval_ds,
                 per_ds_dir, mega_dir, global_map, all_stats,
             )
 
         # Generate ProNE embeddings
         emb_path = mega_dir / "prone" / f"train_{exp_id}.emb.npy"
+        prone_time_s = 0.0
         if emb_path.exists():
             print("  ProNE embeddings already exist, skipping generation")
         else:
             print("  Generating ProNE embeddings...")
+            _t0 = time.perf_counter()
             generate_prone_embeddings(
                 mega_graph_path,
                 global_map["num_global_types"],
                 emb_path,
             )
+            prone_time_s = time.perf_counter() - _t0
+            print(f"  ProNE done in {prone_time_s:.2f}s")
 
         # Run fold
         try:
@@ -153,6 +157,7 @@ def main():
                 mega_dir, all_stats, global_map,
                 results_dir / exp_id,
                 epochs_override=cli.epochs,
+                prone_time_s=prone_time_s,
             )
         except Exception as e:
             errors.append(f"{exp_id}: {e}")
