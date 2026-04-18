@@ -328,6 +328,7 @@ with tf.device("GPU:0"):
             epoch=epochs if do_training else 1,
             stage="train" if do_training else "eval",
             write_csv=not do_training,
+            query_to_estimate_time_ms=(avg_time_encoding_ms + avg_time_prediction_ms) if not do_training else None,
         )
         # correct_estimate = store_statistics.check_network_estimates(preds, y, statistics_file_name = statistics_file_name, print_time=print_time, nb_outliers = nb_outliers)
 

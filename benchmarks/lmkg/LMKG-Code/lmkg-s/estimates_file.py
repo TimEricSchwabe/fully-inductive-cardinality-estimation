@@ -5,7 +5,7 @@ import os
 
 def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name,
                           dataset_name, query_set_name, query_type,
-                          epoch=1, stage="eval", append=False):
+                          epoch=1, stage="eval", append=False, per_query_time_ms=None):
     """Write per-query predictions to a per-run CSV and append to the master CSV.
 
     Values must already be in actual (non-log) scale.
@@ -15,7 +15,7 @@ def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_fi
 
     fieldnames = [
         "stage", "epoch", "dataset_name", "query_set_name", "query_type", "batch_idx",
-        "prediction", "true_value",
+        "prediction", "true_value", "est_ms",
     ]
 
     rows = []
@@ -31,6 +31,7 @@ def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_fi
             "batch_idx": idx,
             "prediction": pred_val,
             "true_value": true_val,
+            "est_ms": float(per_query_time_ms) if per_query_time_ms is not None else "",
         })
 
     per_run_path = "statistics/predictions-" + statistics_file_name + ".csv"
@@ -62,7 +63,8 @@ def create_csv_statistics_file(data,file_name,print_time):
 
 def check_network_estimates(predicted_cardinality, true_cardinality, statistics_file_name, print_time,
                              nb_outliers=0, dataset_name="unknown", query_type="unknown",
-                             query_set_name=None, epoch=1, stage="eval", write_csv=True):
+                             query_set_name=None, epoch=1, stage="eval", write_csv=True,
+                             query_to_estimate_time_ms=None):
     correct_estimates = 0
     wrong_estimates = 0
     max_correct = 0
@@ -181,6 +183,8 @@ def check_network_estimates(predicted_cardinality, true_cardinality, statistics_
     final_print_statistics += ('greater than 10 %d\n' % greater_10)
     final_print_statistics += ('greater than 100 %d\n' % greater_100)
     final_print_statistics += ('greater than 1000 %d\n' % greater_1000)
+    if query_to_estimate_time_ms is not None:
+        final_print_statistics += ('average query-to-cardinality-estimate time: %.3f ms\n' % query_to_estimate_time_ms)
 
     final_q_errors_per_range = dict()
     median_q_errors_per_range = dict()
@@ -213,5 +217,5 @@ def check_network_estimates(predicted_cardinality, true_cardinality, statistics_
     if write_csv:
         write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name,
                               dataset_name, query_set_name, query_type,
-                              epoch=epoch, stage=stage)
+                              epoch=epoch, stage=stage, per_query_time_ms=query_to_estimate_time_ms)
     create_csv_statistics_file(final_print_statistics, statistics_file_name,print_time)
