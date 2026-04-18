@@ -2,7 +2,10 @@
 
 Loads *num_queries* queries from the FICE JSON file, takes the last 20 % as the
 evaluation split (discarding the training portion – G-Care has no training step),
-and runs the G-Care binary for each query.
+and runs the G-Care binary once per method over all eval queries.
+
+Timing is taken from the binary's own per-query avg_time (estimator->Run() only,
+in milliseconds), matching the measurement boundary used by FICE and GNCE.
 
 Can be used as a CLI script or imported and called as run_estimation().
 """
@@ -12,9 +15,8 @@ import logging
 import os
 import random
 import subprocess
-import time
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 
@@ -61,43 +63,71 @@ def _eval_split(queries: list, num_queries: int, seed: int = 42) -> list:
     return sampled[split_idx:]
 
 
-def _predict(method: str, dataset: str, gcare_home: Path) -> Tuple[float, float]:
-    """Call the G-Care binary for the single query currently in the queryset dir.
+def _parse_output_file(output_file: Path) -> Dict[int, Tuple[float, float]]:
+    """Parse binary output file → {query_idx: (avg_est, avg_time_sec)}.
 
-    Returns (predicted_cardinality, elapsed_seconds).
+    The binary writes two lines per query:
+      {filepath} {avg_est} {avg_time_ms} {var}
+      {num_trials} {est1} {est2} ...
+    avg_time_ms is the mean estimator->Run() time across trials (milliseconds).
+    """
+    results: Dict[int, Tuple[float, float]] = {}
+    lines = [l.strip() for l in output_file.read_text().splitlines()
+             if l.strip() and not l.startswith('#')]
+    i = 0
+    while i < len(lines):
+        parts = lines[i].split()
+        if len(parts) < 3:
+            i += 1
+            continue
+        filepath = parts[0]
+        avg_est = float(parts[1])
+        avg_time_ms = float(parts[2])
+        # filename is {exp_name}_{idx}.txt; split on '_' and take last token
+        idx = int(Path(filepath).stem.split('_')[-1])
+        results[idx] = (avg_est, avg_time_ms / 1000.0)  # ms → sec
+        i += 2  # skip the individual est_vec line
+    return results
+
+
+def _predict_batch(
+    method: str, dataset: str, gcare_home: Path
+) -> Dict[int, Tuple[float, float]]:
+    """Run the G-Care binary once over all queries in the queryset directory.
+
+    Returns {query_idx: (avg_est, avg_time_sec)} where avg_time is the binary's
+    own per-query estimator->Run() time (hot path only, no graph-load overhead).
     """
     seed = 0
+    p = 0.03
+    repeat = 1 if method in ("cset", "bsk", "sumrdf") else 30
     result_dir = gcare_home / "data" / "result" / "accuracy" / "current"
     result_dir.mkdir(parents=True, exist_ok=True)
 
-    p = 0.03
-    repeat = 1 if method in ("cset", "bsk", "sumrdf") else 30
-
+    bsk_budget = "4096"
     if method == "bsk":
-        os.environ["GCARE_BSK_BUDGET"] = "4096"
+        os.environ["GCARE_BSK_BUDGET"] = bsk_budget
 
-    command = (
-        f"./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}"
-    )
-    logging.info("Running: %s", command)
+    command = f"./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}"
+    logging.info("Running batch: %s", command)
 
-    start = time.time()
-    proc = subprocess.run(
+    subprocess.run(
         f'bash -lc "{command}"',
         shell=True,
         check=True,
         stdout=subprocess.PIPE,
         cwd=str(gcare_home / "scripts"),
     )
-    elapsed = time.time() - start
 
     if "GCARE_BSK_BUDGET" in os.environ:
         del os.environ["GCARE_BSK_BUDGET"]
 
-    output = proc.stdout.decode().strip()
-    values = output.split()
-    predicted = np.mean(np.asarray(values[-repeat:], dtype=float))
-    return float(predicted), elapsed
+    if method == "bsk":
+        output_file = result_dir / f"{dataset}_{method}_b{bsk_budget}_s{seed}_query_result.txt"
+    else:
+        output_file = result_dir / f"{dataset}_{method}_p{p}_s{seed}_query_result.txt"
+
+    return _parse_output_file(output_file)
 
 
 # ---------------------------------------------------------------------------
@@ -149,11 +179,32 @@ def run_estimation(
         id_to_id_pred = json.load(f)
 
     # ------------------------------------------------------------------
-    # Run each method
+    # Write all eval queries to the queryset directory at once
+    # ------------------------------------------------------------------
+    for old in gcare_queryset_dir.glob("*.txt"):
+        old.unlink()
+
+    for i, query in enumerate(eval_queries):
+        query_to_gcare(
+            query["triples"],
+            i,
+            id_to_id_mapping=id_to_id,
+            id_to_id_mapping_predicate=id_to_id_pred,
+            dataset=exp_name,
+            card=query["y"],
+            rdf_type_uri=rdf_type_uri,
+            gcare_home=gcare_home,
+        )
+
+    logging.info("[%s] Wrote %d query files to %s", exp_name, len(eval_queries), gcare_queryset_dir)
+
+    # ------------------------------------------------------------------
+    # Run each method once over all queries
     # ------------------------------------------------------------------
     methods = ["wj", "cset"]
     for method in methods:
-        logging.info("[%s] Running method: %s", exp_name, method)
+        logging.info("[%s] Running method: %s (batch over %d queries)", exp_name, method, len(eval_queries))
+
         preds: List[float] = []
         gts: List[int] = []
         sizes: List[int] = []
@@ -163,28 +214,18 @@ def run_estimation(
         method_dir = results_dir / method
         method_dir.mkdir(parents=True, exist_ok=True)
 
+        try:
+            batch = _predict_batch(method, exp_name, gcare_home)
+        except subprocess.CalledProcessError as exc:
+            logging.error("[%s] %s batch run failed: %s", exp_name, method, exc)
+            continue
+
         for i, query in enumerate(eval_queries):
-            # Write this query as the single file in the queryset directory.
-            for old in gcare_queryset_dir.glob("*.txt"):
-                old.unlink()
-
-            query_to_gcare(
-                query["triples"],
-                0,
-                id_to_id_mapping=id_to_id,
-                id_to_id_mapping_predicate=id_to_id_pred,
-                dataset=exp_name,
-                card=query["y"],
-                rdf_type_uri=rdf_type_uri,
-                gcare_home=gcare_home,
-            )
-
-            try:
-                y_pred, pred_time = _predict(method, exp_name, gcare_home)
-            except subprocess.CalledProcessError as exc:
-                logging.error("[%s] %s query %d failed: %s", exp_name, method, i, exc)
+            if i not in batch:
+                logging.error("[%s] %s query %d missing from binary output", exp_name, method, i)
                 continue
 
+            y_pred, pred_time = batch[i]
             preds.append(y_pred)
             gts.append(query["y"])
             pred_times.append(pred_time)
@@ -196,7 +237,7 @@ def run_estimation(
             })
 
             logging.info(
-                "[%s] %s %d/%d  size=%d  y=%s  y_pred=%.1f  t=%.2fs",
+                "[%s] %s %d/%d  size=%d  y=%s  y_pred=%.1f  t=%.4fs",
                 exp_name, method, i + 1, len(eval_queries),
                 len(query["triples"]), query["y"], y_pred, pred_time,
             )
