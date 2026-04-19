@@ -254,33 +254,35 @@ with tf.device("GPU:0"):
             x = [X, E, A]
         elif matrix_mode == 4:
             x = [X, E]
-        start_time = time.time()
-
         if do_training:
             for _ in range(epochs):
                 model.fit(
                     x=x, y=y,
                     epochs=1, batch_size=batch_size, shuffle=True)
 
-
-        end_time = time.time() - start_time
-        print_time = ('The time needed for training %.3f seconds \n' % end_time)
-        print(print_time)
-
         avg_time_prediction_ms = 0
+        per_query_prediction_ms = None
         if do_training:
             preds = model.predict(x, verbose=0)
         else:
-            total_pred = 0
-            for _ in range(30):
-                predictions_start_time = time.time()
-                # Predict the cardinality for the given triples
-                preds = model.predict(x)
-                predictions_start_time = time.time() - predictions_start_time
-                total_pred += predictions_start_time / len(y)
-            avg_time_prediction_ms = (total_pred / 30) * 1000.0
-        print("The average prediction time is " + str(avg_time_prediction_ms))
-        print("The average encoding time is " + str(avg_time_encoding_ms))
+            preds_rows = []
+            per_query_prediction_ms = []
+            N_REPEATS = 10
+            for idx in range(len(y)):
+                x_single = [arr[idx:idx + 1] for arr in x]
+                repeat_preds = []
+                t0 = time.time()
+                for _ in range(N_REPEATS):
+                    repeat_preds.append(model.predict(x_single, verbose=0, batch_size=1)[0])
+                preds_rows.append(np.mean(repeat_preds, axis=0))
+
+                total_time = (time.time() - t0) * 1000.0 / N_REPEATS
+                per_query_prediction_ms.append(total_time)
+
+            preds = np.array(preds_rows)
+            avg_time_prediction_ms = float(np.mean(per_query_prediction_ms))
+        print(f"The average prediction time is {avg_time_prediction_ms:.3f} ms")
+        print(f"The average encoding time is {avg_time_encoding_ms:.3f} ms")
 
 
         if scale == 0:
@@ -319,6 +321,13 @@ with tf.device("GPU:0"):
             y = y_outlier
             preds = preds_outlier
 
+        if do_training:
+            query_to_estimate_time_ms = None
+        elif per_query_prediction_ms is not None:
+            query_to_estimate_time_ms = [avg_time_encoding_ms + pred_ms for pred_ms in per_query_prediction_ms]
+        else:
+            query_to_estimate_time_ms = (avg_time_encoding_ms + avg_time_prediction_ms)
+
         # accuracy statistics for the network
 
         correct_estimate = check_network_estimates(
@@ -328,7 +337,7 @@ with tf.device("GPU:0"):
             epoch=epochs if do_training else 1,
             stage="train" if do_training else "eval",
             write_csv=not do_training,
-            query_to_estimate_time_ms=(avg_time_encoding_ms + avg_time_prediction_ms) if not do_training else None,
+            query_to_estimate_time_ms=query_to_estimate_time_ms,
         )
         # correct_estimate = store_statistics.check_network_estimates(preds, y, statistics_file_name = statistics_file_name, print_time=print_time, nb_outliers = nb_outliers)
 
@@ -352,6 +361,7 @@ if __name__ == '__main__':
     parser.add_argument('--decay', action="store_true", help='Decay of the learning rate.')
     parser.add_argument('--test-mode', type=str, default = "all", help='[all, star, chain], Used for testing. In case we have trained a combined model (for star and chain) '
                                                         'we can evaluate only on star, only on chain or on all')
+
 
     args = parser.parse_args()
 

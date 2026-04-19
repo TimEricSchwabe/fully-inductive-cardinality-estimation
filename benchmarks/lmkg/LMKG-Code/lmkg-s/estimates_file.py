@@ -19,9 +19,23 @@ def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_fi
     ]
 
     rows = []
+    per_row_times = None
+    if per_query_time_ms is not None and hasattr(per_query_time_ms, "__len__") and not isinstance(per_query_time_ms, (str, bytes)):
+        try:
+            if len(per_query_time_ms) == len(predicted_cardinality):
+                per_row_times = per_query_time_ms
+        except TypeError:
+            per_row_times = None
+
     for idx, (pred, true) in enumerate(zip(predicted_cardinality, true_cardinality)):
         pred_val = float(pred[0]) if hasattr(pred, "__len__") else float(pred)
         true_val = float(true)
+        if per_row_times is not None:
+            est_ms_val = float(per_row_times[idx])
+        elif per_query_time_ms is not None:
+            est_ms_val = float(per_query_time_ms)
+        else:
+            est_ms_val = ""
         rows.append({
             "stage": stage,
             "epoch": epoch,
@@ -31,7 +45,7 @@ def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_fi
             "batch_idx": idx,
             "prediction": pred_val,
             "true_value": true_val,
-            "est_ms": float(per_query_time_ms) if per_query_time_ms is not None else "",
+            "est_ms": est_ms_val,
         })
 
     per_run_path = "statistics/predictions-" + statistics_file_name + ".csv"
@@ -65,6 +79,14 @@ def check_network_estimates(predicted_cardinality, true_cardinality, statistics_
                              nb_outliers=0, dataset_name="unknown", query_type="unknown",
                              query_set_name=None, epoch=1, stage="eval", write_csv=True,
                              query_to_estimate_time_ms=None):
+    summary_query_to_estimate_time_ms = query_to_estimate_time_ms
+    if query_to_estimate_time_ms is not None and hasattr(query_to_estimate_time_ms, "__len__") and not isinstance(query_to_estimate_time_ms, (str, bytes)):
+        try:
+            if len(query_to_estimate_time_ms) > 0:
+                summary_query_to_estimate_time_ms = float(np.mean(query_to_estimate_time_ms))
+        except TypeError:
+            summary_query_to_estimate_time_ms = query_to_estimate_time_ms
+
     correct_estimates = 0
     wrong_estimates = 0
     max_correct = 0
@@ -183,8 +205,8 @@ def check_network_estimates(predicted_cardinality, true_cardinality, statistics_
     final_print_statistics += ('greater than 10 %d\n' % greater_10)
     final_print_statistics += ('greater than 100 %d\n' % greater_100)
     final_print_statistics += ('greater than 1000 %d\n' % greater_1000)
-    if query_to_estimate_time_ms is not None:
-        final_print_statistics += ('average query-to-cardinality-estimate time: %.3f ms\n' % query_to_estimate_time_ms)
+    if summary_query_to_estimate_time_ms is not None:
+        final_print_statistics += ('average query-to-cardinality-estimate time: %.3f ms\n' % summary_query_to_estimate_time_ms)
 
     final_q_errors_per_range = dict()
     median_q_errors_per_range = dict()
