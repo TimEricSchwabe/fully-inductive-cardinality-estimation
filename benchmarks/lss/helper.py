@@ -8,8 +8,8 @@ import sys
 import os
 import json
 import csv
+import pickle
 import tempfile
-import shutil
 from pathlib import Path
 from collections import defaultdict
 
@@ -305,6 +305,9 @@ def convert_dataset_to_lss(dataset_cfg, query_cfgs, project_root, per_ds_dir):
     unk_local = type_to_local_id.get("__unk__", type_to_local_id.get("__dummy__", 0))
     query_sizes = {}  # {query_type: [sizes]}
 
+    bundles_dir = per_ds_dir / name / "bundles"
+    bundles_dir.mkdir(parents=True, exist_ok=True)
+
     for qcfg in query_cfgs:
         qt = qcfg["query_type"]
         max_q = qcfg.get("max_train_queries")
@@ -327,24 +330,17 @@ def convert_dataset_to_lss(dataset_cfg, query_cfgs, project_root, per_ds_dir):
         if skipped:
             print(f"    Skipped {skipped} queries (unknown predicates)")
 
+        # One pickle per (qtype, size) bucket: [(query_lines, card), ...]
+        # Offsets are kept at 0 here; global offsets are applied at load time
+        # by the patched QueryDecompose (see LSS/QuerySampler.py).
         sizes_written = []
         for size, items in sorted(by_size.items()):
             if len(items) < MIN_BUCKET_SIZE:
                 continue
             sizes_written.append(size)
-            qs_dir = per_ds_dir / name / "queryset_homo" / f"{qt}_{size}"
-            tc_dir = per_ds_dir / name / "true_homo" / f"{qt}_{size}"
-            qs_dir.mkdir(parents=True, exist_ok=True)
-            tc_dir.mkdir(parents=True, exist_ok=True)
-            for i, (lines, card) in enumerate(items):
-                qfile = qs_dir / f"q_{i}.txt"
-                cfile = tc_dir / f"q_{i}.txt"
-                with open(qfile, "w") as f:
-                    f.write("t # 1\n")
-                    for ln in lines:
-                        f.write(ln + "\n")
-                with open(cfile, "w") as f:
-                    f.write(str(card) + "\n")
+            bundle_path = bundles_dir / f"{qt}_{size}.pkl"
+            with open(bundle_path, "wb") as f:
+                pickle.dump(items, f, protocol=4)
 
         query_sizes[qt] = sizes_written
         print(f"    Sizes written: {sizes_written}")
@@ -419,59 +415,26 @@ def _append_gcare_graph(out_f, src_path, entity_id_offset, type_id_offset, rel_i
                 out_f.write(f"e {src} {dst} {rel}\n")
 
 
-def _remap_query_files(src_dataset_dir, dest_qs_dir, dest_tc_dir,
-                       entity_id_offset, type_id_offset, rel_id_offset,
-                       query_sizes):
-    """Copy query + cardinality files, remapping IDs with given offsets."""
-    src_qs = Path(src_dataset_dir) / "queryset_homo"
-    src_tc = Path(src_dataset_dir) / "true_homo"
+def _write_bundle_manifest(manifest_path, per_ds_dir, datasets, global_map, all_stats):
+    """
+    Write a small JSON manifest listing which per-dataset pickled bundles to
+    load and what type/relation offsets to apply at load time.
 
-    for qt, sizes in query_sizes.items():
-        for size in sizes:
-            bucket = f"{qt}_{size}"
-            sq = src_qs / bucket
-            st = src_tc / bucket
-            if not sq.exists():
-                continue
-
-            dq = Path(dest_qs_dir) / bucket
-            dt = Path(dest_tc_dir) / bucket
-            dq.mkdir(parents=True, exist_ok=True)
-            dt.mkdir(parents=True, exist_ok=True)
-
-            # keep a running counter for destination query indices
-            existing = len(list(dq.iterdir()))
-
-            for qfile in sorted(sq.iterdir()):
-                idx = existing
-                existing += 1
-                out_q = dq / f"q_{idx}.txt"
-                out_c = dt / f"q_{idx}.txt"
-
-                # Remap query file
-                with open(qfile) as fin, open(out_q, "w") as fout:
-                    for line in fin:
-                        line = line.strip()
-                        if not line:
-                            continue
-                        if line.startswith("t"):
-                            fout.write(line + "\n")
-                        elif line.startswith("v"):
-                            parts = line.split()
-                            nid = parts[1]  # local node id, keep as-is (query-local)
-                            label = int(parts[2])
-                            if label != -1:
-                                label += type_id_offset
-                            fout.write(f"v {nid} {label}\n")
-                        elif line.startswith("e"):
-                            parts = line.split()
-                            src, dst = parts[1], parts[2]
-                            rel = int(parts[3]) + rel_id_offset
-                            fout.write(f"e {src} {dst} {rel}\n")
-
-                # Copy cardinality file unchanged
-                card_src = st / qfile.name
-                shutil.copy2(card_src, out_c)
+    Consumed by LSS/QuerySampler.py::QueryDecompose when it sees the manifest.
+    """
+    entries = []
+    for ds in datasets:
+        entries.append({
+            "name": ds,
+            "bundle_dir": str(Path(per_ds_dir) / ds / "bundles"),
+            "type_offset": global_map["type_offsets"][ds],
+            "rel_offset":  global_map["rel_offsets"][ds],
+            "query_sizes": all_stats[ds]["query_sizes"],
+        })
+    manifest_path = Path(manifest_path)
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(manifest_path, "w") as f:
+        json.dump({"datasets": entries}, f)
 
 
 def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
@@ -479,9 +442,13 @@ def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
     """
     Build mega-graph files for one LOCO fold.
 
-    DataGraph:      training datasets only (no eval leakage)
-    Train queries:  training datasets only
-    Eval queries:   held-out dataset(s) only
+    Produces:
+      - mega_dir/dataset/train_{exp_id}/train_{exp_id}.txt        (DataGraph)
+      - mega_dir/queryset_homo/train_{exp_id}.bundles.json        (manifest)
+      - mega_dir/queryset_homo/eval_{exp_id}.bundles.json         (manifest)
+
+    Query files are NOT duplicated per fold — the patched QueryDecompose
+    loads from the per-dataset bundles and applies global offsets in memory.
     """
     mega_dir = Path(mega_dir)
     per_ds_dir = Path(per_ds_dir)
@@ -520,35 +487,18 @@ def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
         for rel_id in range(num_global_rels):
             f.write(f"e {dummy_v0} {dummy_v1} {rel_id}\n")
 
-    # ── Training queries (N-1 datasets) ───────────────────────────────────────
-    train_qs_dir = mega_dir / "queryset_homo" / train_name
-    train_tc_dir = mega_dir / "true_homo" / train_name
-    if train_qs_dir.exists():
-        shutil.rmtree(train_qs_dir)
-    if train_tc_dir.exists():
-        shutil.rmtree(train_tc_dir)
-    print(f"    Writing training queries from {len(train_datasets)} datasets...")
-    for ds in train_datasets:
-        t_off = global_map["type_offsets"][ds]
-        r_off = global_map["rel_offsets"][ds]
-        e_off = global_map["entity_offsets"][ds]
-        _remap_query_files(
-            per_ds_dir / ds, train_qs_dir, train_tc_dir,
-            e_off, t_off, r_off, all_stats[ds]["query_sizes"]
-        )
-
-    # ── Eval queries (held-out datasets) ──────────────────────────────────────
-    eval_qs_dir = mega_dir / "queryset_homo" / eval_name
-    eval_tc_dir = mega_dir / "true_homo" / eval_name
-    print(f"    Writing eval queries from {len(eval_datasets)} datasets...")
-    for ds in eval_datasets:
-        t_off = global_map["type_offsets"][ds]
-        r_off = global_map["rel_offsets"][ds]
-        e_off = global_map["entity_offsets"][ds]
-        _remap_query_files(
-            per_ds_dir / ds, eval_qs_dir, eval_tc_dir,
-            e_off, t_off, r_off, all_stats[ds]["query_sizes"]
-        )
+    # ── Bundle manifests (no per-query file duplication) ──────────────────────
+    qs_dir = mega_dir / "queryset_homo"
+    print(f"    Writing train manifest ({len(train_datasets)} datasets)...")
+    _write_bundle_manifest(
+        qs_dir / f"{train_name}.bundles.json",
+        per_ds_dir, train_datasets, global_map, all_stats,
+    )
+    print(f"    Writing eval manifest ({len(eval_datasets)} datasets)...")
+    _write_bundle_manifest(
+        qs_dir / f"{eval_name}.bundles.json",
+        per_ds_dir, eval_datasets, global_map, all_stats,
+    )
 
 
 # ── ProNE embeddings ──────────────────────────────────────────────────────────

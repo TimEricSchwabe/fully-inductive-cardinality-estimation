@@ -3,6 +3,7 @@ import os
 import networkx as nx
 import random
 import queue
+import json
 import pickle
 from util import make_dir, save_true_card
 import tqdm
@@ -185,6 +186,14 @@ class QueryDecompose(object):
 
 
 	def decomose_queries(self):
+		# Fast path: one pickle per (qtype, size) bucket, per source dataset.
+		# Manifest at {queryset_dir}/{dataset}.bundles.json tells us which
+		# bundles to load and what type/relation offsets to apply in memory.
+		manifest_path = os.path.join(self.queryset, "{}.bundles.json".format(self.dataset))
+		if os.path.exists(manifest_path):
+			self._decompose_from_manifest(manifest_path)
+			return
+
 		avg_label_den = 0.0
 		distinct_card = {}
 		subsets_dir = os.listdir(self.queryset_load_path)
@@ -222,6 +231,75 @@ class QueryDecompose(object):
 				#print("save decomposed query: {}".format(query_save_path))
 		print("average label density: {}".format(avg_label_den/self.num_queries))
 
+
+	def _decompose_from_manifest(self, manifest_path):
+		with open(manifest_path) as f:
+			manifest = json.load(f)
+
+		avg_label_den = 0.0
+		for entry in manifest["datasets"]:
+			bundle_dir = entry["bundle_dir"]
+			t_off = int(entry["type_offset"])
+			r_off = int(entry["rel_offset"])
+
+			for qt, sizes in entry["query_sizes"].items():
+				for size in sizes:
+					bundle_path = os.path.join(bundle_dir, "{}_{}.pkl".format(qt, size))
+					if not os.path.exists(bundle_path):
+						continue
+					with open(bundle_path, "rb") as bf:
+						items = pickle.load(bf)
+
+					key = (qt, int(size))
+					if key not in self.all_subsets:
+						self.all_subsets[key] = []
+						self.all_queries[key] = []
+
+					for query_lines, card in items:
+						if card >= self.upper_card or card < self.lower_card:
+							continue
+						card = card + 1 if card == 0 else card
+						query, label_den = self._query_from_lines(query_lines, t_off, r_off)
+						avg_label_den += label_den
+						graphs = self.decompose(query)
+						self.all_subsets[key].append((graphs, card))
+						self.all_queries[key].append((query, card))
+						self.num_queries += 1
+
+		if self.num_queries:
+			print("average label density: {}".format(avg_label_den / self.num_queries))
+
+	def _query_from_lines(self, lines, type_offset, rel_offset):
+		"""Build nx.Graph from gCare-format lines, applying offsets.
+
+		Node label -1 means variable (keep empty labels, as in load_query).
+		Otherwise the label is a local type id; shift by type_offset.
+		Edge labels are local relation ids; shift by rel_offset.
+		"""
+		nodes_list = []
+		edges_list = []
+		label_cnt = 0
+		for line in lines:
+			if line.startswith("v"):
+				tokens = line.split()
+				nid = int(tokens[1])
+				lbl = int(tokens[2])
+				labels = [] if lbl == -1 else [lbl + type_offset]
+				label_cnt += len(labels)
+				nodes_list.append((nid, {"labels": labels}))
+			elif line.startswith("e"):
+				tokens = line.split()
+				src, dst = int(tokens[1]), int(tokens[2])
+				rlbl = int(tokens[3])
+				labels = [] if rlbl == -1 else [rlbl + rel_offset]
+				edges_list.append((src, dst, {"labels": labels}))
+
+		query = nx.Graph()
+		query.add_nodes_from(nodes_list)
+		query.add_edges_from(edges_list)
+		n_nodes = query.number_of_nodes()
+		label_den = (float(label_cnt) / n_nodes) if n_nodes else 0.0
+		return query, label_den
 
 	def decompose(self, query):
 		graphs = []

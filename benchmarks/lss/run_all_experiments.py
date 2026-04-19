@@ -60,11 +60,15 @@ def main():
     for ds_cfg in config["datasets"]:
         name = ds_cfg["name"]
         stats_path = per_ds_dir / name / "stats.json"
-        if stats_path.exists():
+        bundles_dir = per_ds_dir / name / "bundles"
+        if stats_path.exists() and bundles_dir.exists() and any(bundles_dir.iterdir()):
             print(f"  {name}: already converted")
             with open(stats_path) as f:
                 all_stats[name] = json.load(f)
             continue
+
+        if stats_path.exists():
+            print(f"  {name}: stats exist but bundles missing — re-converting")
 
         print(f"\n  Converting {name}...")
         qcfgs = queries_by_dataset.get(name, [])
@@ -125,7 +129,9 @@ def main():
         mega_graph_path = (
             mega_dir / "dataset" / f"train_{exp_id}" / f"train_{exp_id}.txt"
         )
-        if mega_graph_path.exists():
+        train_manifest = mega_dir / "queryset_homo" / f"train_{exp_id}.bundles.json"
+        eval_manifest  = mega_dir / "queryset_homo" / f"eval_{exp_id}.bundles.json"
+        if mega_graph_path.exists() and train_manifest.exists() and eval_manifest.exists():
             print("  Mega-graph files already exist, skipping build")
         else:
             print("  Building mega-graph files...")
