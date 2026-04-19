@@ -5,17 +5,17 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: gcare-benchmark
-    mem_limit: 8g
-    memswap_limit: 8g
+    working_dir: /workspace/benchmarks/gcare
+    cpus: 10
+    mem_limit: 14g
+    memswap_limit: 14g
     environment:
-      - DATASET_NAME=wikidata_path
-      - DATASET_TYPE=path
-      - NUM_QUERIES=500
+      - MAX_PARALLEL=6
+      - EXTRA_ARGS=--dataset dbpedia100k
     volumes:
-      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/experiments_config.yaml:/usr/src/app/experiments_config.yaml:ro
-      # - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_path_queries/raw/:/usr/src/app/gcare/data/queryset/swdf/
-      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/queryset/:/usr/src/app/gcare/data/queryset/
-      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/dataset/:/usr/src/app/gcare/data/dataset/
-      - ./results/:/usr/src/app/results/
-    command: ["sh", "-c", "python3 ./build_statistics.py && python3 ./run_estimation.py"]
+      - ../../..:/workspace
+    command:
+      - sh
+      - -lc
+      - python3 run_all_experiments.py --gcare-home /usr/src/app/gcare --max-parallel "$${MAX_PARALLEL:-6}" $${EXTRA_ARGS:-}
 

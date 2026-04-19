@@ -7,6 +7,7 @@ RUN apt-get update \
 	 python3-pip \
 	 python3-numpy \
 	 python3-tqdm \
+	 python3-yaml \
 	 cmake \
 	 git \
 	 libboost-dev \
@@ -20,7 +21,8 @@ COPY gcare ./gcare
 COPY *.py .
 COPY ../custom-run-build.sh ./custom-run-build.sh
 
-RUN mkdir -p ./gcare/build \
+RUN rm -rf ./gcare/build \
+ && mkdir -p ./gcare/build \
  && cd ./gcare/build \
  && cmake .. \
  && make -j \
