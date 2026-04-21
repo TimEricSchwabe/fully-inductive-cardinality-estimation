@@ -20,8 +20,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LSS_DIR = Path(__file__).resolve().parent
 LSS_CODE_DIR = LSS_DIR / "LSS"
 PRONE_DIR = LSS_DIR / "ProNE"
-DATA_DIR = LSS_DIR / "data"
-# DATA_DIR = "/storage/nobackup/lukasketzer/fice/lss/data"
+# DATA_DIR = LSS_DIR / "data"
+DATA_DIR = Path("/storage/nobackup/lukasketzer/fice/lss/data")
 
 MIN_BUCKET_SIZE = 5  # skip query size buckets smaller than this
 
@@ -474,14 +474,22 @@ def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
             r_off = global_map["rel_offsets"][ds]
             _append_gcare_graph(f, src, e_off, t_off, r_off)
 
+        # Add one dummy node per global type ID so DataGraph.node_label_card
+        # covers 0..num_global_types-1 even when a held-out eval dataset contains
+        # node labels unseen in train datasets.
+        num_global_types = global_map["num_global_types"]
+        dummy_type_base = global_map["num_global_entities"]
+        for type_id in range(num_global_types):
+            f.write(f"v {dummy_type_base + type_id} {type_id}\n")
+
         # Dummy node pair with one edge per global relation ID.
         # LSS indexes edge features by raw label value, not position, so edge_attr
         # must be at least (max_global_rel_id + 1) wide. Adding these dummy edges
         # ensures DataGraph.edge_label_card covers 0..num_global_rels-1; the
         # held-out dataset's unseen relations get frequency 0 (correct semantics).
         num_global_rels = global_map["num_global_rels"]
-        dummy_v0 = global_map["num_global_entities"]
-        dummy_v1 = global_map["num_global_entities"] + 1
+        dummy_v0 = dummy_type_base + num_global_types
+        dummy_v1 = dummy_v0 + 1
         f.write(f"v {dummy_v0} 0\n")
         f.write(f"v {dummy_v1} 0\n")
         for rel_id in range(num_global_rels):
