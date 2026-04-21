@@ -259,6 +259,7 @@ with tf.device("GPU:0"):
                 model.fit(
                     x=x, y=y,
                     epochs=1, batch_size=batch_size, shuffle=True)
+        print_time = ""
 
         avg_time_prediction_ms = 0
         per_query_prediction_ms = None
@@ -267,7 +268,7 @@ with tf.device("GPU:0"):
         else:
             preds_rows = []
             per_query_prediction_ms = []
-            N_REPEATS = 10
+            N_REPEATS = 5
             for idx in range(len(y)):
                 x_single = [arr[idx:idx + 1] for arr in x]
                 repeat_preds = []
@@ -338,6 +339,7 @@ with tf.device("GPU:0"):
             stage="train" if do_training else "eval",
             write_csv=not do_training,
             query_to_estimate_time_ms=query_to_estimate_time_ms,
+            per_query_meta=per_query_meta,
         )
         # correct_estimate = store_statistics.check_network_estimates(preds, y, statistics_file_name = statistics_file_name, print_time=print_time, nb_outliers = nb_outliers)
 
@@ -562,6 +564,7 @@ if __name__ == '__main__':
             exit(1)
 
 
+    per_query_meta = None
     if "star" in query_type and 'all' not in query_type:
         X, A, E, y, encoding_time = complex_reader.read_queries(file_name, d, b, n, e, query_type ="star")
         # X, A, E, y, encoding_time = read_star_graph_pattern(d, b, n, e, file_name, train_tuples, matrix_mode, 0)
@@ -573,7 +576,7 @@ if __name__ == '__main__':
         statistics_file_name += test_mode
         X, A, E, y, encoding_time = complex_reader.read_combined(d, b, n, e, file_name_star, file_name_chain, train_tuples, test_mode)
     elif 'allstar' in query_type or 'allchain' in query_type or 'alltypessizes' in query_type:
-        X, A, E, y, encoding_time = complex_reader.read_combined_all_sizes_star_or_chain(d, b, n, e, all_file_names, train_tuples)
+        X, A, E, y, encoding_time, per_query_meta = complex_reader.read_combined_all_sizes_star_or_chain(d, b, n, e, all_file_names, train_tuples)
     elif 'complex' in query_type:
         if not do_training:
             X, A, E, y, encoding_time = complex_reader.read_complex_queries(complex_file_names, d, b, n, e, 100)

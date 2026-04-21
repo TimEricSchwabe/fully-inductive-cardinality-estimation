@@ -311,6 +311,18 @@ def read_combined(d, b, n, e, file_name_star, file_name_chain, train_tuples = 10
     return X, A, E, y, (time_start_star + time_start_chain)
 
 
+def _parse_size_and_subtype(filename):
+    """Extract (query_subtype, query_size) from a filename like eval_*_star_2.txt."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    parts = stem.rsplit("_", 1)
+    try:
+        size = int(parts[-1])
+    except (ValueError, IndexError):
+        size = -1
+    subtype = "star" if "star" in stem else "chain"
+    return subtype, size
+
+
 def read_combined_all_sizes_star_or_chain(d, b, n, e, file_names, train_tuples = 10000):
     """
     Creates encoding from queries in the file
@@ -320,15 +332,17 @@ def read_combined_all_sizes_star_or_chain(d, b, n, e, file_names, train_tuples =
     :param e: int, the number of edges in the subgraph
     :param file_names: str, the input file name of the queries used for training or testing
     :param train_tuples: int, limits the training sample size, in default we train on all of them
-    :return: encoded queries
+    :return: encoded queries + per-query (query_subtype, query_size) list
     """
     all_X = []
     all_A = []
     all_E = []
     all_y = []
+    all_meta = []  # list of (subtype, size) per query
     time = 0
     for i in range(len(file_names)):
-        if 'star' in os.path.basename(file_names[i]):
+        subtype, size = _parse_size_and_subtype(file_names[i])
+        if subtype == "star":
             X_i, A_i, E_i, y_i, time_start_i = read_queries(file_names[i], d, b, n, e, query_type="star", limit = train_tuples)
         else:
             X_i, A_i, E_i, y_i, time_start_i = read_queries(file_names[i], d, b, n, e, query_type="chain", limit = train_tuples)
@@ -336,6 +350,7 @@ def read_combined_all_sizes_star_or_chain(d, b, n, e, file_names, train_tuples =
         all_A.append(A_i)
         all_E.append(E_i)
         all_y.append(y_i)
+        all_meta.extend([(subtype, size)] * len(y_i))
         time += time_start_i
 
     X = np.concatenate(all_X, axis = 0)
@@ -343,4 +358,4 @@ def read_combined_all_sizes_star_or_chain(d, b, n, e, file_names, train_tuples =
     E = np.concatenate(all_E, axis = 0)
     y = np.concatenate(all_y, axis = 0)
 
-    return X, A, E, y, time
+    return X, A, E, y, time, all_meta

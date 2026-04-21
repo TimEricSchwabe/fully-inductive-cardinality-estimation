@@ -5,16 +5,19 @@ import os
 
 def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name,
                           dataset_name, query_set_name, query_type,
-                          epoch=1, stage="eval", append=False, per_query_time_ms=None):
+                          epoch=1, stage="eval", append=False, per_query_time_ms=None,
+                          per_query_meta=None):
     """Write per-query predictions to a per-run CSV and append to the master CSV.
 
     Values must already be in actual (non-log) scale.
-    Columns: stage, epoch, dataset_name, query_set_name, query_type, batch_idx, prediction, true_value
+    Columns: stage, epoch, dataset_name, query_set_name, query_type, query_subtype, query_size, batch_idx, prediction, true_value, est_ms
+    per_query_meta: optional list of (query_subtype, query_size) tuples, one per query.
     """
     os.makedirs("statistics", exist_ok=True)
 
     fieldnames = [
-        "stage", "epoch", "dataset_name", "query_set_name", "query_type", "batch_idx",
+        "stage", "epoch", "dataset_name", "query_set_name", "query_type",
+        "query_subtype", "query_size", "batch_idx",
         "prediction", "true_value", "est_ms",
     ]
 
@@ -36,12 +39,19 @@ def write_predictions_csv(predicted_cardinality, true_cardinality, statistics_fi
             est_ms_val = float(per_query_time_ms)
         else:
             est_ms_val = ""
+        if per_query_meta is not None and idx < len(per_query_meta):
+            q_subtype, q_size = per_query_meta[idx]
+        else:
+            q_subtype = query_type
+            q_size = ""
         rows.append({
             "stage": stage,
             "epoch": epoch,
             "dataset_name": dataset_name,
             "query_set_name": query_set_name or dataset_name,
             "query_type": query_type,
+            "query_subtype": q_subtype,
+            "query_size": q_size,
             "batch_idx": idx,
             "prediction": pred_val,
             "true_value": true_val,
@@ -78,7 +88,7 @@ def create_csv_statistics_file(data,file_name,print_time):
 def check_network_estimates(predicted_cardinality, true_cardinality, statistics_file_name, print_time,
                              nb_outliers=0, dataset_name="unknown", query_type="unknown",
                              query_set_name=None, epoch=1, stage="eval", write_csv=True,
-                             query_to_estimate_time_ms=None):
+                             query_to_estimate_time_ms=None, per_query_meta=None):
     summary_query_to_estimate_time_ms = query_to_estimate_time_ms
     if query_to_estimate_time_ms is not None and hasattr(query_to_estimate_time_ms, "__len__") and not isinstance(query_to_estimate_time_ms, (str, bytes)):
         try:
@@ -239,5 +249,6 @@ def check_network_estimates(predicted_cardinality, true_cardinality, statistics_
     if write_csv:
         write_predictions_csv(predicted_cardinality, true_cardinality, statistics_file_name,
                               dataset_name, query_set_name, query_type,
-                              epoch=epoch, stage=stage, per_query_time_ms=query_to_estimate_time_ms)
+                              epoch=epoch, stage=stage, per_query_time_ms=query_to_estimate_time_ms,
+                              per_query_meta=per_query_meta)
     create_csv_statistics_file(final_print_statistics, statistics_file_name,print_time)
