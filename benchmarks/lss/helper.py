@@ -20,10 +20,10 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 LSS_DIR = Path(__file__).resolve().parent
 LSS_CODE_DIR = LSS_DIR / "LSS"
 PRONE_DIR = LSS_DIR / "ProNE"
-# DATA_DIR = LSS_DIR / "data"
-DATA_DIR = Path("/storage/nobackup/lukasketzer/fice/lss/data")
+DATA_DIR = LSS_DIR / "data"
+# DATA_DIR = Path("/storage/nobackup/lukasketzer/fice/lss/data")
 
-MIN_BUCKET_SIZE = 5  # skip query size buckets smaller than this
+MIN_BUCKET_SIZE = 3  # skip query size buckets smaller than this
 
 for _p in [str(LSS_CODE_DIR), str(PRONE_DIR)]:
     if _p not in sys.path:
@@ -395,6 +395,9 @@ def compute_global_mappings(all_stats, dataset_order):
 
 # ── Mega-graph construction ───────────────────────────────────────────────────
 
+SHARED_MEGA_NAME = "mega"
+
+
 def _append_gcare_graph(out_f, src_path, entity_id_offset, type_id_offset, rel_id_offset):
     """Append a (possibly already-offset-applied) DataGraph file, applying additional offsets."""
     with open(src_path) as f:
@@ -437,35 +440,29 @@ def _write_bundle_manifest(manifest_path, per_ds_dir, datasets, global_map, all_
         json.dump({"datasets": entries}, f)
 
 
-def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
-                           per_ds_dir, mega_dir, global_map, all_stats):
+def build_shared_mega_graph(all_datasets, global_map, per_ds_dir, shared_dir):
     """
-    Build mega-graph files for one LOCO fold.
+    Build one shared mega-graph containing ALL datasets.
 
     Produces:
-      - mega_dir/dataset/train_{exp_id}/train_{exp_id}.txt        (DataGraph)
-      - mega_dir/queryset_homo/train_{exp_id}.bundles.json        (manifest)
-      - mega_dir/queryset_homo/eval_{exp_id}.bundles.json         (manifest)
+      shared_dir/dataset/mega/mega.txt
 
-    Query files are NOT duplicated per fold — the patched QueryDecompose
-    loads from the per-dataset bundles and applies global offsets in memory.
+    All datasets are included so every type/relation label is naturally present
+    — no dummy nodes needed. Inductivity per experiment is achieved by
+    excluding the held-out dataset's queries from the training manifests.
     """
-    mega_dir = Path(mega_dir)
+    shared_dir = Path(shared_dir)
     per_ds_dir = Path(per_ds_dir)
 
-    train_name = f"train_{exp_id}"
-    eval_name = f"eval_{exp_id}"
-
-    # ── Mega DataGraph (training datasets only) ───────────────────────────────
-    graph_out = mega_dir / "dataset" / train_name / f"{train_name}.txt"
+    graph_out = shared_dir / "dataset" / SHARED_MEGA_NAME / f"{SHARED_MEGA_NAME}.txt"
     graph_out.parent.mkdir(parents=True, exist_ok=True)
-    # Remove stale pickle so DataGraph re-parses the new .txt file
     pkl_path = graph_out.with_suffix(".pkl")
     if pkl_path.exists():
         pkl_path.unlink()
-    print(f"    Writing mega DataGraph ({len(train_datasets)} datasets)...")
+
+    print(f"    Writing shared mega DataGraph ({len(all_datasets)} datasets)...")
     with open(graph_out, "w") as f:
-        for ds in train_datasets:
+        for ds in all_datasets:
             src = per_ds_dir / ds / "graph" / f"{ds}.txt"
             if not src.exists():
                 raise FileNotFoundError(f"DataGraph missing: {src}")
@@ -474,29 +471,25 @@ def build_mega_graph_files(exp_id, train_datasets, eval_datasets,
             r_off = global_map["rel_offsets"][ds]
             _append_gcare_graph(f, src, e_off, t_off, r_off)
 
-        # Add one dummy node per global type ID so DataGraph.node_label_card
-        # covers 0..num_global_types-1 even when a held-out eval dataset contains
-        # node labels unseen in train datasets.
-        num_global_types = global_map["num_global_types"]
-        dummy_type_base = global_map["num_global_entities"]
-        for type_id in range(num_global_types):
-            f.write(f"v {dummy_type_base + type_id} {type_id}\n")
+    return graph_out
 
-        # Dummy node pair with one edge per global relation ID.
-        # LSS indexes edge features by raw label value, not position, so edge_attr
-        # must be at least (max_global_rel_id + 1) wide. Adding these dummy edges
-        # ensures DataGraph.edge_label_card covers 0..num_global_rels-1; the
-        # held-out dataset's unseen relations get frequency 0 (correct semantics).
-        num_global_rels = global_map["num_global_rels"]
-        dummy_v0 = dummy_type_base + num_global_types
-        dummy_v1 = dummy_v0 + 1
-        f.write(f"v {dummy_v0} 0\n")
-        f.write(f"v {dummy_v1} 0\n")
-        for rel_id in range(num_global_rels):
-            f.write(f"e {dummy_v0} {dummy_v1} {rel_id}\n")
 
-    # ── Bundle manifests (no per-query file duplication) ──────────────────────
-    qs_dir = mega_dir / "queryset_homo"
+def build_experiment_manifests(exp_id, train_datasets, eval_datasets,
+                                shared_dir, per_ds_dir, global_map, all_stats):
+    """
+    Write per-experiment query manifests (JSON only — no graph files).
+
+    Produces:
+      shared_dir/queryset_homo/train_{exp_id}.bundles.json
+      shared_dir/queryset_homo/eval_{exp_id}.bundles.json
+    """
+    shared_dir = Path(shared_dir)
+    per_ds_dir = Path(per_ds_dir)
+    qs_dir = shared_dir / "queryset_homo"
+
+    train_name = f"train_{exp_id}"
+    eval_name = f"eval_{exp_id}"
+
     print(f"    Writing train manifest ({len(train_datasets)} datasets)...")
     _write_bundle_manifest(
         qs_dir / f"{train_name}.bundles.json",
@@ -611,6 +604,7 @@ def run_loco_fold(exp_id, _train_datasets, eval_datasets,
         sys.executable, "active_train.py",
         "--mode", "pretrain",
         "--dataset", train_name,
+        "--graph_dataset", SHARED_MEGA_NAME,
         "--embed_type", "prone",
         "--full_data_dir", str(mega_dir),
         "--model_save_dir", str(model_save_dir),

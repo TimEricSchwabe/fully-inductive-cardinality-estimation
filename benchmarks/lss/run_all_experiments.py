@@ -22,7 +22,9 @@ from helper import (
     DATA_DIR,
     PROJECT_ROOT,
     LSS_DIR,
-    build_mega_graph_files,
+    SHARED_MEGA_NAME,
+    build_shared_mega_graph,
+    build_experiment_manifests,
     compute_global_mappings,
     convert_dataset_to_lss,
     generate_prone_embeddings,
@@ -97,9 +99,45 @@ def main():
         print(f"  Total relations    : {global_map['num_global_rels']}")
         print(f"  Total entities     : {global_map['num_global_entities']}")
 
-    # ── STEP 3: Run LOCO experiments ──────────────────────────────────────────
+    # ── STEP 3: Build shared mega-graph (once for all experiments) ───────────
     print("\n" + "=" * 60)
-    print("STEP 3: Run LOCO experiments")
+    print("STEP 3: Build shared mega-graph")
+    print("=" * 60)
+
+    shared_dir = DATA_DIR / "shared_mega"
+    mega_graph_path = shared_dir / "dataset" / SHARED_MEGA_NAME / f"{SHARED_MEGA_NAME}.txt"
+    done_sentinel = shared_dir / "dataset" / ".done"
+
+    if done_sentinel.exists():
+        print("  Shared mega-graph already built, skipping")
+    else:
+        print("  Building shared mega-graph (all datasets)...")
+        build_shared_mega_graph(all_dataset_names, global_map, per_ds_dir, shared_dir)
+        done_sentinel.touch()
+
+    # ── STEP 4: Generate ProNE embeddings (once for all experiments) ──────────
+    print("\n" + "=" * 60)
+    print("STEP 4: Generate shared ProNE embeddings")
+    print("=" * 60)
+
+    emb_path = shared_dir / "prone" / f"{SHARED_MEGA_NAME}.emb.npy"
+    prone_time_s = 0.0
+    if emb_path.exists():
+        print("  Shared ProNE embeddings already exist, skipping generation")
+    else:
+        print("  Generating ProNE embeddings on shared mega-graph...")
+        _t0 = time.perf_counter()
+        generate_prone_embeddings(
+            mega_graph_path,
+            global_map["num_global_types"],
+            emb_path,
+        )
+        prone_time_s = time.perf_counter() - _t0
+        print(f"  ProNE done in {prone_time_s:.2f}s")
+
+    # ── STEP 5: Run LOCO experiments ──────────────────────────────────────────
+    print("\n" + "=" * 60)
+    print("STEP 5: Run LOCO experiments")
     print("=" * 60)
 
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -123,44 +161,23 @@ def main():
         print(f"  Train datasets : {train_ds}")
         print(f"  Eval datasets  : {eval_ds}")
 
-        mega_dir = DATA_DIR / f"mega_{exp_id}"
-
-        # Build mega-graph files
-        mega_graph_path = (
-            mega_dir / "dataset" / f"train_{exp_id}" / f"train_{exp_id}.txt"
-        )
-        train_manifest = mega_dir / "queryset_homo" / f"train_{exp_id}.bundles.json"
-        eval_manifest  = mega_dir / "queryset_homo" / f"eval_{exp_id}.bundles.json"
-        if mega_graph_path.exists() and train_manifest.exists() and eval_manifest.exists():
-            print("  Mega-graph files already exist, skipping build")
+        # Build per-experiment query manifests (cheap JSON files)
+        train_manifest = shared_dir / "queryset_homo" / f"train_{exp_id}.bundles.json"
+        eval_manifest  = shared_dir / "queryset_homo" / f"eval_{exp_id}.bundles.json"
+        if train_manifest.exists() and eval_manifest.exists():
+            print("  Query manifests already exist, skipping")
         else:
-            print("  Building mega-graph files...")
-            build_mega_graph_files(
+            print("  Building query manifests...")
+            build_experiment_manifests(
                 exp_id, train_ds, eval_ds,
-                per_ds_dir, mega_dir, global_map, all_stats,
+                shared_dir, per_ds_dir, global_map, all_stats,
             )
 
-        # Generate ProNE embeddings
-        emb_path = mega_dir / "prone" / f"train_{exp_id}.emb.npy"
-        prone_time_s = 0.0
-        if emb_path.exists():
-            print("  ProNE embeddings already exist, skipping generation")
-        else:
-            print("  Generating ProNE embeddings...")
-            _t0 = time.perf_counter()
-            generate_prone_embeddings(
-                mega_graph_path,
-                global_map["num_global_types"],
-                emb_path,
-            )
-            prone_time_s = time.perf_counter() - _t0
-            print(f"  ProNE done in {prone_time_s:.2f}s")
-
-        # Run fold
+        # Run fold (training + evaluation share the same mega-graph)
         try:
             run_loco_fold(
                 exp_id, train_ds, eval_ds,
-                mega_dir, all_stats, global_map,
+                shared_dir, all_stats, global_map,
                 results_dir / exp_id,
                 epochs_override=cli.epochs,
                 prone_time_s=prone_time_s,
@@ -170,7 +187,7 @@ def main():
             traceback.print_exc()
             print(f"  ERROR in {exp_id}: {e}")
 
-    # ── STEP 4: Summary ───────────────────────────────────────────────────────
+    # ── STEP 6: Summary ───────────────────────────────────────────────────────
     print_summary(errors)
 
 

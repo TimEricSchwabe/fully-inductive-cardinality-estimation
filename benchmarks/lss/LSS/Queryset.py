@@ -19,10 +19,13 @@ class Queryset(object):
 		self.args = args
 		self.data_dir = args.data_dir
 		self.dataset = args.dataset
+		# graph_dataset overrides which DataGraph file and embeddings to load,
+		# while args.dataset still controls query manifests and checkpoints.
+		graph_dataset = getattr(args, 'graph_dataset', None) or args.dataset
 		self.num_queries = 0
 
 		# load the data graph and its statistical information
-		self.data_graph = DataGraph(data_dir = self.data_dir, dataset = self.dataset)
+		self.data_graph = DataGraph(data_dir = self.data_dir, dataset = graph_dataset)
 		self.node_label_card, self.edge_label_card = self.data_graph.node_label_card, self.data_graph.edge_label_card
 
 		self.num_nodes = self.data_graph.num_nodes
@@ -33,7 +36,7 @@ class Queryset(object):
 
 		self.label_dict = self.load_label_mapping() if self.dataset == 'aids' or self.dataset == 'aids_gen' else \
 			{key: key for key in self.node_label_card.keys()}  # label_id -> embed_id
-		embed_feat_path = os.path.join(args.embed_feat_dir, "{}.emb.npy".format(args.dataset))
+		embed_feat_path = os.path.join(args.embed_feat_dir, "{}.emb.npy".format(graph_dataset))
 		embed_feat = np.load(embed_feat_path)
 
 		#assert embed_feat.shape[0] == len(self.node_label_card) + 1, "prone embedding size error!"
@@ -51,7 +54,7 @@ class Queryset(object):
 			self.edge_embed_dim = 0
 			self.num_edge_feat = len(self.edge_label_card)
 		else:
-			edge_embed_feat_path = os.path.join(args.embed_feat_dir, "{}_edge.emb.npy".format(args.dataset))
+			edge_embed_feat_path = os.path.join(args.embed_feat_dir, "{}_edge.emb.npy".format(graph_dataset))
 			edge_embed_feat = np.load(edge_embed_feat_path)
 			self.edge_embed_dim = edge_embed_feat.shape[1]
 			self.edge_embed_feat = torch.from_numpy(edge_embed_feat)

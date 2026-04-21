@@ -251,6 +251,8 @@ if __name__ == "__main__":
 						help='number of ensemble models for active learning.')
 	# Input and Output directory
 	parser.add_argument("--dataset", type=str, default="aids")  # aids, wordnet, yeast, hprd, youtube, eu2005 are tested
+	parser.add_argument("--graph_dataset", type=str, default=None,
+						help="Dataset name for DataGraph and embeddings (defaults to --dataset)")
 	parser.add_argument("--full_data_dir", type=str, default="./data/")
 	parser.add_argument("--save_res_dir", type=str, default="./result/")
 	parser.add_argument("--model_file", type=str, default="aids_homo.pth")

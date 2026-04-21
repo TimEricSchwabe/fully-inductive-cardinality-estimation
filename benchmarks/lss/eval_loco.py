@@ -64,6 +64,7 @@ def _build_args(exp_id, mega_dir, epochs, cuda):
         active_epochs=50,
         ensemble_num=5,
         dataset=train_name,
+        graph_dataset="mega",
         full_data_dir=str(mega_dir),
         save_res_dir=str(mega_dir / "result"),
         model_file=f"model_NNGINConcat_{epochs}_nocumu.pth",
@@ -124,8 +125,10 @@ def main():
     # Drop single-triple queries (CardNet squeeze() collapses them to 1-D)
     eval_subsets = {k: v for k, v in eval_qd.all_subsets.items() if k[1] >= 2}
 
-    # Build Queryset with training DataGraph + ProNE (args.dataset = train_name)
-    print(f"  Building eval Queryset using training DataGraph ({train_name})...")
+    # Build Queryset using the shared mega DataGraph + ProNE embeddings.
+    # args.dataset = train_name (for checkpoint path); args.graph_dataset = "mega"
+    # (for DataGraph and embeddings).
+    print(f"  Building eval Queryset using shared mega DataGraph...")
     eval_qs = Queryset(args=args, all_subsets=eval_subsets)
     eval_qs.print_queryset_info()
     data_load_time_s = time.perf_counter() - _t0
