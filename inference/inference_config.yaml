@@ -2,13 +2,13 @@
 # Points to a trained model checkpoint and the graph to generate embeddings for.
 
 # Path to a trained FICE checkpoint (.pt file from training output)
-checkpoint: /home/tim/fully-inductive-cardinality-estimation/output/model-wikidata-codex/checkpoints/best_model.pt
+checkpoint: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/output/dbpedia-model/best_model.pt
 
 # Dataset name (must match a key in DATASET_REGISTRY, e.g. wn18rr_v4, fb237_v4, SWDF, etc.)
 graph_dataset: fb237_v4
 
 # Directory where inference artifacts will be saved
-output_dir: /home/tim/fully-inductive-cardinality-estimation/output/inference/
+output_dir: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/output/inference_fb237/
 
 # Number of nodes to process per batch when generating embeddings.
 # Set to 0 for full-graph mode (loads entire graph into memory at once).

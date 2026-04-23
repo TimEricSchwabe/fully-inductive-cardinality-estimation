@@ -34,11 +34,14 @@ def aggregate(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
         max_q="max",
         count="count",
     )
+    zero_rate = grouped["prediction"].agg(
+        zero_pred_rate=lambda s: float((s < 1).mean())
+    )
     corr = grouped.apply(
         lambda g: _log_pearson(g["prediction"].to_numpy(), g["true_value"].to_numpy()),
         include_groups=False,
     ).rename("log_pearson")
-    return q_agg.join(corr).reset_index()
+    return q_agg.join(zero_rate).join(corr).reset_index()
 
 
 def compute_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:

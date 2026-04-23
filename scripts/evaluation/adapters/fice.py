@@ -23,7 +23,7 @@ import pandas as pd
 import yaml
 
 from ..metrics import per_query_q_error
-from ..naming import canonicalize_graph
+from ..naming import canonicalize_graph, canonicalize_query_type
 from ..schema import CANONICAL_COLUMNS
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,16 @@ _CAT_DTYPES = {
 }
 
 
+def read_held_out(cfg_path: Path) -> set[str]:
+    with cfg_path.open() as fh:
+        cfg = yaml.safe_load(fh)
+    return {
+        str(entry["dataset"]).lower()
+        for entry in cfg.get("data", [])
+        if entry.get("type") == "validation"
+    }
+
+
 class FiceAdapter:
     name = "fice"
 
@@ -62,7 +72,7 @@ class FiceAdapter:
             if not cfg_path.exists():
                 logger.warning("Skipping %s (no config.yaml)", run_dir)
                 continue
-            held_out = self._read_held_out(cfg_path)
+            held_out = read_held_out(cfg_path)
             if not held_out:
                 logger.warning("Skipping %s (no type:validation datasets in config)", run_dir)
                 continue
@@ -72,16 +82,6 @@ class FiceAdapter:
         if not frames:
             return pd.DataFrame(columns=CANONICAL_COLUMNS)
         return pd.concat(frames, ignore_index=True)
-
-    @staticmethod
-    def _read_held_out(cfg_path: Path) -> set[str]:
-        with cfg_path.open() as fh:
-            cfg = yaml.safe_load(fh)
-        return {
-            str(entry["dataset"]).lower()
-            for entry in cfg.get("data", [])
-            if entry.get("type") == "validation"
-        }
 
     def _load_run(self, csv_path: Path, held_out: set[str]) -> pd.DataFrame:
         run_name = csv_path.parent.parent.name
@@ -113,7 +113,7 @@ class FiceAdapter:
 
         df["method"] = self.name
         df["graph"] = df["dataset_name"].astype(str).str.lower().map(canonicalize_graph)
-        df["query_type"] = df["query_type"].astype(str)
+        df["query_type"] = df["query_type"].astype(str).map(canonicalize_query_type)
         df["query_dataset"] = df["graph"] + "-" + df["query_type"]
         return df[CANONICAL_COLUMNS].copy()
 

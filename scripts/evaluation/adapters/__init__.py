@@ -7,7 +7,9 @@ from typing import Protocol
 import pandas as pd
 
 from .fice import FiceAdapter
+from .gcare import GcareAdapter
 from .gnce import GnceAdapter
+from .lmkg import LmkgAdapter
 
 
 class MethodAdapter(Protocol):
@@ -19,6 +21,16 @@ class MethodAdapter(Protocol):
 ADAPTER_REGISTRY: dict[str, MethodAdapter] = {
     "fice": FiceAdapter(),
     "gnce": GnceAdapter(),
+    "wj": GcareAdapter("wj"),
+    "cset": GcareAdapter("cset"),
+    "lmkg": LmkgAdapter(),
 }
 
-__all__ = ["MethodAdapter", "ADAPTER_REGISTRY", "FiceAdapter", "GnceAdapter"]
+__all__ = [
+    "MethodAdapter",
+    "ADAPTER_REGISTRY",
+    "FiceAdapter",
+    "GnceAdapter",
+    "GcareAdapter",
+    "LmkgAdapter",
+]

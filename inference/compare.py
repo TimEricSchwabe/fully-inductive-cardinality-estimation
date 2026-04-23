@@ -7,6 +7,10 @@ Runs fb237_v4 star queries (val split) through three paths:
 
 Reports prediction agreement and per-query timing.
 
+
+cd /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/scripts && uv run python ../inference/compare.py --config ../inference/inference_config.yaml --queries
+      ../data/fb237_v4_star_queries/raw/fb237_v4_star_queries --cpp-binary ../inference/build/fice_inference --output-dir ../output/comparison/ --max-queries 200
+
 Usage:
     cd scripts  # needed for utils imports
     python ../inference/compare.py \

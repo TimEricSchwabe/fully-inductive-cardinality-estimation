@@ -26,3 +26,10 @@ GRAPH_NAME_MAP: dict[str, str] = {
 
 def canonicalize_graph(name: str) -> str:
     return GRAPH_NAME_MAP.get(name, name)
+
+
+QUERY_TYPE_MAP: dict[str, str] = {"binary_tree": "tree"}
+
+
+def canonicalize_query_type(name: str) -> str:
+    return QUERY_TYPE_MAP.get(name, name)
