@@ -770,11 +770,13 @@ class FICE(nn.Module):
                  prediction_mode='log-cardinality',
                  embedding_space='euclidean',
                  count_features='raw',
+                 disable_embedding_gnn=False,
                  ):
         super(FICE, self).__init__()
         self.vector_dim = vector_dim
         self.prediction_mode = prediction_mode
         self.count_features = count_features
+        self.disable_embedding_gnn = disable_embedding_gnn
         self.skip_connection = entity_skip_connection # Default legacy behavior, though now we use specific ones
         self.use_unified_bipartite_graph = (entity_graph_mode in ("bipartite", "factor"))
         # Use n_embedding_layers to create the list of hidden dimensions
@@ -917,12 +919,15 @@ class FICE(nn.Module):
         edge_embedding_indices = batch.edge_embedding_indices
 
         # -----------------------------------------------------------
-        # LOGIC SPLIT: 
+        # LOGIC SPLIT:
         # Case A: We use a single BIPARTITE graph for both entities and relations.
         # Case B: We use separate graphs (KG for entities, RelationGraph for relations).
         # -----------------------------------------------------------
-        
-        if self.use_unified_bipartite_graph:
+
+        # Ablation: skip embedding GNN; batch.x/edge_attr already have [counts | zeros]
+        if self.disable_embedding_gnn:
+            pass
+        elif self.use_unified_bipartite_graph:
             # Check integrity just in case: data should be the bipartite graph
             if data is None and relation_graph is not None:
                  # If train.py passes data=None but relation_graph is set, assume relation_graph is the one

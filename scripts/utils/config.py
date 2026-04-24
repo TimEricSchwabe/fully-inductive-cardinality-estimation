@@ -71,6 +71,7 @@ class Config(BaseSettings):
     prediction_mode: Literal['log-cardinality', 'log-selectivity'] = 'log-cardinality'
     embedding_space: Literal['euclidean', 'box', 'gaussian', 'hyperbolic', 'hgcn', 'product'] = 'euclidean'
     count_features: Literal['raw', 'normalized', 'none'] = 'raw'  # How to use occurrence counts in query GNN
+    disable_embedding_gnn: bool = False  # If True, skip entity/relation GNN; query GNN sees only count features
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()

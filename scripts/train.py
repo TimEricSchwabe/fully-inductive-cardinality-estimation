@@ -198,6 +198,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             prediction_mode=config.prediction_mode,
             embedding_space=config.embedding_space,
             count_features=config.count_features,
+            disable_embedding_gnn=config.disable_embedding_gnn,
         )
     elif model_type == 'FiceIndependent':
         logger.info(f"Initializing FiceIndependent model (dim={vector_dim})")
