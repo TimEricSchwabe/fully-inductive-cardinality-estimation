@@ -216,7 +216,9 @@ def preprocess_graphs(experiments: List[Dict], gcare_home: Path) -> None:
 # Phase 2: Build statistics (one per dataset)
 # ---------------------------------------------------------------------------
 
-def build_all_statistics(experiments: List[Dict], gcare_home: Path) -> None:
+def build_all_statistics(
+    experiments: List[Dict], gcare_home: Path, methods: Optional[List[str]] = None
+) -> None:
     print("\n" + "=" * 60)
     print("STEP 2: Building G-Care Statistics")
     print("=" * 60)
@@ -233,7 +235,7 @@ def build_all_statistics(experiments: List[Dict], gcare_home: Path) -> None:
             continue
         seen.add(exp_name)
         try:
-            build_statistics(exp_name, gcare_home)
+            build_statistics(exp_name, gcare_home, methods)
         except Exception as exc:
             print(f"ERROR: build_statistics failed for {exp_name}: {exc}")
             sys.exit(1)
@@ -249,6 +251,7 @@ def _run_one_experiment(
     exp: Dict,
     results_dir: Path,
     gcare_home: Path,
+    methods: Optional[List[str]] = None,
 ) -> str:
     """Worker function executed in a subprocess pool."""
     # Import here so the worker process has the bench directory on its path.
@@ -267,6 +270,7 @@ def _run_one_experiment(
         num_queries=exp["num_queries"],
         results_dir=exp_results,
         gcare_home=gcare_home,
+        methods=methods,
     )
     return exp["name"]
 
@@ -276,6 +280,7 @@ def run_experiments(
     results_dir: Path,
     gcare_home: Path,
     max_parallel: int = 5,
+    methods: Optional[List[str]] = None,
 ) -> None:
     print("\n" + "=" * 60)
     print("STEP 3: Running Estimation")
@@ -286,7 +291,7 @@ def run_experiments(
 
     with ProcessPoolExecutor(max_workers=max_parallel) as pool:
         futures = {
-            pool.submit(_run_one_experiment, exp, results_dir, gcare_home): exp["name"]
+            pool.submit(_run_one_experiment, exp, results_dir, gcare_home, methods): exp["name"]
             for exp in experiments
         }
         for future in as_completed(futures):
@@ -364,6 +369,12 @@ def main() -> None:
         default=None,
         help="Comma-separated query types to run, e.g. path,star,cycle",
     )
+    parser.add_argument(
+        "--methods",
+        type=str,
+        default=None,
+        help="Comma-separated estimators to run, e.g. sumrdf,wj,cset (default: all)",
+    )
     args = parser.parse_args()
 
     if not args.config.exists():
@@ -396,17 +407,21 @@ def main() -> None:
 
     print(f"Selected {len(experiments)} experiments\n")
 
+    only_methods = _parse_csv_list(args.methods) or None
+    if only_methods:
+        print(f"Filter --methods:      {', '.join(only_methods)}")
+
     if not args.skip_preprocess:
         preprocess_graphs(experiments, gcare_home)
     else:
         print("Skipping preprocessing.\n")
 
     if not args.skip_build_stats:
-        build_all_statistics(experiments, gcare_home)
+        build_all_statistics(experiments, gcare_home, only_methods)
     else:
         print("Skipping statistics build.\n")
 
-    errors = run_experiments(experiments, results_dir, gcare_home, args.max_parallel)
+    errors = run_experiments(experiments, results_dir, gcare_home, args.max_parallel, only_methods)
     print_summary(errors)
 
 

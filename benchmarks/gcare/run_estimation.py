@@ -1,4 +1,4 @@
-"""Run G-Care cardinality estimation (wj + cset) for a single experiment.
+"""Run G-Care cardinality estimation (wj + cset + sumrdf) for a single experiment.
 
 Loads *num_queries* queries from the FICE JSON file, takes the last 20 % as the
 evaluation split (discarding the training portion – G-Care has no training step),
@@ -16,7 +16,7 @@ import os
 import random
 import subprocess
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -107,25 +107,43 @@ def _predict_batch(
     bsk_budget = "4096"
     if method == "bsk":
         os.environ["GCARE_BSK_BUDGET"] = bsk_budget
+    if method == "sumrdf":
+        os.environ["GCARE_SUMRDF_THRESHOLD"] = "0.15"
 
     command = f"./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}"
     logging.info("Running batch: %s", command)
 
-    subprocess.run(
+    proc = subprocess.run(
         f'bash -lc "{command}"',
         shell=True,
-        check=True,
+        check=False,
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         cwd=str(gcare_home / "scripts"),
     )
 
     if "GCARE_BSK_BUDGET" in os.environ:
         del os.environ["GCARE_BSK_BUDGET"]
+    if "GCARE_SUMRDF_THRESHOLD" in os.environ:
+        del os.environ["GCARE_SUMRDF_THRESHOLD"]
+
+    if proc.returncode != 0:
+        stderr_out = proc.stderr.decode(errors="replace").strip()
+        raise subprocess.CalledProcessError(
+            proc.returncode, command,
+            output=proc.stdout,
+            stderr=stderr_out.encode(),
+        )
 
     if method == "bsk":
         output_file = result_dir / f"{dataset}_{method}_b{bsk_budget}_s{seed}_query_result.txt"
     else:
         output_file = result_dir / f"{dataset}_{method}_p{p}_s{seed}_query_result.txt"
+
+    if not output_file.exists():
+        raise FileNotFoundError(
+            f"Binary wrote no output file for {method}/{dataset}: expected {output_file}"
+        )
 
     return _parse_output_file(output_file)
 
@@ -144,8 +162,12 @@ def run_estimation(
     num_queries: int,
     results_dir: Path,
     gcare_home: Path,
+    methods: Optional[List[str]] = None,
 ) -> None:
-    """Run wj + cset estimation for one experiment and write results to *results_dir*."""
+    """Run wj + cset + sumrdf estimation for one experiment and write results to *results_dir*.
+
+    Pass *methods* to restrict which estimators are run (default: all three).
+    """
 
     logging.info(
         "Starting estimation: exp=%s dataset=%s query_type=%s num_queries=%d",
@@ -201,7 +223,8 @@ def run_estimation(
     # ------------------------------------------------------------------
     # Run each method once over all queries
     # ------------------------------------------------------------------
-    methods = ["wj", "cset"]
+    all_methods = ["wj", "cset", "sumrdf"]
+    methods = methods if methods is not None else all_methods
     for method in methods:
         logging.info("[%s] Running method: %s (batch over %d queries)", exp_name, method, len(eval_queries))
 
@@ -217,7 +240,14 @@ def run_estimation(
         try:
             batch = _predict_batch(method, exp_name, gcare_home)
         except subprocess.CalledProcessError as exc:
-            logging.error("[%s] %s batch run failed: %s", exp_name, method, exc)
+            stderr_msg = exc.stderr.decode(errors="replace").strip() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            logging.error(
+                "[%s] %s binary exited %d\n%s",
+                exp_name, method, exc.returncode, stderr_msg,
+            )
+            continue
+        except Exception as exc:
+            logging.error("[%s] %s failed: %s", exp_name, method, exc)
             continue
 
         for i, query in enumerate(eval_queries):

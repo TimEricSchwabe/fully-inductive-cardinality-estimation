@@ -7,11 +7,11 @@ services:
     container_name: gcare-benchmark
     working_dir: /workspace/benchmarks/gcare
     cpus: 10
-    mem_limit: 14g
-    memswap_limit: 14g
+    mem_limit: 30g
+    memswap_limit: 30g
     environment:
       - MAX_PARALLEL=6
-      - EXTRA_ARGS=--dataset dbpedia100k
+      - EXTRA_ARGS=--methods sumrdf --dataset wn18rr_v4
     volumes:
       - ../../..:/workspace
     command:

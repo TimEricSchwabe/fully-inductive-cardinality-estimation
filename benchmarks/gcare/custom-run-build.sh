@@ -19,7 +19,15 @@ p=0.03
 input_dir="${GCARE_HOME}/data/dataset/${data}/"
 data_dir="${GCARE_HOME}/data/dataset/${data}/"
 
-for method in wj cset ; do
+build_methods_csv="${GCARE_BUILD_METHODS:-wj,cset,sumrdf}"
+IFS=',' read -r -a build_methods <<< "${build_methods_csv}"
+
+for method in "${build_methods[@]}" ; do
+
+  method="$(echo "${method}" | xargs)"
+  if [ -z "${method}" ]; then
+    continue
+  fi
 
   if [ "${method}" == "cs" ] || [ "${method}" == "bsk" ]; then
     bin="${GCARE_HOME}/build/gcare_relation"
