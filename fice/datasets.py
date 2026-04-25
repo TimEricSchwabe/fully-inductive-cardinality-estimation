@@ -472,6 +472,87 @@ class NTQueries(InMemoryDataset):
 
         torch.save(self.collate(queries), self.processed_paths[0])
 
+
+class NTRankingQueries(NTQueries):
+    """Query set that emits one Data per (parent, sub-BGP) pair.
+
+    Each Data gets five extra attributes:
+      - group_id (long[1])    — parent index shared across a parent's sub-BGPs
+      - bgp_size (long[1])    — number of triples in this sub-BGP
+      - is_full (bool[1])     — True iff this sub-BGP equals the parent BGP
+      - mask (long[1])        — bitmask of triples in this sub-BGP (w.r.t. parent)
+      - prefix_mask (long[1]) — bitmask of the prefix this sub-BGP extends;
+                                 siblings share the same prefix_mask
+
+    All sub-BGPs of the same parent are stored contiguously, so a batch
+    sampler that yields parent-group blocks produces valid ranking batches.
+
+    Raw JSON schema per parent record:
+        {"triples": [...], "y": <int|None>, "subqueries": [
+            {"triples": [...], "y": <int>, "size": <int>, "mask": <int>}, ...
+        ]}
+    If "subqueries" is absent, the record degrades to a single parent-only
+    item (ranking is a no-op for that group).
+
+    The processed file stores the usual (data, slices) tuple and an extra
+    per-dataset `group_boundaries` list derived post-load from `data.group_id`.
+    """
+
+    def process(self):
+        pathlib.Path(self.processed_dir).mkdir(parents=True, exist_ok=True)
+
+        with open(self.raw_file_path, "r", encoding="utf-8") as file:
+            raw = json.load(file)
+
+        items: List[Data] = []
+        for group_id, parent in enumerate(tqdm(raw, desc="Processing ranking queries")):
+            n_parent = parent.get("n_triples", len(parent.get("triples", [])))
+            subqueries = parent.get("subqueries")
+            if not subqueries:
+                subqueries = [{
+                    "triples": parent["triples"],
+                    "y": parent.get("y"),
+                    "size": n_parent,
+                    "mask": (1 << n_parent) - 1,
+                }]
+
+            for sq in subqueries:
+                q = {"triples": sq["triples"], "y": sq["y"]}
+                data_item = self.process_query_single(
+                    q, query_set_name=self.dataset_name
+                )
+                size = int(sq.get("size", len(sq["triples"])))
+                data_item.group_id = torch.tensor([group_id], dtype=torch.long)
+                data_item.bgp_size = torch.tensor([size], dtype=torch.long)
+                data_item.is_full = torch.tensor(
+                    [size == n_parent], dtype=torch.bool
+                )
+                data_item.mask = torch.tensor(
+                    [int(sq.get("mask", 0))], dtype=torch.long,
+                )
+                data_item.prefix_mask = torch.tensor(
+                    [int(sq.get("prefix_mask", 0))], dtype=torch.long,
+                )
+                items.append(data_item)
+
+        torch.save(self.collate(items), self.processed_paths[0])
+
+    @property
+    def group_boundaries(self) -> List[Tuple[int, int]]:
+        """(start, end) item-index ranges per parent group. Contiguous."""
+        gid = getattr(self._data, "group_id", None)
+        if gid is None:
+            return []
+        flat = gid.view(-1)
+        if flat.numel() == 0:
+            return []
+        # Find change points; groups are stored contiguously by process().
+        change = torch.nonzero(flat[1:] != flat[:-1], as_tuple=False).view(-1) + 1
+        starts = torch.cat([torch.tensor([0]), change]).tolist()
+        ends = starts[1:] + [int(flat.numel())]
+        return list(zip(starts, ends))
+
+
 class LUBMQueries(NTQueries):
     def __init__(
         self,
@@ -1086,6 +1167,126 @@ class dbpedia100k_path_star_ends_queries(NTQueries):
             type="path_star_ends",
             **kwargs
         )
+
+
+class dbpedia100k_path_queries_ranking(NTRankingQueries):
+    def __init__(
+        self,
+        entity_occurrences: Dict = None,
+        relation_occurrences: Dict = None,
+        global_entity_mapping: Dict = None,
+        global_relation_mapping: Dict = None,
+        **kwargs
+    ):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path",
+            **kwargs
+        )
+
+
+class dbpedia100k_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+
+class dbpedia100k_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+
+class dbpedia100k_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+
+class dbpedia100k_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+
+class dbpedia100k_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+
+class dbpedia100k_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+
+class dbpedia100k_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="dbpedia100k_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
 
 class fb237_v4_path_queries(NTQueries):
     def __init__(

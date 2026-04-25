@@ -98,6 +98,14 @@ QUERY_REGISTRY = {
     "dbpedia100k_flower_queries": datasets.dbpedia100k_flower_queries,
     "dbpedia100k_snowflake_queries": datasets.dbpedia100k_snowflake_queries,
     "dbpedia100k_path_star_ends_queries": datasets.dbpedia100k_path_star_ends_queries,
+    "dbpedia100k_path_queries_ranking": datasets.dbpedia100k_path_queries_ranking,
+    "dbpedia100k_star_queries_ranking": datasets.dbpedia100k_star_queries_ranking,
+    "dbpedia100k_cycle_queries_ranking": datasets.dbpedia100k_cycle_queries_ranking,
+    "dbpedia100k_diamond_queries_ranking": datasets.dbpedia100k_diamond_queries_ranking,
+    "dbpedia100k_flower_queries_ranking": datasets.dbpedia100k_flower_queries_ranking,
+    "dbpedia100k_snowflake_queries_ranking": datasets.dbpedia100k_snowflake_queries_ranking,
+    "dbpedia100k_path_star_ends_queries_ranking": datasets.dbpedia100k_path_star_ends_queries_ranking,
+    "dbpedia100k_binary_tree_queries_ranking": datasets.dbpedia100k_binary_tree_queries_ranking,
 
     # Yago
     "yago_star_queries": datasets.yago_star_queries,
@@ -280,16 +288,53 @@ def load_data(dataset_name: str, queries_name: str) -> Tuple[datasets.NTDatasets
 def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[Subset, Subset]:
     n = len(queries)
     indices = list(range(n))
-    
+
     if shuffle:
         random.shuffle(indices)
-    
+
     train_size = int(n * train_ratio)
     train_indices = indices[:train_size]
     test_indices = indices[train_size:]
-    
+
     # Return Subset objects that lazily index into the original dataset
     return Subset(queries, train_indices), Subset(queries, test_indices)
+
+
+class RankingSubset(torch.utils.data.Dataset):
+    """Subset of a ranking query set that preserves group boundaries.
+
+    Splits at the parent-group level, not the item level, so every parent's
+    sub-BGPs are kept together. Exposes `group_boundaries` in subset-local
+    index space so `GroupBatchSampler` works unchanged.
+    """
+
+    def __init__(self, dataset, group_indices: List[int]):
+        self.dataset = dataset
+        parent_boundaries = list(dataset.group_boundaries)
+        self.item_indices: List[int] = []
+        self.group_boundaries: List[Tuple[int, int]] = []
+        offset = 0
+        for g in group_indices:
+            s, e = parent_boundaries[g]
+            self.item_indices.extend(range(s, e))
+            size = e - s
+            self.group_boundaries.append((offset, offset + size))
+            offset += size
+
+    def __len__(self):
+        return len(self.item_indices)
+
+    def __getitem__(self, idx):
+        return self.dataset[self.item_indices[idx]]
+
+
+def ranking_train_test_split(dataset, train_ratio: float, shuffle: bool = True) -> Tuple[RankingSubset, RankingSubset]:
+    n = len(dataset.group_boundaries)
+    order = list(range(n))
+    if shuffle:
+        random.shuffle(order)
+    split = int(n * train_ratio)
+    return RankingSubset(dataset, order[:split]), RankingSubset(dataset, order[split:])
 
 def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: int = None) -> List[any]:
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
@@ -487,10 +532,12 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     for data_config in data_configs:
         dataset_name = data_config.dataset
-        queries_name = data_config.queries 
+        queries_name = data_config.queries
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
-        
-        queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+
+        is_ranking = isinstance(queries, datasets.NTRankingQueries)
+        if not is_ranking:
+            queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
         # Build only the graph type needed by relation_gnn.source
         relation_source = config.relation_gnn.source if isinstance(config, Config) else 'bipartite'
@@ -514,28 +561,36 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
             test_sets.append(queries)
             test_batch_size.append(data_config.batch_size)
 
-        elif data_config.type == 'train-val': 
+        elif data_config.type == 'train-val':
             train_datasets.append(dataset)
             validation_datasets.append(dataset)
             train_batch_size.append(data_config.batch_size)
             validation_batch_size.append(data_config.batch_size)
 
-            train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
+            if is_ranking:
+                train_q, test_q = ranking_train_test_split(
+                    dataset=queries, train_ratio=config.train_ratio, shuffle=True,
+                )
+            else:
+                train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
             train_sets.append(train_q)
             validation_sets.append(test_q)
-    
+
+    group_batch_size = getattr(config, "ranking_group_batch", 4) if isinstance(config, Config) else 4
 
     train_loader = MultigraphLoader(
         data=train_datasets,
         queries=train_sets,
         batch_size=train_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
     validation_loader = MultigraphLoader(
         data=validation_datasets,
         queries=validation_sets,
         batch_size=validation_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
 
     if len(test_dataset) == 0 or len(test_sets) == 0:
@@ -548,6 +603,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries=test_sets,
         batch_size=test_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
 
     data_component = DataComponents(

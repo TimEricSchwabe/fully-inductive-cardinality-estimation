@@ -73,6 +73,12 @@ class Config(BaseSettings):
     count_features: Literal['raw', 'normalized', 'none'] = 'raw'  # How to use occurrence counts in query GNN
     disable_embedding_gnn: bool = False  # If True, skip entity/relation GNN; query GNN sees only count features
 
+    # Ranking loss over sub-BGPs of the same parent (requires a ranking query set)
+    ranking_loss: bool = False  # Enable pairwise-margin ranking loss across sub-BGPs per group
+    ranking_loss_weight: float = 1.0  # Weight of the ranking term relative to the log-cardinality loss
+    ranking_margin: float = 0.5  # Margin (in log-cardinality units) for pairwise-margin loss
+    ranking_group_batch: int = 4  # Parent groups per training step when ranking is enabled
+
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
     relation_gnn: RelationGNNConfig = RelationGNNConfig()

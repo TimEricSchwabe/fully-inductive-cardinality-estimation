@@ -1,9 +1,52 @@
-from typing import List, Union
+from typing import List, Union, Optional, Sequence, Tuple
 from torch_geometric.loader import DataLoader
 import torch
 import random
 
 from fice.datasets import NTDatasets, NTQueries
+
+
+class GroupBatchSampler:
+    """Yield lists of item-indices, grouped by parent so each batch contains
+    all sub-BGPs of `group_batch_size` parents. Groups are assumed contiguous
+    in the underlying dataset, described by `boundaries` = [(start, end), ...]
+    in the dataset's own index space.
+    """
+
+    def __init__(
+        self,
+        boundaries: Sequence[Tuple[int, int]],
+        group_batch_size: int,
+        shuffle: bool = True,
+    ):
+        self.boundaries = list(boundaries)
+        self.K = max(1, int(group_batch_size))
+        self.shuffle = shuffle
+
+    def __iter__(self):
+        order = list(range(len(self.boundaries)))
+        if self.shuffle:
+            random.shuffle(order)
+        for i in range(0, len(order), self.K):
+            batch: List[int] = []
+            for g in order[i : i + self.K]:
+                s, e = self.boundaries[g]
+                batch.extend(range(s, e))
+            if batch:
+                yield batch
+
+    def __len__(self):
+        n = len(self.boundaries)
+        return (n + self.K - 1) // self.K
+
+
+def _infer_group_boundaries(queries) -> Optional[Sequence[Tuple[int, int]]]:
+    """Return group boundaries if present on the dataset (or its Subset-like
+    wrapper), else None."""
+    b = getattr(queries, "group_boundaries", None)
+    if b is None or len(b) == 0:
+        return None
+    return b
 
 
 class MultigraphLoader:
@@ -22,6 +65,7 @@ class MultigraphLoader:
         batch_size: Union[int, List[int]] = 1,
         weighted: bool = True,
         shuffle: bool = False,
+        group_batch_size: int = 4,
         **kwargs,
     ):
         """
@@ -55,11 +99,23 @@ class MultigraphLoader:
 
         self.queries_loaders = []
         for i in range(len(self.data)):
-            loader = DataLoader(
-                dataset=self.queries[i],
-                batch_size=self.batch_size[i],
-                shuffle=self.shuffle,
-            )
+            boundaries = _infer_group_boundaries(self.queries[i])
+            if boundaries is not None:
+                sampler = GroupBatchSampler(
+                    boundaries=boundaries,
+                    group_batch_size=group_batch_size,
+                    shuffle=self.shuffle,
+                )
+                loader = DataLoader(
+                    dataset=self.queries[i],
+                    batch_sampler=sampler,
+                )
+            else:
+                loader = DataLoader(
+                    dataset=self.queries[i],
+                    batch_size=self.batch_size[i],
+                    shuffle=self.shuffle,
+                )
             self.queries_loaders.append(loader)
 
         self.queries_iters = []

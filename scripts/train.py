@@ -440,13 +440,63 @@ def make_prepare_fn(config, neighbor_sampler, model_class):
     return prepare
 
 
+def pairwise_margin_ranking_loss(
+    log_pred,
+    log_true,
+    group_id,
+    prefix_mask=None,
+    margin: float = 0.0,
+):
+    """Mean hinge loss over sibling pairs within each parent group.
+
+    A pair (i, j) contributes iff i and j are in the same ``group_id`` AND
+    (when ``prefix_mask`` is provided) share the same ``prefix_mask`` — i.e.,
+    they are sibling sub-BGPs that extend the same prefix. For such a pair
+    where ``log_true[i] < log_true[j]`` we penalize
+    ``(log_pred[i] - log_pred[j] + margin)_+``.
+
+    If ``prefix_mask`` is None we fall back to the old (broader) behaviour:
+    any pair sharing ``group_id`` counts, which is useful only for legacy
+    datasets that lack the ``prefix_mask`` attribute.
+
+    Groups with fewer than 2 eligible items (after the prefix filter) and
+    groups with all-equal labels contribute zero.
+    """
+    unique_groups = torch.unique(group_id)
+    total = log_pred.new_zeros(())
+    n_pairs = 0
+    for g in unique_groups.tolist():
+        mask = group_id == g
+        if int(mask.sum()) < 2:
+            continue
+        p = log_pred[mask]
+        t = log_true[mask]
+        dt = t.unsqueeze(1) - t.unsqueeze(0)
+        dp = p.unsqueeze(1) - p.unsqueeze(0)
+        pair_mask = dt < 0
+        if prefix_mask is not None:
+            pm = prefix_mask[mask]
+            same_prefix = pm.unsqueeze(1) == pm.unsqueeze(0)
+            pair_mask = pair_mask & same_prefix
+        if not bool(pair_mask.any()):
+            continue
+        violations = torch.clamp(dp + margin, min=0.0)
+        total = total + (violations * pair_mask.to(p.dtype)).sum()
+        n_pairs += int(pair_mask.sum())
+    if n_pairs == 0:
+        return log_pred.new_zeros(())
+    return total / n_pairs
+
+
 def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     state.model_components.model.train()
     state.metric_logger.start_epoch(epoch=state.training_context.current_epoch, stage='train')
 
     epoch_train_loss = 0.0
+    epoch_ranking_loss = 0.0
     num_train_batches = 0
+    num_ranking_batches = 0
     device = state.training_context.device
     epochs = state.training_context.config.epochs
     model = state.model_components.model
@@ -487,7 +537,26 @@ def train_epoch(state: TrainingState):
         log_true_cardinality = torch.log1p(true_cardinality)
 
         # Compute loss
-        loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
+        base_loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
+        loss = base_loss
+
+        cfg = state.training_context.config
+        ranking_term_val: Optional[float] = None
+        if getattr(cfg, "ranking_loss", False) and getattr(query_batch, "group_id", None) is not None:
+            group_id = query_batch.group_id.to(device).view(-1)
+            prefix_mask = None
+            pm_attr = getattr(query_batch, "prefix_mask", None)
+            if pm_attr is not None:
+                prefix_mask = pm_attr.to(device).view(-1)
+            ranking_term = pairwise_margin_ranking_loss(
+                log_cardinality_pred, log_true_cardinality, group_id,
+                prefix_mask=prefix_mask,
+                margin=cfg.ranking_margin,
+            )
+            loss = base_loss + cfg.ranking_loss_weight * ranking_term
+            ranking_term_val = float(ranking_term.detach().item())
+            epoch_ranking_loss += ranking_term_val
+            num_ranking_batches += 1
 
         # Backward pass
         if state.model_components.optimizer is not None:
@@ -514,12 +583,25 @@ def train_epoch(state: TrainingState):
         num_train_batches += 1
 
         # Update progress bar
-        progress_bar.set_postfix(
-            {
-                "loss": f"{loss.item():.4f}",
-                "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
+        postfix = {
+            "loss": f"{loss.item():.4f}",
+            "avg_loss": f"{epoch_train_loss/num_train_batches:.4f}",
+        }
+        if ranking_term_val is not None:
+            postfix["rank_loss"] = f"{ranking_term_val:.4f}"
+            postfix["avg_rank_loss"] = f"{epoch_ranking_loss/num_ranking_batches:.4f}"
+        progress_bar.set_postfix(postfix)
+
+        if state.training_context.use_wandb:
+            step_log = {
+                "train/loss": float(loss.item()),
+                "train/base_loss": float(base_loss.item()),
+                "train/epoch": state.training_context.current_epoch,
             }
-        )
+            if ranking_term_val is not None:
+                step_log["train/ranking_loss"] = ranking_term_val
+            wandb_log_with_retry(step_log)
+
         # Clean up batch tensors to prevent memory accumulation
         del graph, relation_graph, log_cardinality_pred, loss
 
@@ -530,6 +612,18 @@ def train_epoch(state: TrainingState):
     epoch_duration = end_time - start_time
     time_per_batch = epoch_duration / total_batches
     logging.info(f"Epoch {state.training_context.current_epoch} training time: {epoch_duration:.2f}s ({time_per_batch:.2f}s per batch)")
+
+    if num_ranking_batches > 0:
+        avg_rank = epoch_ranking_loss / num_ranking_batches
+        logger.info(
+            f"Epoch {state.training_context.current_epoch} avg ranking loss: "
+            f"{avg_rank:.6f} (over {num_ranking_batches} batches)"
+        )
+        if state.training_context.use_wandb:
+            wandb_log_with_retry({
+                "train/avg_ranking_loss_epoch": float(avg_rank),
+                "epoch": state.training_context.current_epoch,
+            })
 
     progress_bar.close()
     # Clear GPU cache after training epoch
@@ -548,6 +642,8 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
     state.metric_logger.start_epoch(epoch=state.training_context.current_epoch, stage=stage)
 
     epoch_test_loss = 0.0
+    epoch_ranking_loss = 0.0
+    num_ranking_batches = 0
 
     loader = state.data_components.validation_loader if mode == 'validation' else state.data_components.test_loader
     total_batches = len(loader)
@@ -582,6 +678,21 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             # Compute loss
             loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
 
+            cfg = state.training_context.config
+            if getattr(cfg, "ranking_loss", False) and getattr(query_batch, "group_id", None) is not None:
+                group_id = query_batch.group_id.to(device).view(-1)
+                prefix_mask = None
+                pm_attr = getattr(query_batch, "prefix_mask", None)
+                if pm_attr is not None:
+                    prefix_mask = pm_attr.to(device).view(-1)
+                ranking_term = pairwise_margin_ranking_loss(
+                    log_cardinality_pred, log_true_cardinality, group_id,
+                    prefix_mask=prefix_mask,
+                    margin=cfg.ranking_margin,
+                )
+                epoch_ranking_loss += float(ranking_term.item())
+                num_ranking_batches += 1
+
             # Log batch
             state.metric_logger.log_batch(
                 predictions_log=log_cardinality_pred,
@@ -597,6 +708,18 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
         epoch_duration = end_time - start_time
         time_per_batch = epoch_duration / total_batches
         logging.info(f"Evaluation time ({mode}) at epoch {state.training_context.current_epoch}: {epoch_duration:.2f}s ({time_per_batch:.10f}s per batch)")
+
+    if num_ranking_batches > 0:
+        avg_rank = epoch_ranking_loss / num_ranking_batches
+        logger.info(
+            f"Epoch {state.training_context.current_epoch} ({mode}) avg ranking loss: "
+            f"{avg_rank:.6f} (over {num_ranking_batches} batches)"
+        )
+        if state.training_context.use_wandb:
+            wandb_log_with_retry({
+                f"{mode}/avg_ranking_loss_epoch": float(avg_rank),
+                "epoch": state.training_context.current_epoch,
+            })
 
     # Clear GPU cache after evaluation
     if torch.cuda.is_available():
