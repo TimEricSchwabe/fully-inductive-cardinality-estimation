@@ -225,11 +225,6 @@ data:
 
   # ---- wikidata ----
   - dataset: "Wikidata"
-    queries: "wikidata_star_queries_ranking"
-    batch_size: 1
-    num_queries: -1
-    type: "train-val"
-  - dataset: "Wikidata"
     queries: "wikidata_path_queries_ranking"
     batch_size: 1
     num_queries: -1
