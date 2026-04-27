@@ -39,18 +39,18 @@ from scipy.stats import t as tdist
 # Per-KG median q-error, paper Table 2.
 QERROR = pd.DataFrame(
     [
-        ("aids",        1.70,  4.00,   78.64,  26.67,  758.76),
-        ("codex_l",     8.19,  10.31,  18.66,  28.08,  359.00),
-        ("dbpedia100k", 3.22,  7.56,   6.79,   41.39,  255.00),
-        ("fb237",       5.27,  16.44,  7.75,   63.46,  211.96),
-        ("hetionet",    5.91,  61.86,  304.29, 36.30,  346.56),
-        ("lubm",        2.07,  3.06,   8.41,   9.92,   98.83),
-        ("swdf",        2.45,  4.28,   5.24,   30.51,  334.51),
-        ("wikidata",    16.48, 15.76,  5.99,   13.04,  309.00),
-        ("wn18rr",      3.25,  3.46,   7.15,   39.59,  107.00),
-        ("yago",        4.85,  8.69,   80.19,  2.92,   197.56),
+        ("aids",        1.70,  4.00,   78.64,    7.00,  26.67,  758.76),
+        ("codex_l",     8.19,  10.31,  18.66,   23.00,  28.08,  359.00),
+        ("dbpedia100k", 3.22,  7.56,   6.79,    11.00,  41.39,  255.00),
+        ("fb237",       5.27,  16.44,  7.75,    15.00,  63.46,  211.96),
+        ("hetionet",    5.91,  61.86,  304.29, 129.78,  36.30,  346.56),
+        ("lubm",        2.07,  3.06,   8.41,    31.13,  9.92,   98.83),
+        ("swdf",        2.45,  4.28,   5.24,    23.00,  30.51,  334.51),
+        ("wikidata",    16.48, 15.76,  5.99,     8.00,  13.04,  309.00),
+        ("wn18rr",      3.25,  3.46,   7.15,    17.63,  39.59,  107.00),
+        ("yago",        4.85,  8.69,   80.19,   14.71,  2.92,   197.56),
     ],
-    columns=["kg", "FICE", "GNCE", "LMKG", "WJ", "CSet"],
+    columns=["kg", "FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet"],
 ).set_index("kg")
 
 # Per-KG number of triples (from structural_divergence.py parsing output).
@@ -67,7 +67,7 @@ TRIPLES = pd.Series({
     "wn18rr":         9_842,
 }, name="triples")
 
-METHODS = ["FICE", "GNCE", "LMKG", "WJ", "CSet"]
+METHODS = ["FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet"]
 DIVERGENCE_COLS = ["deg", "csize", "cset_mult", "pred_freq", "mean"]
 
 

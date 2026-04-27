@@ -10,6 +10,7 @@ from .fice import FiceAdapter
 from .gcare import GcareAdapter
 from .gnce import GnceAdapter
 from .lmkg import LmkgAdapter
+from .lss import LssAdapter
 
 
 class MethodAdapter(Protocol):
@@ -24,6 +25,7 @@ ADAPTER_REGISTRY: dict[str, MethodAdapter] = {
     "wj": GcareAdapter("wj"),
     "cset": GcareAdapter("cset"),
     "lmkg": LmkgAdapter(),
+    "lss": LssAdapter(),
 }
 
 __all__ = [
@@ -33,4 +35,5 @@ __all__ = [
     "GnceAdapter",
     "GcareAdapter",
     "LmkgAdapter",
+    "LssAdapter",
 ]

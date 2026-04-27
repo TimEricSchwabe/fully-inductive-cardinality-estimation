@@ -18,13 +18,14 @@ from .schema import CARDINALITY_BIN_LABELS
 COL_W: float = 4.6
 GOLDEN: float = 0.618
 
-METHOD_ORDER: tuple[str, ...] = ("fice", "gnce", "lmkg", "wj", "cset")
+METHOD_ORDER: tuple[str, ...] = ("fice", "gnce", "lmkg", "lss", "wj", "cset")
 METHOD_COLORS: dict[str, str] = {
     "fice": "#1f77b4",  # blue
     "gnce": "#ff7f0e",  # orange
     "lmkg": "#2ca02c",  # green
     "wj":   "#d62728",  # red
     "cset": "#9467bd",  # purple
+    "lss":  "#8c564b",  # brown
 }
 METHOD_LINESTYLE: dict[str, object] = {
     "fice": "-",
@@ -32,6 +33,7 @@ METHOD_LINESTYLE: dict[str, object] = {
     "lmkg": "-.",
     "wj":   ":",
     "cset": (0, (3, 1, 1, 1)),
+    "lss":  (0, (1, 1)),  # dotted
 }
 DISPLAY_NAME: dict[str, str] = {
     "fice": "FICE",
@@ -39,6 +41,7 @@ DISPLAY_NAME: dict[str, str] = {
     "lmkg": "LMKG",
     "wj":   "WJ",
     "cset": "CSet",
+    "lss":  "LSS",
 }
 GRAPH_DISPLAY_NAME: dict[str, str] = {
     "wn18rr": "WN18RR",
@@ -834,26 +837,31 @@ def boxplot_runtime_by_triples(df: pd.DataFrame, out_path: Path) -> None:
 
     for i, method in enumerate(methods):
         method_df = df[df["method"] == method]
-        data = [
-            method_df.loc[method_df["n_triple_pattern"] == s, "runtime"].to_numpy()
-            for s in sizes
+        # Drop sizes with no data for this method — matplotlib boxplot chokes
+        # on empty arrays (np.percentile([], q) raises IndexError).
+        kept = [
+            (j, method_df.loc[method_df["n_triple_pattern"] == s, "runtime"].to_numpy())
+            for j, s in enumerate(sizes)
+            if (method_df["n_triple_pattern"] == s).any()
         ]
-        positions = [j + (i - (n_methods - 1) / 2) * width for j in range(len(sizes))]
-        bp = ax.boxplot(
-            data,
-            positions=positions,
-            widths=width * 0.9,
-            patch_artist=True,
-            showfliers=False,
-            medianprops={"color": "black", "linewidth": 0.8},
-            whiskerprops={"linewidth": 0.6},
-            capprops={"linewidth": 0.6},
-            boxprops={"linewidth": 0.4},
-        )
         color = _color(method)
-        for patch in bp["boxes"]:
-            patch.set_facecolor(color)
-            patch.set_alpha(0.7)
+        if kept:
+            data = [a for _, a in kept]
+            positions = [j + (i - (n_methods - 1) / 2) * width for j, _ in kept]
+            bp = ax.boxplot(
+                data,
+                positions=positions,
+                widths=width * 0.9,
+                patch_artist=True,
+                showfliers=False,
+                medianprops={"color": "black", "linewidth": 0.8},
+                whiskerprops={"linewidth": 0.6},
+                capprops={"linewidth": 0.6},
+                boxprops={"linewidth": 0.4},
+            )
+            for patch in bp["boxes"]:
+                patch.set_facecolor(color)
+                patch.set_alpha(0.7)
         ax.plot([], [], color=color, label=_display(method), linewidth=4)
 
     ax.set_xticks(range(len(sizes)))
@@ -882,18 +890,17 @@ def lineplot_runtime_by_triples(df: pd.DataFrame, out_path: Path) -> None:
     dodge = 0.12
     for i, method in enumerate(methods):
         method_df = df[df["method"] == method]
-        med = np.array([
-            np.median(method_df.loc[method_df["n_triple_pattern"] == s, "runtime"])
-            for s in sizes
-        ])
-        q25 = np.array([
-            np.percentile(method_df.loc[method_df["n_triple_pattern"] == s, "runtime"], 25)
-            for s in sizes
-        ])
-        q75 = np.array([
-            np.percentile(method_df.loc[method_df["n_triple_pattern"] == s, "runtime"], 75)
-            for s in sizes
-        ])
+        med = np.empty(len(sizes), dtype=float)
+        q25 = np.empty(len(sizes), dtype=float)
+        q75 = np.empty(len(sizes), dtype=float)
+        for j, s in enumerate(sizes):
+            arr = method_df.loc[method_df["n_triple_pattern"] == s, "runtime"].to_numpy()
+            if arr.size == 0:
+                med[j] = q25[j] = q75[j] = np.nan
+            else:
+                med[j] = np.median(arr)
+                q25[j] = np.percentile(arr, 25)
+                q75[j] = np.percentile(arr, 75)
         # Asymmetric error bar extents from median to quartiles.
         err_low = med - q25
         err_high = q75 - med

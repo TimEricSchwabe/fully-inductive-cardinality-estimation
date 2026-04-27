@@ -60,6 +60,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--gnce-root", type=Path, default=None, help="path to output/final/GNCE")
     p.add_argument("--gcare-root", type=Path, default=None, help="path to output/final/gcare (feeds both wj and cset)")
     p.add_argument("--lmkg-root", type=Path, default=None, help="path to output/final/lmkg_preds")
+    p.add_argument("--lss-root", type=Path, default=None, help="path to output/final/lss")
     p.add_argument("--out", type=Path, required=True, help="output directory")
     p.add_argument(
         "--use-cache",
@@ -93,6 +94,7 @@ def main() -> None:
             "wj": args.gcare_root,
             "cset": args.gcare_root,
             "lmkg": args.lmkg_root,
+            "lss": args.lss_root,
         }
         frames: list[pd.DataFrame] = []
         for method, root in method_roots.items():
@@ -107,7 +109,7 @@ def main() -> None:
             frames.append(df)
 
         if not frames:
-            logger.error("No method data loaded. Provide --fice-root, --gnce-root, --gcare-root, and/or --lmkg-root.")
+            logger.error("No method data loaded. Provide --fice-root, --gnce-root, --gcare-root, --lmkg-root, and/or --lss-root.")
             sys.exit(1)
 
         unified = pd.concat(frames, ignore_index=True)

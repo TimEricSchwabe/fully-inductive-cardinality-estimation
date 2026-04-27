@@ -64,6 +64,9 @@ class FiceAdapter:
     def load(self, root: Path) -> pd.DataFrame:
         frames: list[pd.DataFrame] = []
         for run_dir in sorted(p for p in root.iterdir() if p.is_dir()):
+            if "ablation" in run_dir.name:
+                logger.info("Skipping FICE ablation run %s", run_dir.name)
+                continue
             csv_path = run_dir / "logs" / "predictions.csv"
             cfg_path = run_dir / "config.yaml"
             if not csv_path.exists():

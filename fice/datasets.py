@@ -1837,3 +1837,659 @@ if __name__ == "__main__":
         global_entity_mapping=json.load((proc / "entity_to_id.json").open("r", encoding="utf-8")),
         global_relation_mapping=json.load((proc / "relation_to_id.json").open("r", encoding="utf-8")),
     )
+
+# --- aids ranking datasets ---
+
+class aids_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class aids_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class aids_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+class aids_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class aids_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class aids_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+class aids_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+class aids_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="aids_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- codex_l ranking datasets ---
+
+class codex_l_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class codex_l_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class codex_l_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+class codex_l_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class codex_l_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class codex_l_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+class codex_l_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="codex_l_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- fb237_v4 ranking datasets ---
+
+class fb237_v4_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class fb237_v4_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class fb237_v4_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+class fb237_v4_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class fb237_v4_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class fb237_v4_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+class fb237_v4_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+class fb237_v4_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="fb237_v4_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- hetionet ranking datasets ---
+
+class hetionet_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="hetionet_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class hetionet_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="hetionet_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+# --- lubm ranking datasets ---
+
+class lubm_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="lubm_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class lubm_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="lubm_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class lubm_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="lubm_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+class lubm_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="lubm_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+class lubm_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="lubm_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- swdf ranking datasets ---
+
+class swdf_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class swdf_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+class swdf_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class swdf_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class swdf_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+class swdf_path_star_ends_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_path_star_ends_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path_star_ends", **kwargs,
+        )
+
+class swdf_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="swdf_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- wikidata ranking datasets ---
+
+class wikidata_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wikidata_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class wikidata_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wikidata_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class wikidata_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wikidata_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+# --- wn18rr_v4 ranking datasets ---
+
+class wn18rr_v4_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class wn18rr_v4_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+
+class wn18rr_v4_cycle_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_cycle_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="cycle", **kwargs,
+        )
+
+class wn18rr_v4_diamond_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_diamond_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="diamond", **kwargs,
+        )
+
+class wn18rr_v4_flower_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_flower_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="flower", **kwargs,
+        )
+
+class wn18rr_v4_snowflake_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_snowflake_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="snowflake", **kwargs,
+        )
+
+class wn18rr_v4_binary_tree_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="wn18rr_v4_binary_tree_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="binary_tree", **kwargs,
+        )
+
+# --- yago ranking datasets ---
+
+class yago_star_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="yago_star_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="star", **kwargs,
+        )
+
+class yago_path_queries_ranking(NTRankingQueries):
+    def __init__(self, entity_occurrences=None, relation_occurrences=None,
+                 global_entity_mapping=None, global_relation_mapping=None, **kwargs):
+        super().__init__(
+            url="file:///queries.json",
+            dataset_name="yago_path_queries_ranking",
+            entity_occurrences=entity_occurrences,
+            relation_occurrences=relation_occurrences,
+            global_entity_mapping=global_entity_mapping,
+            global_relation_mapping=global_relation_mapping,
+            type="path", **kwargs,
+        )
+

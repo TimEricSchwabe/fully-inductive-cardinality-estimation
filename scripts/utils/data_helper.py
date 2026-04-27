@@ -146,6 +146,75 @@ QUERY_REGISTRY = {
     "codex_l_snowflake_queries": datasets.codex_l_snowflake_queries,
     "codex_l_binary_tree_queries": datasets.codex_l_binary_tree_queries,
     "codex_l_path_star_ends_queries": datasets.codex_l_path_star_ends_queries,
+
+    # ----- Multi-KG ranking datasets (chain-sampled, generated on coma) -----
+
+    # aids ranking
+    "aids_star_queries_ranking": datasets.aids_star_queries_ranking,
+    "aids_path_queries_ranking": datasets.aids_path_queries_ranking,
+    "aids_cycle_queries_ranking": datasets.aids_cycle_queries_ranking,
+    "aids_diamond_queries_ranking": datasets.aids_diamond_queries_ranking,
+    "aids_flower_queries_ranking": datasets.aids_flower_queries_ranking,
+    "aids_snowflake_queries_ranking": datasets.aids_snowflake_queries_ranking,
+    "aids_path_star_ends_queries_ranking": datasets.aids_path_star_ends_queries_ranking,
+    "aids_binary_tree_queries_ranking": datasets.aids_binary_tree_queries_ranking,
+
+    # codex_l ranking
+    "codex_l_star_queries_ranking": datasets.codex_l_star_queries_ranking,
+    "codex_l_path_queries_ranking": datasets.codex_l_path_queries_ranking,
+    "codex_l_cycle_queries_ranking": datasets.codex_l_cycle_queries_ranking,
+    "codex_l_diamond_queries_ranking": datasets.codex_l_diamond_queries_ranking,
+    "codex_l_flower_queries_ranking": datasets.codex_l_flower_queries_ranking,
+    "codex_l_path_star_ends_queries_ranking": datasets.codex_l_path_star_ends_queries_ranking,
+    "codex_l_binary_tree_queries_ranking": datasets.codex_l_binary_tree_queries_ranking,
+
+    # fb237_v4 ranking
+    "fb237_v4_star_queries_ranking": datasets.fb237_v4_star_queries_ranking,
+    "fb237_v4_path_queries_ranking": datasets.fb237_v4_path_queries_ranking,
+    "fb237_v4_cycle_queries_ranking": datasets.fb237_v4_cycle_queries_ranking,
+    "fb237_v4_diamond_queries_ranking": datasets.fb237_v4_diamond_queries_ranking,
+    "fb237_v4_flower_queries_ranking": datasets.fb237_v4_flower_queries_ranking,
+    "fb237_v4_snowflake_queries_ranking": datasets.fb237_v4_snowflake_queries_ranking,
+    "fb237_v4_path_star_ends_queries_ranking": datasets.fb237_v4_path_star_ends_queries_ranking,
+    "fb237_v4_binary_tree_queries_ranking": datasets.fb237_v4_binary_tree_queries_ranking,
+
+    # hetionet ranking
+    "hetionet_star_queries_ranking": datasets.hetionet_star_queries_ranking,
+    "hetionet_path_queries_ranking": datasets.hetionet_path_queries_ranking,
+
+    # lubm ranking
+    "lubm_diamond_queries_ranking": datasets.lubm_diamond_queries_ranking,
+    "lubm_flower_queries_ranking": datasets.lubm_flower_queries_ranking,
+    "lubm_snowflake_queries_ranking": datasets.lubm_snowflake_queries_ranking,
+    "lubm_path_star_ends_queries_ranking": datasets.lubm_path_star_ends_queries_ranking,
+    "lubm_binary_tree_queries_ranking": datasets.lubm_binary_tree_queries_ranking,
+
+    # swdf ranking
+    "swdf_path_queries_ranking": datasets.swdf_path_queries_ranking,
+    "swdf_cycle_queries_ranking": datasets.swdf_cycle_queries_ranking,
+    "swdf_diamond_queries_ranking": datasets.swdf_diamond_queries_ranking,
+    "swdf_flower_queries_ranking": datasets.swdf_flower_queries_ranking,
+    "swdf_snowflake_queries_ranking": datasets.swdf_snowflake_queries_ranking,
+    "swdf_path_star_ends_queries_ranking": datasets.swdf_path_star_ends_queries_ranking,
+    "swdf_binary_tree_queries_ranking": datasets.swdf_binary_tree_queries_ranking,
+
+    # wikidata ranking
+    "wikidata_star_queries_ranking": datasets.wikidata_star_queries_ranking,
+    "wikidata_path_queries_ranking": datasets.wikidata_path_queries_ranking,
+    "wikidata_cycle_queries_ranking": datasets.wikidata_cycle_queries_ranking,
+
+    # wn18rr_v4 ranking
+    "wn18rr_v4_star_queries_ranking": datasets.wn18rr_v4_star_queries_ranking,
+    "wn18rr_v4_path_queries_ranking": datasets.wn18rr_v4_path_queries_ranking,
+    "wn18rr_v4_cycle_queries_ranking": datasets.wn18rr_v4_cycle_queries_ranking,
+    "wn18rr_v4_diamond_queries_ranking": datasets.wn18rr_v4_diamond_queries_ranking,
+    "wn18rr_v4_flower_queries_ranking": datasets.wn18rr_v4_flower_queries_ranking,
+    "wn18rr_v4_snowflake_queries_ranking": datasets.wn18rr_v4_snowflake_queries_ranking,
+    "wn18rr_v4_binary_tree_queries_ranking": datasets.wn18rr_v4_binary_tree_queries_ranking,
+
+    # yago ranking
+    "yago_star_queries_ranking": datasets.yago_star_queries_ranking,
+    "yago_path_queries_ranking": datasets.yago_path_queries_ranking,
 }
 
 
