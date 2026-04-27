@@ -1,6 +1,5 @@
 #!/bin/bash
 #SBATCH -J fice_training
-#SBATCH --gres=gpu:1        # request 1 GPU
 #SBATCH -t 24:00:00                # walltime (hh:mm:ss)
 
 # -------------------------------
