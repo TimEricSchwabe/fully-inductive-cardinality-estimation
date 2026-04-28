@@ -9,10 +9,10 @@ config_file=$1
 # -------------------------------
 # Variables
 # -------------------------------
-PROJECT_DIR="$HOME/fully-inductive-cardinality-estimation"
+PROJECT_DIR="/storage/home/lukasketzer/fully-inductive-cardinality-estimation"
 CONFIG_FILE="$config_file"
 SCRIPT="$PROJECT_DIR/scripts/train.py"
-CONTAINER="$HOME/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
+CONTAINER="/storage/home/lukasketzer/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"
 
 # -------------------------------

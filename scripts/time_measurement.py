@@ -37,8 +37,8 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-CHECKPOINT_PATH = ROOT_DIR / "notebooks/fice_runs/swdf/checkpoints/best_model_19.pt"
-CONFIG_PATH = ROOT_DIR / "configs/train_full.yaml"
+CHECKPOINT_PATH = Path('/path/to/FICE/notebooks/fice_runs/swdf/checkpoints/best_model_19.pt')
+CONFIG_PATH = Path('/path/to/runtime-branch/configs/train_full.yaml')
 
 
 
