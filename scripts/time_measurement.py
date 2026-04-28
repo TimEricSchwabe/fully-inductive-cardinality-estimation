@@ -5,7 +5,7 @@ import torch
 import numpy as np
 from pathlib import Path
 from tqdm import tqdm
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
+from torch_geometric.transforms import AddRandomWalkPE
 import pandas as pd
 import torch.nn.functional as F
 import copy
@@ -23,7 +23,7 @@ if str(SCRIPTS_DIR) not in sys.path:
 from fice.models import FICE
 from utils.checkpoint_helper import load_checkpoint
 from utils.config import Config, load_config_yaml
-from utils.data_helper import load_data, preprocess_data, make_bipartit_graph
+from utils.data_helper import load_data, preprocess_data, get_or_build_graph
 from utils.helper import get_device, set_random_seeds, process_seed
 from utils.neighborhood_sampler import MultigraphNeighborSampler
 from utils.multigraph import MultigraphLoader
@@ -54,22 +54,16 @@ def prepare_data(config: Config):
 
         d, _, q = load_data(dataset_name=dc.dataset, queries_name=dc.queries)
 
-        if config.relation_gnn.model in ['BipartiteGraphGNN']:
-            bipartite_data = make_bipartit_graph(d)
-            d.bipartite_graph = bipartite_data
+        relation_source = config.relation_gnn.source
+        random_walk_pe = config.random_walk_pe
 
+        if random_walk_pe > 0 and config.entity_gnn.source == 'KG':
+            d = AddRandomWalkPE(walk_length=random_walk_pe)(d)
 
-
-        if config.laplacian_k > 0:
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            d = transform(d)
-
-            if config.relation_gnn.model in ['BipartiteGraphGNN']:
-                d.bipartite_graph = transform(d.bipartite_graph)
-
-            if hasattr(d, 'relation_graph') and d.relation_graph is not None and config.relation_gnn.model in ['RelationGNN']:
-                d.relation_graph = transform(d.relation_graph)
-            
+        if relation_source == 'factor':
+            d.factor_graph = get_or_build_graph(d, dc.dataset, 'factor', random_walk_pe)
+        else:
+            d.bipartite_graph = get_or_build_graph(d, dc.dataset, 'bipartite', random_walk_pe)
 
         q = preprocess_data(q, num_queries=dc.num_queries)
         import itertools
@@ -128,14 +122,14 @@ def main():
     entity_layer_norm = config.entity_gnn.layer_norm
     entity_skip_connection = config.entity_gnn.skip_connection
     entity_dropout = config.entity_gnn.dropout
-    entity_graph_mode = "bipartite" if config.entity_gnn.model == "BipartiteGraphGNN" else "KG"
+    entity_graph_mode = "bipartite" if config.entity_gnn.source in ("bipartite", "factor") else "KG"
 
     # Relation GNN params
     relation_message_func = config.relation_gnn.message_func
     relation_layer_norm = config.relation_gnn.layer_norm
     relation_skip_connection = config.relation_gnn.skip_connection
     relation_dropout = config.relation_gnn.dropout
-    relation_graph_mode = "bipartite" if config.relation_gnn.model == "BipartiteGraphGNN" else "RelationGraph"
+    relation_graph_mode = "bipartite"
 
     # Query GNN params
     query_gnn_model = config.query_gnn.model
@@ -168,7 +162,7 @@ def main():
         query_layer_norm=query_gnn_layer_norm,
         query_skip_connection=query_gnn_skip_connection,
         query_gnn_dropout=query_gnn_dropout,
-        laplacian_k=config.laplacian_k,
+        pe_dim=config.random_walk_pe,
     )
     model.load_state_dict(checkpoint['model_state_dict'])
     model.to(device)
@@ -192,17 +186,13 @@ def main():
             bipartite_graph = None
             bipartite_graph_gloal_to_local = None
 
-            use_bipartite_entity = config.entity_gnn.model == "BipartiteGraphGNN"
-            use_bipartite_relation = config.relation_gnn.model == "BipartiteGraphGNN"
+            use_bipartite_entity = config.entity_gnn.source in ("bipartite", "factor")
+            use_factor = config.relation_gnn.source == "factor"
 
-                # generate a sample of the bipartite graph if needed
-            if use_bipartite_entity or use_bipartite_relation:
-                bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(full_graph, query_batch, neighbor_sampler, device)
-
-            if use_bipartite_relation:
-                relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
-            else: 
-                relation_graph = full_graph.relation_graph.to(device)
+            # generate a sample of the bipartite/factor graph
+            raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+            bipartite_graph, bipartite_graph_gloal_to_local = prepare_bipartite_graph(raw_graph, full_graph, query_batch, neighbor_sampler, device)
+            relation_graph = prepare_bipartite_relation_graph(full_graph, bipartite_graph, bipartite_graph_gloal_to_local, query_batch, device)
 
 
             # "KG" mode - Standard Logic

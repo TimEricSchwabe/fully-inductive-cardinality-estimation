@@ -1,6 +1,7 @@
 
 import yaml
 from pydantic_settings import BaseSettings
+from pydantic import model_validator
 from pathlib import Path
 from typing import List, Optional, Literal
 
@@ -13,25 +14,31 @@ class DataConfig(BaseSettings):
     type: Literal['train', 'validation', 'test', 'train-val'] = "train-val"  # Type of data split (train/test/val/train-val)
 
 class EntityGNNConfig(BaseSettings):
-    message_func: Literal['gine', 'GAT'] = "gine"
-    model: Literal['EntityGNN'] = 'EntityGNN'
+    message_func: Literal['gine', 'GAT', 'deepset', 'gps'] = "gine"
+    source: Literal['KG', 'bipartite', 'factor'] = 'KG'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
 
 class RelationGNNConfig(BaseSettings):
-    message_func: Literal['GAT', 'gine'] = "gine"
-    model: Literal['RelationGNN', 'BipartiteGraphGNN'] = 'RelationGNN'
+    message_func: Literal['GAT', 'gine', 'deepset', 'gps'] = "gine"
+    source: Literal['bipartite', 'factor'] = 'bipartite'
     skip_connection: bool = True
     layer_norm: bool = True
     dropout: float = 0.0
+    relation_attention: bool = False
+    relational: bool = False
+    role_aware_degrees: bool = True
 
 class QueryGNNConfig(BaseSettings):
-    # message_func: Literal['Triple', 'gine'] = "gine"
-    model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
+    message_func: Literal['gine', 'deepset', 'triple', 'edge_triple'] = "gine"
+    model: Literal['QueryGNN', 'QueryCardinalityGNN','TripleModel', 'BoxTripleModel', 'ProductTripleModel', 'SimpleSumGNN', 'QueryTransformer'] = 'TripleModel'
     skip_connection: bool = False
     layer_norm: bool = True
     dropout: float = 0.0
+    num_layers: int = 2
+    readout: Literal['sum', 'attention'] = 'sum'
+    message_activation: Literal['relu', 'silu', 'linear'] = 'relu'
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True
@@ -58,14 +65,30 @@ class Config(BaseSettings):
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
     wandb: bool = False  # Whether to use Weights & Biases for logging
     wandb_run_name: Optional[str] = None  # Name of the Weights & Biases run
-    laplacian_k: int = 0  # Number of Laplacian eigenvectors for Positional Encoding
+    wandb_run_id: Optional[str] = None  # W&B run ID (auto-generated if None)
+    random_walk_pe: int = 0  # Random walk PE walk length (0 = disabled)
     gradient_clipping: float = 0.5  # Maximum norm for gradient clipping
+    prediction_mode: Literal['log-cardinality', 'log-selectivity'] = 'log-cardinality'
+    embedding_space: Literal['euclidean', 'box', 'gaussian', 'hyperbolic', 'hgcn', 'product'] = 'euclidean'
+    count_features: Literal['raw', 'normalized', 'none'] = 'raw'  # How to use occurrence counts in query GNN
+    disable_embedding_gnn: bool = False  # If True, skip entity/relation GNN; query GNN sees only count features
+
+    # Ranking loss over sub-BGPs of the same parent (requires a ranking query set)
+    ranking_loss: bool = False  # Enable pairwise-margin ranking loss across sub-BGPs per group
+    ranking_loss_weight: float = 1.0  # Weight of the ranking term relative to the log-cardinality loss
+    ranking_margin: float = 0.5  # Margin (in log-cardinality units) for pairwise-margin loss
+    ranking_group_batch: int = 4  # Parent groups per training step when ranking is enabled
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
     relation_gnn: RelationGNNConfig = RelationGNNConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
-    
+
+    @model_validator(mode='after')
+    def validate_gnn_sources(self):
+        if self.entity_gnn.source != 'KG' and self.entity_gnn.source != self.relation_gnn.source:
+            raise ValueError(f"entity source '{self.entity_gnn.source}' must match relation source '{self.relation_gnn.source}'")
+        return self
 
     # class Config:
     #     extra = "allow"  # Allow extra fields if present

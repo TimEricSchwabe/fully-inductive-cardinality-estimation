@@ -487,12 +487,12 @@ def plot_cardinality_scatterplot(df: pd.DataFrame, output_dir: str = ".", displa
 
 
 if __name__ == "__main__":
-    path = str(Path(__file__).parent / "gnce_runs" / "final_predictions_gnce.csv")
+    path = "/path/to/FICE/notebooks/gnce_runs/final_predictions_gnce.csv"
     df = process_gnce(path, "wikidata", "path")
     # mappings = {
-    #     'WikiData': (str(Path.home() / 'Desktop/fice-ablation-wikidata-gut'), str(Path(__file__).parent / 'fice_runs/wikidata')),
-    #     'LUBM': (str(Path.home() / 'Desktop/ablation-lubm'), str(Path(__file__).parent / 'fice_runs/lubm')),
-    #     'DBPedia100k': (str(Path.home() / 'Desktop/ablation-study-dbpedia'), str(Path(__file__).parent / 'fice_runs/dbpedia100k'))
+    #     'WikiData': ('/path/to/Desktop/fice-ablation-wikidata-gut', '/path/to/FICE/notebooks/fice_runs/wikidata'),
+    #     'LUBM': ('/path/to/Desktop/ablation-lubm', '/path/to/FICE/notebooks/fice_runs/lubm'),
+    #     'DBPedia100k': ('/path/to/Desktop/ablation-study-dbpedia', '/path/to/FICE/notebooks/fice_runs/dbpedia100k')
     # }
 
     # for dataset_name, (ablation_path, run_path) in mappings.items():

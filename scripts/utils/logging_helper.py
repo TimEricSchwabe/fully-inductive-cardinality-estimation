@@ -3,6 +3,7 @@ Helper functions for logging metrics, saving CSVs, and managing training data.
 """
 
 import logging
+import os
 from pathlib import Path
 from typing import Dict, Any, Literal
 
@@ -12,9 +13,9 @@ import pandas as pd
 import torch
 import wandb
 from sklearn.decomposition import PCA
-import time
 from sklearn.manifold import TSNE
 import utils.metrics as metrics
+from utils.helper import wandb_log_with_retry
 
 
 
@@ -31,6 +32,12 @@ TEST_METRICS_PER_QUERY_TYPE_FILE_NAME = "test_metrics_per_query_type.csv"
 TRAIN_METRICS_PER_QUERY_SET_NAME_FILE_NAME = "train_metrics_per_query_set_name.csv"
 TEST_METRICS_PER_QUERY_SET_NAME_FILE_NAME = "test_metrics_per_query_set_name.csv"
 PREDICTIONS_FILE_NAME = "predictions.csv"
+
+# predictions.csv grows to multi-GB and takes tens of seconds to rewrite each
+# time. If the job is killed mid-write, the file is left truncated. We throttle
+# writes to every N test epochs and use an atomic replace so any kill leaves
+# the previous complete file intact.
+PREDICTIONS_SAVE_EVERY_N_EPOCHS = 5
 
 
 # ============================================================================
@@ -255,7 +262,8 @@ class MetricLogger:
                 'mse': graph_metrics_results['mse'],
                 'mae': graph_metrics_results['mae'],
                 'rmse': graph_metrics_results['rmse'],
-                'q_error': graph_metrics_results['q_error']
+                'q_error': graph_metrics_results['q_error'],
+                'median_q_error': graph_metrics_results['median_q_error']
             })
         
         # Process per-query-type data
@@ -281,7 +289,8 @@ class MetricLogger:
                 'mse': qt_metrics_results['mse'],
                 'mae': qt_metrics_results['mae'],
                 'rmse': qt_metrics_results['rmse'],
-                'q_error': qt_metrics_results['q_error']
+                'q_error': qt_metrics_results['q_error'],
+                'median_q_error': qt_metrics_results['median_q_error']
             })
         
         # Process per-query-set-name data
@@ -307,7 +316,8 @@ class MetricLogger:
                 'mse': qs_metrics_results['mse'],
                 'mae': qs_metrics_results['mae'],
                 'rmse': qs_metrics_results['rmse'],
-                'q_error': qs_metrics_results['q_error']
+                'q_error': qs_metrics_results['q_error'],
+                'median_q_error': qs_metrics_results['median_q_error']
             })
 
         # Calculate overall metrics
@@ -322,33 +332,28 @@ class MetricLogger:
             'mse': overall_metrics['mse'],
             'mae': overall_metrics['mae'],
             'rmse': overall_metrics['rmse'],
-            'q_error': overall_metrics['q_error']
+            'q_error': overall_metrics['q_error'],
+            'median_q_error': overall_metrics['median_q_error']
         })
         
         # Log to WandB (only when saving to reduce overhead)
         if self.use_wandb and save:
             self._log_to_wandb(epoch, stage, overall_metrics, per_graph_metrics, per_query_type_metrics, per_query_set_name_metrics)
 
-        # Save CSVs
+        # Save CSVs. Aggregated metrics are small and cheap; predictions CSV is
+        # large and expensive, so only flush it every N test epochs (and always
+        # on final_test).
         if save:
-            self.save_csvs()
-            
+            save_predictions = (
+                stage == 'final_test'
+                or (stage == 'test' and epoch % PREDICTIONS_SAVE_EVERY_N_EPOCHS == 0)
+            )
+            self.save_csvs(save_predictions=save_predictions)
+
         return overall_metrics
     
     def _wandb_log_retry(self, data):
-        max_retries = 1000
-        initial_wait = 2
-        wait_time = initial_wait
-        
-        for attempt in range(max_retries):
-            try:
-                wandb.log(data)
-                return
-            except Exception as e:
-                # Catching generic Exception is intentional here to survive network glitches
-                logger.warning(f"Error logging to wandb (Attempt {attempt+1}/{max_retries}): {e}. Retrying in {wait_time}s...")
-                time.sleep(wait_time)
-                wait_time = min(wait_time * 2, 60) # Cap at 1 minute for logs
+        wandb_log_with_retry(data)
 
     def log_embedding_similarity(self, embeddings, name: str, epoch: int, sample_size: int = 2000):
         """
@@ -502,21 +507,20 @@ class MetricLogger:
                 'epoch': epoch
             }
             self._wandb_log_retry(graph_log_data)
-            
-            # Log per-graph q-error boxplot
-            self._log_q_error_boxplot(
-                graph_metrics['q_errors_array'],
-                graph_metrics['true_values'],
-                epoch, f"{stage}/per_graph/{dataset_name}"
-            )
 
-            # Log predictions scatter plot (sampled)
-            self._log_predictions_scatter(
-                graph_metrics['predictions_log'], 
-                graph_metrics['true_values_log'], 
-                epoch, stage, f"per_graph/{dataset_name}"
-            )
-        
+            # # Log per-graph q-error boxplot (disabled: too many open files with ~55 query sets)
+            # self._log_q_error_boxplot(
+            #     graph_metrics['q_errors_array'],
+            #     graph_metrics['true_values'],
+            #     epoch, f"{stage}/per_graph/{dataset_name}"
+            # )
+            # # Log predictions scatter plot (sampled)
+            # self._log_predictions_scatter(
+            #     graph_metrics['predictions_log'],
+            #     graph_metrics['true_values_log'],
+            #     epoch, stage, f"per_graph/{dataset_name}"
+            # )
+
         # Log per-query-type metrics
         for (dataset_name, query_type), qt_metrics in per_query_type_metrics.items():
             qt_log_data = {
@@ -531,21 +535,20 @@ class MetricLogger:
                 'epoch': epoch
             }
             self._wandb_log_retry(qt_log_data)
-            
-            # Log per-query-type q-error boxplot
-            self._log_q_error_boxplot(
-                qt_metrics['q_errors_array'],
-                qt_metrics['true_values'],
-                epoch, f"{stage}/per_query_type/{dataset_name}_{query_type}"
-            )
-            
-            # Log per-query-type predictions scatter plot
-            self._log_predictions_scatter(
-                qt_metrics['predictions_log'],
-                qt_metrics['true_values_log'],
-                epoch, stage, f"per_query_type/{dataset_name}_{query_type}"
-            )
-        
+
+            # # Log per-query-type q-error boxplot (disabled: too many open files with ~55 query sets)
+            # self._log_q_error_boxplot(
+            #     qt_metrics['q_errors_array'],
+            #     qt_metrics['true_values'],
+            #     epoch, f"{stage}/per_query_type/{dataset_name}_{query_type}"
+            # )
+            # # Log per-query-type predictions scatter plot
+            # self._log_predictions_scatter(
+            #     qt_metrics['predictions_log'],
+            #     qt_metrics['true_values_log'],
+            #     epoch, stage, f"per_query_type/{dataset_name}_{query_type}"
+            # )
+
         # Log per-query-set-name metrics
         for (dataset_name, query_set_name), qs_metrics in per_query_set_name_metrics.items():
             qs_log_data = {
@@ -560,20 +563,6 @@ class MetricLogger:
                 'epoch': epoch
             }
             self._wandb_log_retry(qs_log_data)
-            
-            # Log per-query-set-name q-error boxplot
-            self._log_q_error_boxplot(
-                qs_metrics['q_errors_array'],
-                qs_metrics['true_values'],
-                epoch, f"{stage}/per_query_set_name/{dataset_name}_{query_set_name}"
-            )
-            
-            # Log per-query-set-name predictions scatter plot
-            self._log_predictions_scatter(
-                qs_metrics['predictions_log'],
-                qs_metrics['true_values_log'],
-                epoch, stage, f"per_query_set_name/{dataset_name}_{query_set_name}"
-            )
             
         # Log overall predictions scatter plot
         self._log_predictions_scatter(
@@ -649,8 +638,13 @@ class MetricLogger:
         except Exception as e:
             logger.error(f"Error logging predictions to wandb: {e}")
 
-    def save_csvs(self):
-        """Save all accumulated metrics and predictions to CSV files."""
+    def save_csvs(self, save_predictions: bool = True):
+        """Save all accumulated metrics and (optionally) predictions to CSV.
+
+        predictions.csv is written atomically (tmp + os.replace) because it is
+        large enough that a kill mid-write can truncate it. The previous
+        complete file survives any interruption.
+        """
         files_map = {
             'train_metrics': TRAIN_METRICS_FILE_NAME,
             'test_metrics': TEST_METRICS_FILE_NAME,
@@ -672,10 +666,13 @@ class MetricLogger:
                 df = pd.DataFrame(data)
                 df.to_csv(self.log_dir / filename, index=False)
         
-        # Save predictions with pandas
-        if self.predictions:
+        # Save predictions (atomic write)
+        if save_predictions and self.predictions:
             df = pd.DataFrame(self.predictions)
-            df.to_csv(self.log_dir / PREDICTIONS_FILE_NAME, index=False)
+            final_path = self.log_dir / PREDICTIONS_FILE_NAME
+            tmp_path = final_path.with_suffix(final_path.suffix + ".tmp")
+            df.to_csv(tmp_path, index=False)
+            os.replace(tmp_path, final_path)
 
     def get_best_test_loss(self) -> float:
         """Returns the best test loss recorded so far."""
