@@ -8,7 +8,7 @@ set -euo pipefail
 
 # ---- Paths ------------------------------------------------------------------
 # Use absolute paths to avoid SLURM temp directory issues
-PROJECT_ROOT="/storage/home/lukasketzer/fully-inductive-cardinality-estimation"
+PROJECT_ROOT="$HOME/fully-inductive-cardinality-estimation"
 SCRIPT_DIR="${PROJECT_ROOT}/benchmarks/gcare"
 SIF="${SCRIPT_DIR}/gcare.sif"
 

@@ -21,7 +21,6 @@ LSS_DIR = Path(__file__).resolve().parent
 LSS_CODE_DIR = LSS_DIR / "LSS"
 PRONE_DIR = LSS_DIR / "ProNE"
 DATA_DIR = LSS_DIR / "data"
-# DATA_DIR = Path("/storage/nobackup/lukasketzer/fice/lss/data")
 
 MIN_BUCKET_SIZE = 3  # skip query size buckets smaller than this
 
