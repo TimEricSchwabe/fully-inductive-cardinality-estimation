@@ -10,8 +10,8 @@ services:
     mem_limit: 30g
     memswap_limit: 30g
     environment:
-      - MAX_PARALLEL=6
-      - EXTRA_ARGS=--methods sumrdf --dataset wn18rr_v4
+      - MAX_PARALLEL=10
+      - EXTRA_ARGS=--methods sumrdf --dataset dbpedia100k
     volumes:
       - ../../..:/workspace
     command:
