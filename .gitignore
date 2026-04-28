@@ -7,6 +7,8 @@ notebooks/gcare_runs/
 notebooks/gnce_runs/
 notebooks/plots_output/
 benchmarks/gcare/results/*
+benchmarks/gcare/*.sif
+benchmarks/gcare/gcare/build/
 benchmarks/gnce/GNCE/
 benchmarks/gnce/data/
 graphen.zip
@@ -52,7 +54,18 @@ run_*.zip
 
 # VS Code
 .vscode/
-benchmarks/gcare/gcare
+benchmarks/gcare/gcare/data/**
+benchmarks/lss/LSS/data/dataset/**
+benchmarks/lss/LSS/data/n2v/**
+benchmarks/lss/LSS/data/nrp/**
+benchmarks/lss/LSS/data/prone/**
+benchmarks/lss/LSS/data/queryset_homo/**
+benchmarks/lss/LSS/data/true_homo/**
+benchmarks/lss/LSS/models/
+benchmarks/lss/ProNE/data/
+benchmarks/lss/ProNE/emb/
+benchmarks/lss/results/
+benchmarks/lss/data/**
 # gcare/
 logs/
 
