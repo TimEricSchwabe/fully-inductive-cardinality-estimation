@@ -353,7 +353,7 @@ disable_embedding_gnn: false
 
 # Ranking-loss settings (identical to rank_v3 — what worked on dbpedia100k).
 ranking_loss: true
-ranking_loss_weight: 1.0
+ranking_loss_weight: 10.0
 ranking_margin: 0
 ranking_group_batch: 2
 
