@@ -3,21 +3,68 @@ name = "fice"
 version = "0.1.0"
 description = "Fully Inductive Cardinality Estimation (FICE)"
 authors = [
-    { name = "Lukas Ketzer" }
+    { name = "Lukas Ketzer" },
+    { name = "Lukas Ketzer" },
 ]
 readme = "README.md"
 requires-python = ">=3.12"
 
+dependencies = [
+    # Core tensor / GNN stack
+    "torch>=2.8,<2.9",
+    "torchvision>=0.23,<0.24",
+    "torchaudio>=2.8,<2.9",
+    "torch-geometric>=2.7,<2.8",
 
-[[tool.uv.index]]
-url = "https://pypi.org/simple"
-default = true
+    # Numerics
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "pandas>=2.2",
+    "scikit-learn>=1.5",
+    "networkx>=3.3",
 
-[[tool.uv.index]]
-url = "https://download.pytorch.org/whl/cpu"
+    # Geometry / hyperbolic embeddings
+    "geoopt>=0.5",
+
+    # Plotting
+    "matplotlib>=3.9",
+    "seaborn>=0.13",
+
+    # Config / IO
+    "pydantic>=2.9",
+    "pydantic-settings>=2.5",
+    "pyyaml>=6.0",
+    "requests>=2.32",
+    "tqdm>=4.66",
+
+    # Experiment tracking
+    "wandb>=0.18",
+]
+
+[project.optional-dependencies]
+# Compiled PyG extensions — required by fice/gnce/models.py and fice/tasks.py
+# (they import scatter_max / scatter_min / scatter_add directly from torch_scatter).
+# Wheels are not on PyPI; they live on the PyG wheel index:
+#   https://data.pyg.org/whl/torch-2.8.0+<cpu|cu121|cu126|...>.html
+pyg-extras = [
+    "pyg-lib",
+    "torch-scatter",
+    "torch-sparse",
+    "torch-cluster",
+    "torch-spline-conv",
+]
 
 [tool.uv]
-index-strategy = "unsafe-best-match"
+# Point uv at the PyG wheel index so `pyg-lib` and the *compiled* torch-* extensions
+# can be resolved (they're not on PyPI).
+find-links = ["https://data.pyg.org/whl/torch-2.8.0+cpu.html"]
+# Restrict lock resolution to the platforms we actually build on. Without this,
+# uv tries to resolve for Windows / Python 3.14 too and fails because there are
+# no pyg-lib wheels for those splits.
+environments = [
+    "sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "sys_platform == 'linux'",
+]
 
 [build-system]
 requires = ["setuptools>=61.0", "wheel"]

@@ -14,7 +14,6 @@ from utils.models import *
 from fice import datasets
 from torch_geometric.data import Data
 from torch_geometric.utils import coalesce
-from torch_geometric.transforms import AddLaplacianEigenvectorPE
 
 logger = logging.getLogger(__name__)
 
@@ -27,28 +26,195 @@ DATASET_REGISTRY = {
     "wn18rr_v4": datasets.WN18RR_v4,
     "wn18rr_v4_ind": datasets.WN18RR_v4_ind,
     "dbpedia100k": datasets.DBpedia100k,
+    "yago": datasets.Yago,
+    "aids": datasets.AIDS,
+    "hetionet": datasets.Hetionet,
+    "codex_l": datasets.CodexL,
 }
 
 QUERY_REGISTRY = {
+    # LUBM
     "LUBMQueries": datasets.LUBMQueries,
-    "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
-    "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
-    "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
-
-    "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
-    "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
-    "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
-    "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
-
-    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
-    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
-    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
-    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
-
-    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
     "lubm_path_queries": datasets.lubm_path_queries,
+    "lubm_cycle_queries": datasets.lubm_cycle_queries,
+    "lubm_diamond_queries": datasets.lubm_diamond_queries,
+    "lubm_flower_queries": datasets.lubm_flower_queries,
+    "lubm_snowflake_queries": datasets.lubm_snowflake_queries,
+    "lubm_tree_queries": datasets.lubm_tree_queries,
+    "lubm_path_star_ends_queries": datasets.lubm_path_star_ends_queries,
+
+    # SWDF
+    "SWDF_Star_Queries": datasets.SWDF_Star_Queries,
     "swdf_path_queries": datasets.swdf_path_queries,
+    "swdf_cycle_queries": datasets.swdf_cycle_queries,
+    "swdf_diamond_queries": datasets.swdf_diamond_queries,
+    "swdf_flower_queries": datasets.swdf_flower_queries,
+    "swdf_snowflake_queries": datasets.swdf_snowflake_queries,
+    "swdf_tree_queries": datasets.swdf_tree_queries,
+    "swdf_path_star_ends_queries": datasets.swdf_path_star_ends_queries,
+
+    # Wikidata
+    "WIKIDATA_Star_Queries": datasets.WIKIDATA_Star_Queries,
     "wikidata_path_queries": datasets.wikidata_path_queries,
+    "wikidata_cycle_queries": datasets.wikidata_cycle_queries,
+    "wikidata_diamond_queries": datasets.wikidata_diamond_queries,
+    "wikidata_flower_queries": datasets.wikidata_flower_queries,
+    "wikidata_snowflake_queries": datasets.wikidata_snowflake_queries,
+    "wikidata_tree_queries": datasets.wikidata_tree_queries,
+    "wikidata_path_star_ends_queries": datasets.wikidata_path_star_ends_queries,
+
+    # fb237_v4
+    "fb237_v4_star_queries": datasets.fb237_v4_star_queries,
+    "fb237_v4_path_queries": datasets.fb237_v4_path_queries,
+    "fb237_v4_cycle_queries": datasets.fb237_v4_cycle_queries,
+    "fb237_v4_diamond_queries": datasets.fb237_v4_diamond_queries,
+    "fb237_v4_flower_queries": datasets.fb237_v4_flower_queries,
+    "fb237_v4_snowflake_queries": datasets.fb237_v4_snowflake_queries,
+    "fb237_v4_tree_queries": datasets.fb237_v4_tree_queries,
+    "fb237_v4_path_star_ends_queries": datasets.fb237_v4_path_star_ends_queries,
+
+    # fb237_v4_ind
+    "fb237_v4_ind_star_queries": datasets.fb237_v4_ind_star_queries,
+    "fb237_v4_ind_path_queries": datasets.fb237_v4_ind_path_queries,
+
+    # wn18rr_v4
+    "wn18rr_v4_star_queries": datasets.wn18rr_v4_star_queries,
+    "wn18rr_v4_path_queries": datasets.wn18rr_v4_path_queries,
+    "wn18rr_v4_cycle_queries": datasets.wn18rr_v4_cycle_queries,
+    "wn18rr_v4_diamond_queries": datasets.wn18rr_v4_diamond_queries,
+    "wn18rr_v4_flower_queries": datasets.wn18rr_v4_flower_queries,
+    "wn18rr_v4_snowflake_queries": datasets.wn18rr_v4_snowflake_queries,
+    "wn18rr_v4_tree_queries": datasets.wn18rr_v4_tree_queries,
+
+    # wn18rr_v4_ind
+    "wn18rr_v4_ind_star_queries": datasets.wn18rr_v4_ind_star_queries,
+    "wn18rr_v4_ind_path_queries": datasets.wn18rr_v4_ind_path_queries,
+
+    # dbpedia100k
+    "dbpedia100k_star_queries": datasets.dbpedia100k_star_queries,
+    "dbpedia100k_path_queries": datasets.dbpedia100k_path_queries,
+    "dbpedia100k_cycle_queries": datasets.dbpedia100k_cycle_queries,
+    "dbpedia100k_diamond_queries": datasets.dbpedia100k_diamond_queries,
+    "dbpedia100k_flower_queries": datasets.dbpedia100k_flower_queries,
+    "dbpedia100k_snowflake_queries": datasets.dbpedia100k_snowflake_queries,
+    "dbpedia100k_path_star_ends_queries": datasets.dbpedia100k_path_star_ends_queries,
+    "dbpedia100k_path_queries_ranking": datasets.dbpedia100k_path_queries_ranking,
+    "dbpedia100k_star_queries_ranking": datasets.dbpedia100k_star_queries_ranking,
+    "dbpedia100k_cycle_queries_ranking": datasets.dbpedia100k_cycle_queries_ranking,
+    "dbpedia100k_diamond_queries_ranking": datasets.dbpedia100k_diamond_queries_ranking,
+    "dbpedia100k_flower_queries_ranking": datasets.dbpedia100k_flower_queries_ranking,
+    "dbpedia100k_snowflake_queries_ranking": datasets.dbpedia100k_snowflake_queries_ranking,
+    "dbpedia100k_path_star_ends_queries_ranking": datasets.dbpedia100k_path_star_ends_queries_ranking,
+    "dbpedia100k_binary_tree_queries_ranking": datasets.dbpedia100k_binary_tree_queries_ranking,
+
+    # Yago
+    "yago_star_queries": datasets.yago_star_queries,
+    "yago_path_queries": datasets.yago_path_queries,
+    "yago_cycle_queries": datasets.yago_cycle_queries,
+    "yago_diamond_queries": datasets.yago_diamond_queries,
+    "yago_flower_queries": datasets.yago_flower_queries,
+    "yago_snowflake_queries": datasets.yago_snowflake_queries,
+    "yago_binary_tree_queries": datasets.yago_binary_tree_queries,
+    "yago_path_star_ends_queries": datasets.yago_path_star_ends_queries,
+
+    # AIDS
+    "aids_star_queries": datasets.aids_star_queries,
+    "aids_path_queries": datasets.aids_path_queries,
+    "aids_cycle_queries": datasets.aids_cycle_queries,
+    "aids_diamond_queries": datasets.aids_diamond_queries,
+    "aids_flower_queries": datasets.aids_flower_queries,
+    "aids_snowflake_queries": datasets.aids_snowflake_queries,
+    "aids_binary_tree_queries": datasets.aids_binary_tree_queries,
+    "aids_path_star_ends_queries": datasets.aids_path_star_ends_queries,
+
+    # Hetionet
+    "hetionet_star_queries": datasets.hetionet_star_queries,
+    "hetionet_path_queries": datasets.hetionet_path_queries,
+    "hetionet_cycle_queries": datasets.hetionet_cycle_queries,
+    "hetionet_diamond_queries": datasets.hetionet_diamond_queries,
+    "hetionet_flower_queries": datasets.hetionet_flower_queries,
+    "hetionet_snowflake_queries": datasets.hetionet_snowflake_queries,
+    "hetionet_binary_tree_queries": datasets.hetionet_binary_tree_queries,
+    "hetionet_path_star_ends_queries": datasets.hetionet_path_star_ends_queries,
+
+    # CodexL
+    "codex_l_star_queries": datasets.codex_l_star_queries,
+    "codex_l_path_queries": datasets.codex_l_path_queries,
+    "codex_l_cycle_queries": datasets.codex_l_cycle_queries,
+    "codex_l_diamond_queries": datasets.codex_l_diamond_queries,
+    "codex_l_flower_queries": datasets.codex_l_flower_queries,
+    "codex_l_snowflake_queries": datasets.codex_l_snowflake_queries,
+    "codex_l_binary_tree_queries": datasets.codex_l_binary_tree_queries,
+    "codex_l_path_star_ends_queries": datasets.codex_l_path_star_ends_queries,
+
+    # ----- Multi-KG ranking datasets (chain-sampled, generated on coma) -----
+
+    # aids ranking
+    "aids_star_queries_ranking": datasets.aids_star_queries_ranking,
+    "aids_path_queries_ranking": datasets.aids_path_queries_ranking,
+    "aids_cycle_queries_ranking": datasets.aids_cycle_queries_ranking,
+    "aids_diamond_queries_ranking": datasets.aids_diamond_queries_ranking,
+    "aids_flower_queries_ranking": datasets.aids_flower_queries_ranking,
+    "aids_snowflake_queries_ranking": datasets.aids_snowflake_queries_ranking,
+    "aids_path_star_ends_queries_ranking": datasets.aids_path_star_ends_queries_ranking,
+    "aids_binary_tree_queries_ranking": datasets.aids_binary_tree_queries_ranking,
+
+    # codex_l ranking
+    "codex_l_star_queries_ranking": datasets.codex_l_star_queries_ranking,
+    "codex_l_path_queries_ranking": datasets.codex_l_path_queries_ranking,
+    "codex_l_cycle_queries_ranking": datasets.codex_l_cycle_queries_ranking,
+    "codex_l_diamond_queries_ranking": datasets.codex_l_diamond_queries_ranking,
+    "codex_l_flower_queries_ranking": datasets.codex_l_flower_queries_ranking,
+    "codex_l_path_star_ends_queries_ranking": datasets.codex_l_path_star_ends_queries_ranking,
+    "codex_l_binary_tree_queries_ranking": datasets.codex_l_binary_tree_queries_ranking,
+
+    # fb237_v4 ranking
+    "fb237_v4_star_queries_ranking": datasets.fb237_v4_star_queries_ranking,
+    "fb237_v4_path_queries_ranking": datasets.fb237_v4_path_queries_ranking,
+    "fb237_v4_cycle_queries_ranking": datasets.fb237_v4_cycle_queries_ranking,
+    "fb237_v4_diamond_queries_ranking": datasets.fb237_v4_diamond_queries_ranking,
+    "fb237_v4_flower_queries_ranking": datasets.fb237_v4_flower_queries_ranking,
+    "fb237_v4_snowflake_queries_ranking": datasets.fb237_v4_snowflake_queries_ranking,
+    "fb237_v4_path_star_ends_queries_ranking": datasets.fb237_v4_path_star_ends_queries_ranking,
+    "fb237_v4_binary_tree_queries_ranking": datasets.fb237_v4_binary_tree_queries_ranking,
+
+    # hetionet ranking
+    "hetionet_star_queries_ranking": datasets.hetionet_star_queries_ranking,
+    "hetionet_path_queries_ranking": datasets.hetionet_path_queries_ranking,
+
+    # lubm ranking
+    "lubm_diamond_queries_ranking": datasets.lubm_diamond_queries_ranking,
+    "lubm_flower_queries_ranking": datasets.lubm_flower_queries_ranking,
+    "lubm_snowflake_queries_ranking": datasets.lubm_snowflake_queries_ranking,
+    "lubm_path_star_ends_queries_ranking": datasets.lubm_path_star_ends_queries_ranking,
+    "lubm_binary_tree_queries_ranking": datasets.lubm_binary_tree_queries_ranking,
+
+    # swdf ranking
+    "swdf_path_queries_ranking": datasets.swdf_path_queries_ranking,
+    "swdf_cycle_queries_ranking": datasets.swdf_cycle_queries_ranking,
+    "swdf_diamond_queries_ranking": datasets.swdf_diamond_queries_ranking,
+    "swdf_flower_queries_ranking": datasets.swdf_flower_queries_ranking,
+    "swdf_snowflake_queries_ranking": datasets.swdf_snowflake_queries_ranking,
+    "swdf_path_star_ends_queries_ranking": datasets.swdf_path_star_ends_queries_ranking,
+    "swdf_binary_tree_queries_ranking": datasets.swdf_binary_tree_queries_ranking,
+
+    # wikidata ranking
+    "wikidata_star_queries_ranking": datasets.wikidata_star_queries_ranking,
+    "wikidata_path_queries_ranking": datasets.wikidata_path_queries_ranking,
+    "wikidata_cycle_queries_ranking": datasets.wikidata_cycle_queries_ranking,
+
+    # wn18rr_v4 ranking
+    "wn18rr_v4_star_queries_ranking": datasets.wn18rr_v4_star_queries_ranking,
+    "wn18rr_v4_path_queries_ranking": datasets.wn18rr_v4_path_queries_ranking,
+    "wn18rr_v4_cycle_queries_ranking": datasets.wn18rr_v4_cycle_queries_ranking,
+    "wn18rr_v4_diamond_queries_ranking": datasets.wn18rr_v4_diamond_queries_ranking,
+    "wn18rr_v4_flower_queries_ranking": datasets.wn18rr_v4_flower_queries_ranking,
+    "wn18rr_v4_snowflake_queries_ranking": datasets.wn18rr_v4_snowflake_queries_ranking,
+    "wn18rr_v4_binary_tree_queries_ranking": datasets.wn18rr_v4_binary_tree_queries_ranking,
+
+    # yago ranking
+    "yago_star_queries_ranking": datasets.yago_star_queries_ranking,
+    "yago_path_queries_ranking": datasets.yago_path_queries_ranking,
 }
 
 
@@ -191,16 +357,53 @@ def load_data(dataset_name: str, queries_name: str) -> Tuple[datasets.NTDatasets
 def train_test_split(queries, train_ratio: float, shuffle: bool = False) -> Tuple[Subset, Subset]:
     n = len(queries)
     indices = list(range(n))
-    
+
     if shuffle:
         random.shuffle(indices)
-    
+
     train_size = int(n * train_ratio)
     train_indices = indices[:train_size]
     test_indices = indices[train_size:]
-    
+
     # Return Subset objects that lazily index into the original dataset
     return Subset(queries, train_indices), Subset(queries, test_indices)
+
+
+class RankingSubset(torch.utils.data.Dataset):
+    """Subset of a ranking query set that preserves group boundaries.
+
+    Splits at the parent-group level, not the item level, so every parent's
+    sub-BGPs are kept together. Exposes `group_boundaries` in subset-local
+    index space so `GroupBatchSampler` works unchanged.
+    """
+
+    def __init__(self, dataset, group_indices: List[int]):
+        self.dataset = dataset
+        parent_boundaries = list(dataset.group_boundaries)
+        self.item_indices: List[int] = []
+        self.group_boundaries: List[Tuple[int, int]] = []
+        offset = 0
+        for g in group_indices:
+            s, e = parent_boundaries[g]
+            self.item_indices.extend(range(s, e))
+            size = e - s
+            self.group_boundaries.append((offset, offset + size))
+            offset += size
+
+    def __len__(self):
+        return len(self.item_indices)
+
+    def __getitem__(self, idx):
+        return self.dataset[self.item_indices[idx]]
+
+
+def ranking_train_test_split(dataset, train_ratio: float, shuffle: bool = True) -> Tuple[RankingSubset, RankingSubset]:
+    n = len(dataset.group_boundaries)
+    order = list(range(n))
+    if shuffle:
+        random.shuffle(order)
+    split = int(n * train_ratio)
+    return RankingSubset(dataset, order[:split]), RankingSubset(dataset, order[split:])
 
 def preprocess_data(data: List[any], min_cardinality: int = None, num_queries: int = None) -> List[any]:
     # Optional: filter queries by minimum cardinality threshold specified in config (e.g., min_cardinality: 2)
@@ -296,6 +499,81 @@ def make_bipartit_graph(data):
 
     return bipartite_data
 
+def make_factor_graph(data):
+    """Convert a homogeneous graph to a factor graph representation.
+
+    Each triple (s, p, o) introduces a triple node connected to subject, predicate,
+    and object nodes. Node layout: entities [0, N), relations [N, N+R), triples [N+R, N+R+T).
+    Edge attr is [count, role] where role encodes subject(±1), predicate(±2), object(±3).
+    """
+    edge_index = data.edge_index
+    edge_type = data.edge_type
+    num_entities = data.num_nodes
+    num_relations = edge_type.max().item() + 1
+    num_triples = edge_index.size(1)
+
+    triple_node_ids = torch.arange(num_triples) + num_entities + num_relations
+
+    # 3 directed edge sets: triple→subject (role 1), triple→predicate (role 2), triple→object (role 3)
+    subject_edges = torch.vstack((triple_node_ids, edge_index[0]))
+    predicate_edges = torch.vstack((triple_node_ids, edge_type + num_entities))
+    object_edges = torch.vstack((triple_node_ids, edge_index[1]))
+
+    combined = torch.hstack((subject_edges, predicate_edges, object_edges))
+    role_types = torch.cat([
+        torch.ones(num_triples) * 1,
+        torch.ones(num_triples) * 2,
+        torch.ones(num_triples) * 3,
+    ])
+
+    total_nodes = num_entities + num_relations + num_triples
+
+    # Coalesce duplicate edges (sum counts)
+    edge_weight = torch.ones(combined.size(1))
+    unique_edges, counts = coalesce(combined, edge_weight, num_nodes=total_nodes, reduce='add')
+
+     # We need to track roles through coalesce — but since each triple node is unique,
+    # there are no duplicate (src, dst) pairs, so we can coalesce role_types too. not necessary
+    # if you assume unique triples AND ignores self-loops (gives them role 4) - but emperically found to work better
+    _, unique_roles = coalesce(combined, role_types, num_nodes=total_nodes, reduce='add')
+
+
+    # Make undirected: add reverse edges with negated role
+    forward_attr = torch.stack([counts, unique_roles], dim=1)
+    reverse_edges = torch.stack([unique_edges[1], unique_edges[0]], dim=0)
+    reverse_attr = torch.stack([counts, -unique_roles], dim=1)
+
+    final_edge_index = torch.cat([unique_edges, reverse_edges], dim=1)
+
+
+    final_edge_attr = torch.cat([forward_attr, reverse_attr], dim=0)
+
+    return Data(
+        edge_index=final_edge_index,
+        edge_attr=final_edge_attr,
+        num_nodes=total_nodes,
+        dataset_name=f"{data.dataset_name}_factor",
+        original_edge_index=data.edge_index,
+        original_edge_type=data.edge_type,
+        original_num_nodes=num_entities,
+        original_num_relations=num_relations,
+    )
+
+
+def get_or_build_graph(dataset, dataset_name, graph_type):
+    """Build or load cached bipartite/factor graph for a dataset."""
+    processed_dir = get_dataset_processed_dir(dataset_name)
+    cache_path = processed_dir / f"{dataset_name}_{graph_type}.pt"
+    if cache_path.exists():
+        logger.info(f"Loading cached {graph_type} graph from {cache_path}")
+        return torch.load(cache_path, weights_only=False)
+    logger.info(f"Building {graph_type} graph for {dataset_name}...")
+    graph = make_factor_graph(dataset) if graph_type == "factor" else make_bipartit_graph(dataset)
+    torch.save(graph, cache_path)
+    logger.info(f"Cached {graph_type} graph to {cache_path}")
+    return graph
+
+
 def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     data_configs: List[DataConfig]
@@ -323,32 +601,19 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
 
     for data_config in data_configs:
         dataset_name = data_config.dataset
-        queries_name = data_config.queries 
+        queries_name = data_config.queries
         dataset, _, queries = load_data(dataset_name=dataset_name, queries_name=queries_name)
-        
-        # Apply Laplacian PE transform if requested in config
-        if isinstance(config, Config) and config.laplacian_k > 0:
-            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name}...")
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            dataset = transform(dataset)
-            
-            # Also apply to relation graph if it exists
-            if hasattr(dataset, 'relation_graph') and dataset.relation_graph is not None and config.relation_gnn.model in ['RelationGNN']:
-                logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} relation graph...")
-                dataset.relation_graph = transform(dataset.relation_graph)
 
-        queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
+        is_ranking = isinstance(queries, datasets.NTRankingQueries)
+        if not is_ranking:
+            queries = preprocess_data(queries, min_cardinality=config.min_cardinality, num_queries=data_config.num_queries)
 
-        bipartite_graph = make_bipartit_graph(dataset)
-        
-        # Also apply Laplacian PE to bipartite graph if requested
-        if isinstance(config, Config) and config.laplacian_k > 0:
-            logger.info(f"Computing Laplacian Eigenvector PE (k={config.laplacian_k}) for {dataset_name} bipartite graph...")
-            transform = AddLaplacianEigenvectorPE(k=config.laplacian_k)
-            bipartite_graph = transform(bipartite_graph)
-
-        dataset.bipartite_graph = bipartite_graph
-
+        # Build only the graph type needed by relation_gnn.source
+        relation_source = config.relation_gnn.source if isinstance(config, Config) else 'bipartite'
+        if relation_source == 'factor':
+            dataset.factor_graph = get_or_build_graph(dataset, dataset_name, 'factor')
+        else:
+            dataset.bipartite_graph = get_or_build_graph(dataset, dataset_name, 'bipartite')
 
         if data_config.type == 'train':
             train_datasets.append(dataset)
@@ -365,28 +630,36 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
             test_sets.append(queries)
             test_batch_size.append(data_config.batch_size)
 
-        elif data_config.type == 'train-val': 
+        elif data_config.type == 'train-val':
             train_datasets.append(dataset)
             validation_datasets.append(dataset)
             train_batch_size.append(data_config.batch_size)
             validation_batch_size.append(data_config.batch_size)
 
-            train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
+            if is_ranking:
+                train_q, test_q = ranking_train_test_split(
+                    dataset=queries, train_ratio=config.train_ratio, shuffle=True,
+                )
+            else:
+                train_q, test_q = train_test_split(queries=queries, train_ratio=config.train_ratio, shuffle=True)
             train_sets.append(train_q)
             validation_sets.append(test_q)
-    
+
+    group_batch_size = getattr(config, "ranking_group_batch", 4) if isinstance(config, Config) else 4
 
     train_loader = MultigraphLoader(
         data=train_datasets,
         queries=train_sets,
         batch_size=train_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
     validation_loader = MultigraphLoader(
         data=validation_datasets,
         queries=validation_sets,
         batch_size=validation_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
 
     if len(test_dataset) == 0 or len(test_sets) == 0:
@@ -399,6 +672,7 @@ def prepare_data(config: Union[Config, List[DataConfig]]) -> DataComponents:
         queries=test_sets,
         batch_size=test_batch_size,
         shuffle=True,
+        group_batch_size=group_batch_size,
     )
 
     data_component = DataComponents(
