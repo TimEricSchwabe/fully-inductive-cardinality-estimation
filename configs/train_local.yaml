@@ -1,37 +1,37 @@
-# Example YAML config for local training (updated to new Config/DataConfig schema)
-data:
+# Example YAML config for local training
+data: # All datasets to include in training
  
-  - dataset: "fb237_v4"
-    queries: "fb237_v4_star_queries"
-    batch_size: 2
-    num_queries: 1000
-    type: "train-val"
+  - dataset: "fb237_v4". # the KG name
+    queries: "fb237_v4_star_queries" # the specific query dataset for this graph 
+    batch_size: 2 # batch size to use (must be the same for all datasets)
+    num_queries: 1000 # how many queries to take from this dataset
+    type: "train-val" # train-val means the dataset is used in training, 'validation' means its sued as leave-out inductive
 
 
-epochs: 10
-wandb: False
+epochs: 10 # how many epochs to train
+wandb: False # log to wandb or not
 wandb_run_name: "RelationalGNN-local"
-#wandb_run_id: "b9588a2d"
-learning_rate: 1e-4
-train_ratio: 0.8
-output_dir: "output/"
-save_every: 5
-save_metrics_every: 1 # Default from config.py
+learning_rate: 1e-4 #learning rate of FICE
+train_ratio: 0.8 # percent of queries from train-val datasets to train on
+output_dir: "output/" # parent folder where the run logs are stored
+save_every: 5 # after how many epochs to save all files to disk
+save_metrics_every: 1
 eval_every: 1
 seed: 42
-device: "auto"
-weight_decay: 0.00
-n_embedding_layers: 4
-GNNNeighborhood: [100, 100] # Graph Sage numbers
+device: "auto" # accelerator, cuda or cpu etc.
+weight_decay: 0.00 # for adamw
+n_embedding_layers: 4 # layers of the encoder gnn
+GNNNeighborhood: [100, 100] # parameters for neighborhood sampling
 Conditioning: "false" # choices are "seed only", "all", "false". False sets all to 0.1; seed only sets seeds to 1 and rest to 0; all sets seeds to 1 and rest to 0.1
-min_cardinality: null # Default from config.py
-model: "FICE" # choices are "FICE", "FiceBinary", "FiceIndependent"
-embedding_dim: 128
-random_walk_pe: 0
-gradient_clipping: 1.0
-prediction_mode: "log-cardinality" # choices are "log-cardinality" or "log-selectivity"
-embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product"
+min_cardinality: null # min cardinality queries need to have to be included in training
+model: "FICE" # keep as FICE
+embedding_dim: 128 # embedding dimensionsality
+random_walk_pe: 0 # leave at 0
+gradient_clipping: 1.0 
+prediction_mode: "log-cardinality" # keep as "log-cardinality"
+embedding_space: "euclidean" # choices are "euclidean" or "box" or "gaussian" or "hyperbolic" or "hgcn" or "product": keep as euclidean
 
+# DEPRECATED, DONT USE
 entity_gnn:
   message_func: "gine" # choices are "gine" or "GAT" or "deepset" or "gps"
   source: "factor" # choices are "KG", "bipartite", "factor"
@@ -39,15 +39,16 @@ entity_gnn:
   layer_norm: True
   dropout: 0.1
 
+# Encoder GNN
 relation_gnn:
-  message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps"
-  source: "factor" # choices are "bipartite" or "factor"
-  skip_connection: True
+  message_func: "gine" # choices are "GAT" or "gine" or "deepset" or "gps" or "gine"
+  source: "factor" # keep as factor
+  skip_connection: True 
   layer_norm: True
   dropout: 0.1
-  relation_attention: False
-  relational: True #whether to use relational GNN
-  role_aware_degrees: False
+  relation_attention: False # whether to add a attention layer as final layer to the encoder GNN
+  relational: True #whether to use relational GNN or homogenous message-passing
+  role_aware_degrees: False 
 
 query_gnn:
   message_func: "gine" # choices are "gine" or "deepset" or "triple"
@@ -57,7 +58,7 @@ query_gnn:
   layer_norm: True
   dropout: 0.0
   num_layers: 2
-  message_activation: "relu" # choices are "relu" or "silu" or "linear"
+  message_activation: "relu" # choices are "relu" or "silu" or "linear". activation function in the message MLPs
 
 scheduler:
   enabled: False

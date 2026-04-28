@@ -1,7 +1,6 @@
 """Loader for the endpoint-specific action parameter.
 
-The value is read from a local file (``inference/.endpoint_action``) that is
-not tracked by git. Create the file with a single line containing the action
+The value is read from a local file (``inference/.endpoint_action``). Create the file with a single line containing the action
 string before running ``build_ranking_dataset.py`` or ``dp_subquery_eval.py``.
 """
 from __future__ import annotations

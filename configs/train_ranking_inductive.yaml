@@ -1,28 +1,5 @@
 # Multi-KG inductive ranking-loss training config.
-#
-# Trains FICE with chain-sampled sibling ranking loss across 9 KGs
-# (aids, codex_l, fb237_v4, hetionet, lubm, swdf, wikidata, wn18rr_v4, yago)
-# as `train-val`, with DBpedia100k's 8 ranking shapes as `validation` —
-# an OOD held-out KG used for monitoring inductive performance during
-# training (early stopping / best-checkpoint selection). DBpedia100k is
-# NEVER seen during gradient updates.
-#
-# Train-val coverage (49 (KG, shape) ranking sets generated on coma):
-#   aids: 8 shapes (some <100 parents — fine, MultigraphLoader weights by size)
-#   codex_l: 7 shapes (snowflake unavailable)
-#   fb237_v4: 8 shapes (all at 3000 parents — densest)
-#   hetionet: 2 shapes (only star/path raw queries available)
-#   lubm: 5 shapes (star/cycle/path missing or builder-failed)
-#   swdf: 7 shapes (star failed during build)
-#   wikidata: 3 shapes (cycle, star, path; diamond partial)
-#   wn18rr_v4: 7 shapes (path_star_ends unavailable)
-#   yago: 2 shapes (only star/path raw available)
-#
-# Inductive validation: 8 dbpedia100k_<shape>_queries_ranking sets (rank_v3
-# datasets, 3000 parents each except cycle which is 1010).
-#
-# Hyperparameters mirror the dbpedia100k ranking-v3 run; only the data
-# scale and KG mix differ.
+
 
 data:
 
@@ -351,11 +328,14 @@ embedding_space: "euclidean"
 count_features: "raw"
 disable_embedding_gnn: false
 
-# Ranking-loss settings (identical to rank_v3 — what worked on dbpedia100k).
+# Ranking Loss Parameters
 ranking_loss: true
 ranking_loss_weight: 10.0
 ranking_margin: 0
 ranking_group_batch: 2
+ranking_loss_type: ranknet
+ranking_size_weight_exponent: 1.0
+ranking_top_weight_strength: 1.0
 
 entity_gnn:
   message_func: "gine"

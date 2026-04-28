@@ -445,15 +445,41 @@ def pairwise_margin_ranking_loss(
     log_true,
     group_id,
     prefix_mask=None,
+    bgp_size=None,
     margin: float = 0.0,
+    loss_type: str = "hinge",
+    size_exponent: float = 0.0,
+    top_strength: float = 0.0,
 ):
-    """Mean hinge loss over sibling pairs within each parent group.
+    """Weighted pairwise ranking loss over sibling sub-BGPs.
 
     A pair (i, j) contributes iff i and j are in the same ``group_id`` AND
     (when ``prefix_mask`` is provided) share the same ``prefix_mask`` — i.e.,
     they are sibling sub-BGPs that extend the same prefix. For such a pair
-    where ``log_true[i] < log_true[j]`` we penalize
-    ``(log_pred[i] - log_pred[j] + margin)_+``.
+    where ``log_true[i] < log_true[j]`` we want ``log_pred[i] < log_pred[j]``.
+
+    Per-pair raw loss term:
+
+      * ``loss_type="hinge"`` (default): ``(log_pred[i] - log_pred[j] + margin)_+``.
+      * ``loss_type="ranknet"``: ``BCE(sigmoid(log_pred[j] - log_pred[i]), 1)``.
+        No margin parameter — gradient tapers smoothly with the prediction gap.
+
+    Per-pair multiplicative weight (defaults reproduce the legacy
+    unweighted mean):
+
+      * ``size_exponent != 0``: pair weight ``(size_i * size_j) ** (size_exponent/2)``.
+        Within a same-prefix sibling group, sizes are equal, so this reduces
+        to ``size**size_exponent``. Use to up-weight deeper subqueries.
+        Requires ``bgp_size`` to be passed.
+      * ``top_strength != 0``: pair weight ``1 / (1 + top_strength * min(rank_i, rank_j))``
+        where ranks are computed within each (group, prefix_mask) bucket from
+        the true cardinalities (rank 0 = smallest true card, i.e. the planner's
+        argmin choice). Up-weights pairs near the top of the rank list.
+
+    The two weights compose multiplicatively. Final loss is
+    ``sum(per_pair * weight) / sum(weight)`` — when both knobs are at their
+    defaults (0.0) the weight collapses to ``pair_mask`` and the result equals
+    the legacy ``total / n_pairs`` mean.
 
     If ``prefix_mask`` is None we fall back to the old (broader) behaviour:
     any pair sharing ``group_id`` counts, which is useful only for legacy
@@ -462,9 +488,12 @@ def pairwise_margin_ranking_loss(
     Groups with fewer than 2 eligible items (after the prefix filter) and
     groups with all-equal labels contribute zero.
     """
+    if loss_type not in ("hinge", "ranknet"):
+        raise ValueError(f"unknown ranking_loss_type: {loss_type!r}")
+
     unique_groups = torch.unique(group_id)
     total = log_pred.new_zeros(())
-    n_pairs = 0
+    total_w = log_pred.new_zeros(())
     for g in unique_groups.tolist():
         mask = group_id == g
         if int(mask.sum()) < 2:
@@ -474,18 +503,54 @@ def pairwise_margin_ranking_loss(
         dt = t.unsqueeze(1) - t.unsqueeze(0)
         dp = p.unsqueeze(1) - p.unsqueeze(0)
         pair_mask = dt < 0
+        pm = None
         if prefix_mask is not None:
             pm = prefix_mask[mask]
             same_prefix = pm.unsqueeze(1) == pm.unsqueeze(0)
             pair_mask = pair_mask & same_prefix
         if not bool(pair_mask.any()):
             continue
-        violations = torch.clamp(dp + margin, min=0.0)
-        total = total + (violations * pair_mask.to(p.dtype)).sum()
-        n_pairs += int(pair_mask.sum())
-    if n_pairs == 0:
+
+        # --- per-pair raw loss term ---
+        if loss_type == "ranknet":
+            # For (i, j) with t[i] < t[j] we want p[j] - p[i] = -dp[i,j] > 0.
+            diff = -dp
+            per_pair = F.binary_cross_entropy_with_logits(
+                diff, torch.ones_like(diff), reduction="none"
+            )
+        else:  # "hinge"
+            per_pair = torch.clamp(dp + margin, min=0.0)
+
+        # --- per-pair multiplicative weight ---
+        pw = pair_mask.to(p.dtype)
+        if size_exponent != 0.0:
+            if bgp_size is None:
+                raise ValueError(
+                    "bgp_size is required when ranking_size_weight_exponent != 0"
+                )
+            s = bgp_size[mask].to(p.dtype).view(-1)
+            s_outer = s.unsqueeze(0) * s.unsqueeze(1)  # (k, k)
+            pw = pw * s_outer.pow(size_exponent / 2.0)
+        if top_strength != 0.0:
+            # Rank within each (group, prefix_mask) sub-bucket; 0 = smallest t.
+            ranks = torch.zeros_like(t)
+            if pm is not None:
+                for pm_val in pm.unique().tolist():
+                    sub = (pm == pm_val).nonzero(as_tuple=True)[0]
+                    if sub.numel() < 2:
+                        continue
+                    ranks[sub] = t[sub].argsort().argsort().to(t.dtype)
+            else:
+                ranks = t.argsort().argsort().to(t.dtype)
+            rmin = torch.minimum(ranks.unsqueeze(0), ranks.unsqueeze(1))
+            pw = pw * (1.0 / (1.0 + top_strength * rmin))
+
+        total = total + (per_pair * pw).sum()
+        total_w = total_w + pw.sum()
+
+    if float(total_w.item()) <= 0.0:
         return log_pred.new_zeros(())
-    return total / n_pairs
+    return total / total_w
 
 
 def train_epoch(state: TrainingState):
@@ -548,10 +613,18 @@ def train_epoch(state: TrainingState):
             pm_attr = getattr(query_batch, "prefix_mask", None)
             if pm_attr is not None:
                 prefix_mask = pm_attr.to(device).view(-1)
+            bgp_size = None
+            bs_attr = getattr(query_batch, "bgp_size", None)
+            if bs_attr is not None:
+                bgp_size = bs_attr.to(device).view(-1)
             ranking_term = pairwise_margin_ranking_loss(
                 log_cardinality_pred, log_true_cardinality, group_id,
                 prefix_mask=prefix_mask,
+                bgp_size=bgp_size,
                 margin=cfg.ranking_margin,
+                loss_type=cfg.ranking_loss_type,
+                size_exponent=cfg.ranking_size_weight_exponent,
+                top_strength=cfg.ranking_top_weight_strength,
             )
             loss = base_loss + cfg.ranking_loss_weight * ranking_term
             ranking_term_val = float(ranking_term.detach().item())
@@ -685,10 +758,18 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
                 pm_attr = getattr(query_batch, "prefix_mask", None)
                 if pm_attr is not None:
                     prefix_mask = pm_attr.to(device).view(-1)
+                bgp_size = None
+                bs_attr = getattr(query_batch, "bgp_size", None)
+                if bs_attr is not None:
+                    bgp_size = bs_attr.to(device).view(-1)
                 ranking_term = pairwise_margin_ranking_loss(
                     log_cardinality_pred, log_true_cardinality, group_id,
                     prefix_mask=prefix_mask,
+                    bgp_size=bgp_size,
                     margin=cfg.ranking_margin,
+                    loss_type=cfg.ranking_loss_type,
+                    size_exponent=cfg.ranking_size_weight_exponent,
+                    top_strength=cfg.ranking_top_weight_strength,
                 )
                 epoch_ranking_loss += float(ranking_term.item())
                 num_ranking_batches += 1

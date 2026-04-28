@@ -4,8 +4,8 @@ FICE estimates the cardinality of basic graph pattern (BGP) queries over RDF
 knowledge graphs. The model is *fully inductive*: it generalizes to graphs and
 relations not seen at training time, without retraining or finetuning. This
 repository contains the model implementation, training and evaluation
-pipelines, baseline adapters, and a C++ inference subsystem suitable for
-integration into a query optimizer.
+pipelines, and a C++ inference subsystem suitable for
+integration into a low-level query optimizer.
 
 ## Repository layout
 
@@ -36,9 +36,7 @@ pip install -e .
 pip install -e . --no-build-isolation
 ```
 
-The authoritative dependency list lives in `pyproject.toml`. Core stack:
-PyTorch 2.8, torch-geometric 2.7, geoopt (hyperbolic embeddings), pydantic,
-pyyaml, pandas, matplotlib.
+The full dependency list is in `pyproject.toml`.
 
 ## Datasets
 
@@ -49,7 +47,7 @@ ranking-query files for the datasets used in the paper are available at:
 
 > Datasets: `<RAW_DATA_LINK_PLACEHOLDER>`
 
-Download and unpack into `data/` so each dataset sits at
+Download and unpack into `data/` so each dataset is located at
 `data/<dataset_name>/raw/<file>.nt` and each query set at
 `data/<query_set_name>/raw/<file>.json`. The loaders generate a `processed/`
 sibling directory on first use; subsequent loads read from `processed/`.
@@ -67,7 +65,7 @@ data/<query_set_name>/
 
 ### Knowledge-graph format (N-Triples)
 
-Plain N-Triples: one triple per line, three space-separated tokens (subject,
+FICE uses N-Triples: one triple per line, three space-separated tokens (subject,
 predicate, object) terminated by a period. Subjects and predicates are IRIs in
 angle brackets; objects are IRIs or literals. Malformed lines are rejected.
 Example:
@@ -77,8 +75,7 @@ Example:
 ```
 
 On first load, the dataset class builds an entity-to-id map, a relation-to-id
-map, occurrence counts per entity and relation, and a meta-graph over
-relations (head-to-head, tail-to-tail, head-to-tail, tail-to-head edges).
+map, occurrence counts per entity and relation, and factor graph view.
 These artifacts are cached in `processed/`.
 
 ### Query format (JSON)
@@ -169,39 +166,25 @@ python scripts/train.py --config configs/train_local.yaml
 |---|---|
 | `configs/train_local.yaml` | Single-KG sanity check; small batch, few epochs. |
 | `configs/train_full.yaml` | Multi-KG training over all eight query shapes. |
-| `configs/train_cluster.yaml` | Full-scale multi-KG training (LUBM, SWDF, Wikidata, …). |
 | `configs/train_ranking_inductive.yaml` | Ranking-loss training with inductive validation on a held-out KG. |
 | `configs/train_ranking_test.yaml` | Minimal ranking example. |
 
-The full config schema is defined in `scripts/utils/config.py`. The fields
-most likely to be tuned:
-
-- `model` — `FICE`, `FiceBinary`, or `FiceIndependent`.
-- `embedding_space` — geometric space for entity / relation embeddings:
-  `euclidean`, `box`, `gaussian`, `hyperbolic`, `hgcn`, or `product`
-  (Euclidean × Torus).
-- `embedding_dim`, `n_embedding_layers` — embedding capacity.
-- `Conditioning` — how occurrence counts feed the GNN: `false`, `seed only`,
-  `all`.
-- `entity_gnn`, `relation_gnn`, `query_gnn` — message-passing block selection
-  (GINE, GAT, DeepSet, GPS) plus skip / norm / dropout.
-- `ranking_loss` — boolean; requires a ranking-format query file.
-- `prediction_mode` — `log-cardinality` or `log-selectivity`.
-- `epochs`, `learning_rate`, `wandb`.
+The full config schema is defined in `scripts/utils/config.py`. `configs/train_local.yaml` has a
+short explanation for every parameter.
 
 Each run produces a timestamped directory under `output/`:
 
 ```
 output/<run_name>/
-  checkpoints/best.pt           best validation checkpoint
+  checkpoints/best.pt           best validation checkpoints
   logs/*.csv                    train/test metrics, per-graph and per-query-type breakdowns
   config.yaml                   snapshot of the resolved configuration
 ```
 
 ## Evaluation
 
-The unified evaluation pipeline ingests prediction files from FICE and the
-baselines, normalizes them through per-method adapters, and emits unified
+The evaluation pipeline expects prediction files from FICE and the
+baselines, normalizes them through per-method adapters, and creates
 prediction tables, aggregated metrics, and plots.
 
 ```sh
@@ -224,36 +207,19 @@ Outputs (under `--out`):
   p90_q, p95_q, p99_q, max_q, count, log_pearson, zero_pred_rate`.
 - `plots/` — CCDFs, q-error boxplots, signed-error boxplots, scatter panels.
 
-Q-error per query (`scripts/evaluation/metrics.py`):
 
-```
-q_error = max(prediction, ε) / max(true_value, ε)
-        and equivalently flipped, taking the max of the two ratios.
-```
-with `ε = 1`.
-
-Companion runners:
+The ablations and transductive runs can be evaluated using:
 
 - `scripts/evaluation/run_ablation.py` — FICE vs FICE-without-embeddings vs
   FICE-without-occurrences on the held-out KG.
 - `scripts/evaluation/run_transductive.py` — each method evaluated on its own
   training KGs under a deterministic leave-one-out mapping.
 
-Per-baseline adapters live in `scripts/evaluation/adapters/`. Each adapter
-normalizes a baseline's native prediction format into the unified long-form
-schema. Adding a new baseline is one new adapter.
 
-## Plots and tables
-
-CCDFs and boxplots are produced as part of `run.py`. To re-render from a
-saved `unified_predictions.csv`, the helpers in
-`scripts/evaluation/plotting.py` (`ccdf_overall`, `ccdf_per_graph`,
-`boxplots_overall`, `boxplots_per_graph`, `boxplot_by_query_type`,
-`signed_boxplot_overall`, `scatter_overall_panel`) can be called directly.
 
 ### Runtime plots
 
-`scripts/evaluation/run_runtime_plot.py` consumes per-method runtime CSVs
+`scripts/evaluation/run_runtime_plot.py` expects per-method runtime CSVs
 (columns: `n_triple_pattern, runtime` in microseconds) and emits a boxplot,
 a median-with-IQR line plot, and a summary CSV.
 
@@ -267,17 +233,6 @@ python scripts/evaluation/run_runtime_plot.py \
 
 Per-method runtime CSVs are produced by the inference subsystem (see below).
 
-### LaTeX comparison table
-
-```sh
-python scripts/evaluation/make_latex_table.py \
-    output/evaluation/tables/per_method_graph.csv \
-    --overall output/evaluation/tables/per_method.csv \
-    --out output/evaluation/tables/comparison.tex
-```
-
-Rows are KGs, columns are methods, cells report median q-error and log-Pearson
-correlation; the best method per row is bolded.
 
 ## Inference subsystem (`inference/`)
 
@@ -290,10 +245,8 @@ C++ API surface, and the runtime-measurement workflow are documented in
 
 ## Reproducing paper results
 
-- Raw KG and query datasets: `<RAW_DATA_LINK_PLACEHOLDER>`
+- Raw KG and query datasets: [Dataset Link](https://zenodo.org/records/19854409?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjIxNTdhOTA1LWRhYTItNDJkYi04YzM5LWNmMDRmYjljODI3MCIsImRhdGEiOnt9LCJyYW5kb20iOiI2ODdkYjkzNDA3Y2ZhMTkzYzFhYzA3Njc3ODRmNDA5MiJ9.GdKHwm47R90cA0P0PWT83QMyXwbmP1dbfv4z5XcMj1T2RnheuU2Ze9El-uxAp13hSmhEs1L5s8N1mA_-BynVYw)
 - Pre-computed prediction artifacts used in the paper (corresponds to
   `output/final/` referenced by the evaluation scripts):
-  `<RESULTS_LINK_PLACEHOLDER>`
+  `[Results Link](https://zenodo.org/records/19854794?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjFiYWQ5NTc2LWE2Y2YtNGY0My1iZGVmLTY1MzdlNmQ2ODg3YiIsImRhdGEiOnt9LCJyYW5kb20iOiJlNzBhYzk3M2FhZmE2NzJlM2NjYzlhNDc1MzU3MDFiMSJ9.9KDTlA-LG8CLP7gqAcExr_CWpz3Th9huKj0hyJVUQNyT7xalnBVYCu5dky38L5ivjdD6nPpDGleQK4qW4BcYew)
 
-With both artifacts in place, the unified evaluation command above
-reproduces every table and figure in the paper end to end.

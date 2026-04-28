@@ -74,10 +74,13 @@ class Config(BaseSettings):
     disable_embedding_gnn: bool = False  # If True, skip entity/relation GNN; query GNN sees only count features
 
     # Ranking loss over sub-BGPs of the same parent (requires a ranking query set)
-    ranking_loss: bool = False  # Enable pairwise-margin ranking loss across sub-BGPs per group
+    ranking_loss: bool = False  # Enable pairwise ranking loss across sub-BGPs per group
     ranking_loss_weight: float = 1.0  # Weight of the ranking term relative to the log-cardinality loss
-    ranking_margin: float = 0.5  # Margin (in log-cardinality units) for pairwise-margin loss
+    ranking_margin: float = 0.5  # Margin (in log-cardinality units), used only when ranking_loss_type == "hinge"
     ranking_group_batch: int = 4  # Parent groups per training step when ranking is enabled
+    ranking_loss_type: Literal['hinge', 'ranknet'] = 'hinge'  # Per-pair loss form
+    ranking_size_weight_exponent: float = 0.0  # Per-pair weight (size_i*size_j)^(exp/2); 0 disables
+    ranking_top_weight_strength: float = 0.0  # Per-pair weight 1/(1 + s*min(rank_i,rank_j)); 0 disables
 
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()

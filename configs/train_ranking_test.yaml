@@ -1,4 +1,4 @@
-# Smoke-test config for the ranking-loss prototype.
+# test config for the ranking-loss prototype.
 # Uses the 100-parent dbpedia100k path ranking dataset built in
 # data/dbpedia100k_path_queries_ranking/raw/queries.json.
 data:
@@ -69,10 +69,13 @@ count_features: "raw"
 disable_embedding_gnn: false
 
 # Ranking-loss prototype
-ranking_loss: true
-ranking_loss_weight: 1.0
-ranking_margin: 0
-ranking_group_batch: 2
+ranking_loss: true # whether to use the ranking loss
+ranking_loss_weight: 1.0 # weight of ranking loss vs. cardinality regression loss
+ranking_margin: 0 # keep at 0
+ranking_group_batch: 2 # how many top-level queries to use per batch
+ranking_loss_type: ranknet
+ranking_size_weight_exponent: 1.0
+ranking_top_weight_strength: 1.0
 
 entity_gnn:
   message_func: "gine"
