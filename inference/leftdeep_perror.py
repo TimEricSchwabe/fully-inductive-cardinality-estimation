@@ -8,8 +8,8 @@ under four estimators and under true cardinalities:
 
   - fice        : raw FICE prediction
   - fice_shift  : FICE * 10**beta  (beta read from plans.tsv)
-  - geom        : sqrt(fice * qlever_est)
-  - qlever      : QLever's per-subquery estimated_size
+  - geom        : sqrt(fice * endpoint_est)
+  - endpoint    : the endpoint's per-subquery estimated_size
   - true        : measured true cardinality
 
 Per query we report, for each estimator e:
@@ -105,7 +105,7 @@ def load_shape(
     plans = pd.read_csv(shape_dir / "plans.tsv", sep="\t", usecols=["beta_used"])
     beta = float(plans["beta_used"].iloc[0])
 
-    sub = sub[(sub["true_card"] >= 0) & np.isfinite(sub["qlever_est_card"])]
+    sub = sub[(sub["true_card"] >= 0) & np.isfinite(sub["endpoint_est_card"])]
     shift = 10.0 ** beta
 
     queries: list[dict] = []
@@ -120,12 +120,12 @@ def load_shape(
 
         pred = dict(zip(masks, grp["pred_card"].astype(float).tolist()))
         true = dict(zip(masks, grp["true_card"].astype(float).tolist()))
-        qle = dict(zip(masks, grp["qlever_est_card"].astype(float).tolist()))
+        qle = dict(zip(masks, grp["endpoint_est_card"].astype(float).tolist()))
 
         fice = {m: max(pred[m], 1.0) for m in masks}
         fice_shift = {m: fice[m] * shift for m in masks}
-        qlever = {m: max(qle[m], 1.0) for m in masks}
-        geom = {m: float(np.sqrt(fice[m] * qlever[m])) for m in masks}
+        endpoint = {m: max(qle[m], 1.0) for m in masks}
+        geom = {m: float(np.sqrt(fice[m] * endpoint[m])) for m in masks}
         true_c = {m: max(true[m], 1.0) for m in masks}
 
         queries.append({
@@ -136,7 +136,7 @@ def load_shape(
                 "fice": fice,
                 "fice_shift": fice_shift,
                 "geom": geom,
-                "qlever": qlever,
+                "endpoint": endpoint,
                 "true": true_c,
             },
         })
@@ -147,7 +147,7 @@ def load_shape(
 # Per-query evaluation.
 # ---------------------------------------------------------------------------
 
-ESTIMATORS = ("fice", "fice_shift", "geom", "qlever")
+ESTIMATORS = ("fice", "fice_shift", "geom", "endpoint")
 
 
 def eval_query(q: dict) -> dict | None:
@@ -229,8 +229,8 @@ def _fmt(x: float, ndigits: int = 2) -> str:
 LATEX_LABELS = {
     "fice": "FICE",
     "fice_shift": r"FICE$\cdot 10^{\beta}$",
-    "geom": r"geom(FICE,QLever)",
-    "qlever": "QLever",
+    "geom": r"geom(FICE,endpoint)",
+    "endpoint": "endpoint",
 }
 
 

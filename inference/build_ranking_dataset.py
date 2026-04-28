@@ -13,9 +13,9 @@ For each parent query:
      ``--max-siblings-per-step``, record all candidates with
      ``prefix_mask = current``. Pick one uniformly, continue to the
      next depth until the full BGP is reached.
-  3. For each kept sub-BGP, query a QLever endpoint for the true
-     cardinality (and QLever's own estimate, free from the same
-     response).
+  3. For each kept sub-BGP, query the configured SPARQL endpoint for
+     the true cardinality (and the endpoint's own estimate when
+     available).
   4. Stream a record per parent to ``<out>/queries.jsonl`` (resumable)
      and repack to a JSON array ``<out>/queries.json`` at the end so
      that ``NTRankingQueries`` can load it.
@@ -28,7 +28,7 @@ Example:
     .venv/bin/python inference/build_ranking_dataset.py \\
         --raw data/dbpedia100k_path_queries/raw/59898644 \\
         --out data/dbpedia100k_path_queries_ranking/raw \\
-        --qlever-url http://localhost:7020/ \\
+        --endpoint-url http://localhost:7020/ \\
         --max-queries 100 \\
         --max-siblings-per-step 6 \\
         --workers 8
@@ -51,6 +51,12 @@ from urllib.request import Request, urlopen
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+import sys as _sys
+_sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _endpoint_local import get_endpoint_action  # noqa: E402
+
+_ENDPOINT_ACTION = get_endpoint_action()
 
 
 # ---------------------------------------------------------------------------
@@ -148,18 +154,18 @@ def sample_chain(n, adj, max_siblings_per_step, rng):
 
 
 # ---------------------------------------------------------------------------
-# QLever COUNT(*) via qlever_json_export (send=0 avoids materialising results)
+# Endpoint COUNT(*) (send=0 avoids materialising results)
 # ---------------------------------------------------------------------------
 
 def triples_to_bgp(triples):
     return " .\n  ".join(f"{s} {p} {o}" for s, p, o in triples)
 
 
-def qlever_count(qlever_url, triples, timeout=120):
-    """Return (true_card, qlever_est_card). Raises on HTTP/network failure."""
+def endpoint_count(endpoint_url, triples, timeout=120):
+    """Return (true_card, endpoint_est_card). Raises on HTTP/network failure."""
     sparql = f"SELECT * WHERE {{\n  {triples_to_bgp(triples)}\n}}"
-    url = qlever_url.rstrip("/") + "/?" + urlencode({
-        "query": sparql, "action": "qlever_json_export", "send": "0"})
+    url = endpoint_url.rstrip("/") + "/?" + urlencode({
+        "query": sparql, "action": _ENDPOINT_ACTION, "send": "0"})
     req = Request(url)
     with urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
@@ -176,7 +182,7 @@ def qlever_count(qlever_url, triples, timeout=120):
 def process_parent(
     qi: int,
     q: dict,
-    qlever_url: str,
+    endpoint_url: str,
     max_siblings_per_step: int,
     max_triples: int,
     workers: int,
@@ -203,9 +209,9 @@ def process_parent(
     def _call(m):
         sub = [triples[i] for i in range(n) if m & (1 << i)]
         try:
-            true_c, est_c = qlever_count(qlever_url, sub, timeout=timeout)
+            true_c, est_c = endpoint_count(endpoint_url, sub, timeout=timeout)
         except (HTTPError, URLError, TimeoutError, Exception) as e:
-            logger.warning("qi=%d mask=%d QLever failed: %s", qi, m, e)
+            logger.warning("qi=%d mask=%d endpoint failed: %s", qi, m, e)
             return m, sub, -1, float("nan")
         return m, sub, true_c, est_c
 
@@ -220,7 +226,7 @@ def process_parent(
                 sub_records.append({
                     "triples": [list(t) for t in sub],
                     "y": true_c,
-                    "qlever_est": est_c,
+                    "endpoint_estimate": est_c,
                     "mask": int(m),
                     "prefix_mask": int(prefix_by_mask[m]),
                     "size": bin(m).count("1"),
@@ -233,7 +239,7 @@ def process_parent(
             sub_records.append({
                 "triples": [list(t) for t in sub],
                 "y": true_c,
-                "qlever_est": est_c,
+                "endpoint_estimate": est_c,
                 "mask": int(m),
                 "prefix_mask": int(prefix_by_mask[m]),
                 "size": bin(m).count("1"),
@@ -263,7 +269,7 @@ def parse_args():
                     help="Path to existing raw queries JSON (list of {triples,y}).")
     ap.add_argument("--out", type=Path, required=True,
                     help="Output directory for queries.jsonl (+ queries.json).")
-    ap.add_argument("--qlever-url", default="http://localhost:7020/")
+    ap.add_argument("--endpoint-url", default="http://localhost:7020/")
     ap.add_argument("--max-queries", type=int, default=100,
                     help="Cap on parent queries to process (random subsample).")
     ap.add_argument("--max-siblings-per-step", type=int, default=6,
@@ -272,9 +278,9 @@ def parse_args():
     ap.add_argument("--max-triples", type=int, default=10,
                     help="Skip parents with more triples than this.")
     ap.add_argument("--workers", type=int, default=8,
-                    help="Concurrent QLever calls per parent.")
+                    help="Concurrent endpoint calls per parent.")
     ap.add_argument("--timeout", type=int, default=120,
-                    help="QLever request timeout (s).")
+                    help="Endpoint request timeout (s).")
     ap.add_argument("--seed", type=int, default=42)
     return ap.parse_args()
 
@@ -320,7 +326,7 @@ def main():
                 continue
             parent_rng = random.Random(args.seed * 1_000_003 + qi)
             rec = process_parent(
-                qi, raw_queries[qi], args.qlever_url,
+                qi, raw_queries[qi], args.endpoint_url,
                 args.max_siblings_per_step, args.max_triples,
                 args.workers, parent_rng, args.timeout,
             )

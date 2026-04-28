@@ -2,9 +2,9 @@
 
 Produces two figures per run directory:
   1. boxplot_perror.pdf / .png — grouped boxplots of log10(p-error), x=shape,
-     one box per estimator (FICE, geom, QLever).
+     one box per estimator (FICE, geom, endpoint).
   2. hist_perror.pdf / .png    — overlaid histogram of log10(p-error) for
-     FICE vs QLever, pooled across shapes.
+     FICE vs endpoint, pooled across shapes.
 
 Usage (from repo root):
     .venv/bin/python inference/plot_perror.py \\
@@ -20,9 +20,9 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-ESTIMATORS = ("fice", "geom", "qlever")
-EST_LABELS = {"fice": "FICE", "geom": "geom(FICE,QLever)", "qlever": "QLever"}
-EST_COLORS = {"fice": "#2b7bba", "geom": "#6aa84f", "qlever": "#cc4125"}
+ESTIMATORS = ("fice", "geom", "endpoint")
+EST_LABELS = {"fice": "FICE", "geom": "geom(FICE,endpoint)", "endpoint": "endpoint"}
+EST_COLORS = {"fice": "#2b7bba", "geom": "#6aa84f", "endpoint": "#cc4125"}
 SHAPES = ("star", "path", "cycle", "diamond", "flower", "binary_tree", "path_star_ends")
 
 
@@ -83,25 +83,25 @@ def boxplot_run(per_query: pd.DataFrame, title: str, out_path: Path) -> None:
 
 
 def hist_run(per_query: pd.DataFrame, title: str, out_path: Path) -> None:
-    """Two-panel: pooled log10(p-error) histogram for FICE vs QLever."""
+    """Two-panel: pooled log10(p-error) histogram for FICE vs endpoint."""
     fig, ax = plt.subplots(figsize=(8, 4.5))
 
     fice = _plog(per_query["p_error_fice"].values)
-    qlever = _plog(per_query["p_error_qlever"].values)
+    endpoint = _plog(per_query["p_error_endpoint"].values)
 
     lo = 0.0
-    hi = max(float(np.nanmax(fice)), float(np.nanmax(qlever))) + 0.1
+    hi = max(float(np.nanmax(fice)), float(np.nanmax(endpoint))) + 0.1
     bins = np.linspace(lo, hi, 41)
 
     ax.hist(fice, bins=bins, alpha=0.55, color=EST_COLORS["fice"],
             label=f"FICE (geomean={10**np.mean(fice):.2f}, median={10**np.median(fice):.2f})",
             edgecolor="black", linewidth=0.3)
-    ax.hist(qlever, bins=bins, alpha=0.55, color=EST_COLORS["qlever"],
-            label=f"QLever (geomean={10**np.mean(qlever):.2f}, median={10**np.median(qlever):.2f})",
+    ax.hist(endpoint, bins=bins, alpha=0.55, color=EST_COLORS["endpoint"],
+            label=f"endpoint (geomean={10**np.mean(endpoint):.2f}, median={10**np.median(endpoint):.2f})",
             edgecolor="black", linewidth=0.3)
 
     ax.axvline(np.mean(fice), color=EST_COLORS["fice"], linestyle=":", linewidth=1.2)
-    ax.axvline(np.mean(qlever), color=EST_COLORS["qlever"], linestyle=":", linewidth=1.2)
+    ax.axvline(np.mean(endpoint), color=EST_COLORS["endpoint"], linestyle=":", linewidth=1.2)
 
     ax.set_xlabel(r"$\log_{10}$(p-error)  (0 = optimal)")
     ax.set_ylabel("# queries")
@@ -171,15 +171,15 @@ def main():
         hist_run(df, f"p-error distribution (pooled) — {lbl}", d / "hist_perror")
         print(f"wrote {d}/boxplot_perror.{{pdf,png}} and hist_perror.{{pdf,png}}")
 
-    # Cross-run comparison: FICE across runs vs QLever (same)
+    # Cross-run comparison: FICE across runs vs endpoint (same)
     if len(per_run) >= 2:
         hist_compare_runs(per_run, est="fice",
                           title="FICE p-error — cross-run comparison",
                           out_path=args.out / "hist_fice_crossrun")
-        hist_compare_runs(per_run, est="qlever",
-                          title="QLever p-error — cross-run (should be ~identical)",
-                          out_path=args.out / "hist_qlever_crossrun")
-        print(f"wrote {args.out}/hist_{{fice,qlever}}_crossrun.{{pdf,png}}")
+        hist_compare_runs(per_run, est="endpoint",
+                          title="endpoint p-error — cross-run (should be ~identical)",
+                          out_path=args.out / "hist_endpoint_crossrun")
+        print(f"wrote {args.out}/hist_{{fice,endpoint}}_crossrun.{{pdf,png}}")
 
 
 if __name__ == "__main__":

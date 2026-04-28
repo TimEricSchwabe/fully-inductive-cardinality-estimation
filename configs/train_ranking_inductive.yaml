@@ -21,8 +21,8 @@
 # Inductive validation: 8 dbpedia100k_<shape>_queries_ranking sets (rank_v3
 # datasets, 3000 parents each except cycle which is 1010).
 #
-# Hyperparameters mirror the dbpedia100k rank_v3 run that beat QLever on
-# geomean p-error (1.63 vs 1.82); only the data scale and KG mix differ.
+# Hyperparameters mirror the dbpedia100k ranking-v3 run; only the data
+# scale and KG mix differ.
 
 data:
 

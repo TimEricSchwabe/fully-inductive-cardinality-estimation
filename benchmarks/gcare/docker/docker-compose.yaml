@@ -12,9 +12,9 @@ services:
       - DATASET_TYPE=path
       - NUM_QUERIES=500
     volumes:
-      # - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/data/swdf_path_queries/raw/:/usr/src/app/gcare/data/queryset/swdf/
-      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/queryset/:/usr/src/app/gcare/data/queryset/
-      - /Users/lukas/Workspace/Uni/BachelorsThesis/FICE/benchmarks/gcare/gcare/data/dataset/:/usr/src/app/gcare/data/dataset/
+      # - /path/to/FICE/data/swdf_path_queries/raw/:/usr/src/app/gcare/data/queryset/swdf/
+      - /path/to/FICE/benchmarks/gcare/gcare/data/queryset/:/usr/src/app/gcare/data/queryset/
+      - /path/to/FICE/benchmarks/gcare/gcare/data/dataset/:/usr/src/app/gcare/data/dataset/
       - ./results/:/usr/src/app/results/
     command: ["sh", "-c", "python3 ./build_statistics.py && python3 ./run_estimation.py"]
 

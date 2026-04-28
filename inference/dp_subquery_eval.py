@@ -1,22 +1,18 @@
-"""DP-style subquery evaluation: model prediction vs QLever ground truth.
+"""DP-style subquery evaluation: model prediction vs SPARQL endpoint ground truth.
 
 For each input BGP query we:
   1. Enumerate all connected subsets of its triples (join graph: triples share a variable).
   2. For every subset, compute predicted cardinality via the TorchScript model and
-     true cardinality via a local QLever SPARQL endpoint (COUNT(*)).
+     true cardinality via a local SPARQL endpoint (COUNT(*)).
   3. Run DP over the subsets with c-out cost to pick the best plan. c-out of the
      plan is reported twice — once using predicted sizes (the planner's view) and
      once by rebuilding the same plan with true sizes (what actually happens).
-
-uv run python ../inference/dp_subquery_eval.py --config ../inference/inference_config.yaml --queries ../data/fb237_v4_star_queries/raw/fb237_v4_star_queries --qlever-url
-   http://localhost:7020/ --output-dir ../output/dp_subquery/ --max-queries 30 2>&1 | tail -60     
-
 
 Usage (from scripts/):
     uv run python ../inference/dp_subquery_eval.py \
         --config ../inference/inference_config.yaml \
         --queries ../data/fb237_v4_star_queries/raw/fb237_v4_star_queries \
-        --qlever-url http://localhost:7020/ \
+        --endpoint-url http://localhost:7020/ \
         --output-dir ../output/dp_subquery/ \
         --max-queries 200
 """
@@ -41,6 +37,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
 logger = logging.getLogger(__name__)
+
+from _endpoint_local import get_endpoint_action  # noqa: E402
+
+_ENDPOINT_ACTION = get_endpoint_action()
 
 
 # ---------------------------------------------------------------------------
@@ -142,45 +142,45 @@ def build_query_tensors(sub_triples, entity_emb_np, relation_emb_np,
 
 
 # ---------------------------------------------------------------------------
-# QLever COUNT(*)
+# Endpoint COUNT(*)
 # ---------------------------------------------------------------------------
 
 def triples_to_bgp(triples):
     return " .\n  ".join(f"{s} {p} {o}" for s, p, o in triples)
 
 
-def qlever_bgp_stats(qlever_url, triples, timeout=120):
-    """Run `SELECT * WHERE { BGP }` via qlever_json_export (send=0) and return
-    (qlever_estimated_card, true_card) from the root of the execution tree.
+def endpoint_bgp_stats(endpoint_url, triples, timeout=120):
+    """Run `SELECT * WHERE { BGP }` (send=0) and return
+    (endpoint_estimated_card, true_card) from the root of the execution tree.
 
     send=0 skips result materialization to the response, keeping the call cheap
     even for large BGP results.
     """
     sparql = f"SELECT * WHERE {{\n  {triples_to_bgp(triples)}\n}}"
-    url = qlever_url.rstrip("/") + "/?" + urlencode({
-        "query": sparql, "action": "qlever_json_export", "send": "0"})
+    url = endpoint_url.rstrip("/") + "/?" + urlencode({
+        "query": sparql, "action": _ENDPOINT_ACTION, "send": "0"})
     req = Request(url)
     try:
         with urlopen(req, timeout=timeout) as resp:
             payload = json.loads(resp.read().decode("utf-8"))
     except HTTPError as e:
         body = e.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"QLever HTTP {e.code} for BGP:\n{sparql}\n-> {body}")
+        raise RuntimeError(f"Endpoint HTTP {e.code} for BGP:\n{sparql}\n-> {body}")
     tree = payload.get("runtimeInformation", {}).get("query_execution_tree")
     if tree is None:
         return float("nan"), 0
     return float(tree.get("estimated_size", 0)), int(tree.get("result_rows", 0))
 
 
-def qlever_plan_cout(qlever_url, triples, timeout=120):
+def endpoint_plan_cout(endpoint_url, triples, timeout=120):
     """Run `SELECT * WHERE { BGP }` and sum estimated_size / result_rows over
-    non-scan operations (Joins, Filters, ...) of QLever's chosen plan.
+    non-scan operations (Joins, Filters, ...) of the endpoint's chosen plan.
 
     Returns (cout_pred, cout_true, n_ops). Base IndexScans are excluded.
     """
     sparql = f"SELECT * WHERE {{\n  {triples_to_bgp(triples)}\n}}"
-    url = qlever_url.rstrip("/") + "/?" + urlencode({
-        "query": sparql, "action": "qlever_json_export", "send": "0"})
+    url = endpoint_url.rstrip("/") + "/?" + urlencode({
+        "query": sparql, "action": _ENDPOINT_ACTION, "send": "0"})
     req = Request(url)
     with urlopen(req, timeout=timeout) as resp:
         payload = json.loads(resp.read().decode("utf-8"))
@@ -296,14 +296,14 @@ def make_shift_card(pred_card, beta):
     return {m: float(c) * factor for m, c in pred_card.items()}
 
 
-def make_geom_card(pred_card, qlever_est):
-    """Per-subquery geometric mean of FICE and QLever estimates:
-    sqrt(max(fice, 1) * max(qlever, 1)).  Undefined QLever values fall back
-    to FICE; undefined FICE values fall back to QLever.
+def make_geom_card(pred_card, endpoint_est):
+    """Per-subquery geometric mean of FICE and endpoint estimates:
+    sqrt(max(fice, 1) * max(endpoint, 1)).  Undefined endpoint values fall
+    back to FICE; undefined FICE values fall back to the endpoint.
     """
     out = {}
     for m, fice in pred_card.items():
-        q = qlever_est.get(m, float("nan"))
+        q = endpoint_est.get(m, float("nan"))
         f_ok = np.isfinite(fice) and fice > 0
         q_ok = np.isfinite(q) and q > 0
         if f_ok and q_ok:
@@ -434,7 +434,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True)
     ap.add_argument("--queries", required=True)
-    ap.add_argument("--qlever-url", default="http://localhost:7020/")
+    ap.add_argument("--endpoint-url", default="http://localhost:7020/")
     ap.add_argument("--output-dir", required=True)
     ap.add_argument("--max-queries", type=int, default=200)
     ap.add_argument("--max-triples", type=int, default=10,
@@ -529,9 +529,9 @@ def main():
     plans_jsonl = output_dir / "plans_trees.jsonl"
 
     # Each combo is a (column_name, planner, cost, estimator) tuple.
-    # `estimator` ∈ {"fice", "fice_shift", "fice_qlever_geom", "qlever"}.
+    # `estimator` ∈ {"fice", "fice_shift", "fice_endpoint_geom", "endpoint"}.
     # The base set mirrors the existing --planners × --costs grid; the
-    # "extra" set adds fice_shift and fice_qlever_geom variants for DP and
+    # "extra" set adds fice_shift and fice_endpoint_geom variants for DP and
     # greedy_pair only (per user request).
     combo_specs = []
     for p, c in combos:
@@ -540,25 +540,25 @@ def main():
 
     EXTRA_COMBOS = [
         ("dp_shift",           "dp",          "cout", "fice_shift"),
-        ("dp_geom",            "dp",          "cout", "fice_qlever_geom"),
+        ("dp_geom",            "dp",          "cout", "fice_endpoint_geom"),
         ("greedy_pair_shift",  "greedy_pair", "cout", "fice_shift"),
-        ("greedy_pair_geom",   "greedy_pair", "cout", "fice_qlever_geom"),
+        ("greedy_pair_geom",   "greedy_pair", "cout", "fice_endpoint_geom"),
     ]
     combo_specs += EXTRA_COMBOS
 
-    # Apples-to-apples: left-linear greedy driven by QLever's per-subquery
+    # Apples-to-apples: left-linear greedy driven by the endpoint's per-subquery
     # estimates (same planner, different estimator).
-    QLEVER_GREEDY_COL = "qlever_greedy"
-    combo_specs.append((QLEVER_GREEDY_COL, "greedy", "cout", "qlever"))
+    ENDPOINT_GREEDY_COL = "endpoint_greedy"
+    combo_specs.append((ENDPOINT_GREEDY_COL, "greedy", "cout", "endpoint"))
 
     combo_cols = [c[0] for c in combo_specs]
 
-    # ---- Phase 1: measurement pass (FICE preds + QLever stats + QLever plan) ----
-    logger.info("Phase 1/2: measuring subqueries (FICE + QLever) ...")
+    # ---- Phase 1: measurement pass (FICE preds + endpoint stats + endpoint plan) ----
+    logger.info("Phase 1/2: measuring subqueries (FICE + endpoint) ...")
     query_records = []  # in-memory cache for phase 2
     with open(sub_tsv, "w") as fs:
         fs.write("query_idx\tmask\tn_triples\tpred_log\tpred_card\ttrue_card\t"
-                 "qlever_est_card\tfice_q_error\tqlever_q_error\n")
+                 "endpoint_est_card\tfice_q_error\tendpoint_q_error\n")
         for qi, q in enumerate(queries):
             triples = [tuple(t) for t in q["triples"]]
             n = len(triples)
@@ -578,20 +578,20 @@ def main():
                             f"({n} triples, {len(masks)} connected subsets)")
                 continue
 
-            pred_card, true_card, qlever_est = {}, {}, {}
+            pred_card, true_card, endpoint_est = {}, {}, {}
             failed = 0
             for m in masks:
                 sub = [triples[i] for i in range(n) if m & (1 << i)]
                 plog = predict_log(sub)
                 pc = float(np.expm1(max(plog, 0.0)))
                 try:
-                    qe_est, tc = qlever_bgp_stats(args.qlever_url, sub)
+                    qe_est, tc = endpoint_bgp_stats(args.endpoint_url, sub)
                 except Exception:
                     failed += 1
                     qe_est, tc = float("nan"), -1
                 pred_card[m] = pc
                 true_card[m] = tc
-                qlever_est[m] = qe_est
+                endpoint_est[m] = qe_est
                 if tc < 0 or not np.isfinite(qe_est):
                     fice_qe, ql_qe = float("nan"), float("nan")
                 else:
@@ -604,12 +604,12 @@ def main():
                          f"{fice_qe:.4f}\t{ql_qe:.4f}\n")
             if failed:
                 logger.info(f"  [{qi}] {failed}/{len(masks)} subqueries failed "
-                            f"(likely QLever OOM)")
+                            f"(likely endpoint OOM)")
 
             try:
-                ql_pred, ql_true, ql_ops = qlever_plan_cout(args.qlever_url, triples)
+                ql_pred, ql_true, ql_ops = endpoint_plan_cout(args.endpoint_url, triples)
             except Exception as e:
-                logger.warning(f"[{qi}] qlever plan fetch failed: {e}")
+                logger.warning(f"[{qi}] endpoint plan fetch failed: {e}")
                 ql_pred, ql_true, ql_ops = float("nan"), float("nan"), 0
 
             full_mask = 0
@@ -620,7 +620,7 @@ def main():
                 "qi": qi, "n": n, "triples": triples, "adj": adj,
                 "masks": masks, "full_mask": full_mask,
                 "pred_card": pred_card, "true_card": true_card,
-                "qlever_est": qlever_est,
+                "endpoint_est": endpoint_est,
                 "ql_pred_cout": ql_pred, "ql_true_cout": ql_true,
                 "ql_n_ops": ql_ops,
                 "phase1_elapsed": time.perf_counter() - t0,
@@ -648,7 +648,7 @@ def main():
         plan_cols += [f"{col}_cout_pred", f"{col}_cout_true"]
     # Legacy columns for back-compat with older summary readers.
     plan_cols += ["cout_pred", "cout_true_same_plan", "cout_q_error",
-                  "qlever_cout_pred", "qlever_cout_true", "qlever_n_ops",
+                  "endpoint_cout_pred", "endpoint_cout_true", "endpoint_n_ops",
                   "elapsed_s"]
     with open(plan_tsv, "w") as fp, open(plans_jsonl, "w") as fj:
         fp.write("\t".join(plan_cols) + "\n")
@@ -657,21 +657,21 @@ def main():
             qi, n, adj, masks = rec["qi"], rec["n"], rec["adj"], rec["masks"]
             pred_card = rec["pred_card"]
             true_card = rec["true_card"]
-            qlever_est = rec["qlever_est"]
+            endpoint_est = rec["endpoint_est"]
             full_mask = rec["full_mask"]
 
             # Estimator card dicts.
             fice_card = pred_card
             fice_shift_card = make_shift_card(pred_card, beta)
-            fice_geom_card = make_geom_card(pred_card, qlever_est)
-            qlever_card = {m: (qlever_est[m] if np.isfinite(qlever_est[m])
+            fice_geom_card = make_geom_card(pred_card, endpoint_est)
+            endpoint_card = {m: (endpoint_est[m] if np.isfinite(endpoint_est[m])
                                else float("inf"))
                            for m in masks}
             est_cards = {
                 "fice":             fice_card,
                 "fice_shift":       fice_shift_card,
-                "fice_qlever_geom": fice_geom_card,
-                "qlever":           qlever_card,
+                "fice_endpoint_geom": fice_geom_card,
+                "endpoint":           endpoint_card,
             }
 
             combo_results = {}
@@ -730,25 +730,25 @@ def main():
     sub_all = pd.read_csv(sub_tsv, sep="\t")
     plan_all = pd.read_csv(plan_tsv, sep="\t")
 
-    # Drop subquery rows where QLever failed (true_card=-1 or NaN estimate).
+    # Drop subquery rows where endpoint failed (true_card=-1 or NaN estimate).
     sub = sub_all[(sub_all["true_card"] >= 0) &
-                  np.isfinite(sub_all["qlever_est_card"])].copy()
+                  np.isfinite(sub_all["endpoint_est_card"])].copy()
     dropped_sub = len(sub_all) - len(sub)
     if dropped_sub:
         logger.info(f"  Dropped {dropped_sub}/{len(sub_all)} subquery rows "
-                    f"with failed QLever calls")
-    # Drop full-query plan rows with missing QLever data.
+                    f"with failed endpoint calls")
+    # Drop full-query plan rows with missing endpoint data.
     plan = plan_all[(plan_all["true_root_card"] >= 0) &
                     np.isfinite(plan_all["cout_true_same_plan"])].copy()
     dropped_plan = len(plan_all) - len(plan)
     if dropped_plan:
         logger.info(f"  Dropped {dropped_plan}/{len(plan_all)} plan rows "
-                    f"with failed QLever calls")
+                    f"with failed endpoint calls")
 
     def pct(x, p): return np.nanpercentile(x, p)
 
-    print("\n===== SUBQUERY Q-ERROR: FICE vs QLever's own estimator =====")
-    for name, col in [("FICE", "fice_q_error"), ("QLever", "qlever_q_error")]:
+    print("\n===== SUBQUERY Q-ERROR: FICE vs the endpoint's own estimator =====")
+    for name, col in [("FICE", "fice_q_error"), ("endpoint", "endpoint_q_error")]:
         qe = sub[col].values
         print(f"  {name}:  N={np.isfinite(qe).sum()}  "
               f"median={np.nanmedian(qe):.2f}  mean={np.nanmean(qe):.2f}  "
@@ -758,25 +758,25 @@ def main():
     print("\n  By subquery size (n_triples):")
     print(f"  {'n':>3} {'count':>6} | "
           f"{'FICE med':>9} {'FICE p99':>10} | "
-          f"{'QLever med':>11} {'QLever p99':>12}")
+          f"{'endpoint med':>11} {'endpoint p99':>12}")
     for n_ in sorted(sub["n_triples"].unique()):
         s = sub[sub["n_triples"] == n_]
         f_q = s["fice_q_error"].values
-        q_q = s["qlever_q_error"].values
+        q_q = s["endpoint_q_error"].values
         print(f"  {n_:>3} {len(s):>6} | "
               f"{np.nanmedian(f_q):>9.2f} {pct(f_q,99):>10.2f} | "
               f"{np.nanmedian(q_q):>11.2f} {pct(q_q,99):>12.2f}")
 
     # -------------- Systematic bias analysis --------------
-    print("\n===== QLEVER ESTIMATOR: IS THE ERROR SYSTEMATIC? =====")
+    print("\n===== ENDPOINT ESTIMATOR: IS THE ERROR SYSTEMATIC? =====")
     safe_true = np.maximum(sub["true_card"].values.astype(float), 1.0)
-    safe_ql = np.maximum(sub["qlever_est_card"].values.astype(float), 1.0)
+    safe_ql = np.maximum(sub["endpoint_est_card"].values.astype(float), 1.0)
     safe_fice = np.maximum(sub["pred_card"].values.astype(float), 1.0)
     logratio_col_ql = np.log10(safe_ql / safe_true)
     logratio_col_fice = np.log10(safe_fice / safe_true)
 
     print("\n  log10(estimate / true) distribution (tight = systematic bias):")
-    for name, lr in [("FICE", logratio_col_fice), ("QLever", logratio_col_ql)]:
+    for name, lr in [("FICE", logratio_col_fice), ("endpoint", logratio_col_ql)]:
         print(f"    {name}: mean={np.nanmean(lr):+.3f}  "
               f"std={np.nanstd(lr):.3f}  median={np.nanmedian(lr):+.3f}  "
               f"IQR=[{np.nanpercentile(lr,25):+.3f},"
@@ -786,7 +786,7 @@ def main():
     print("\n  By subquery size — log10-ratio std (smaller = more systematic):")
     print(f"  {'n':>3} {'count':>6} | "
           f"{'FICE mean':>10} {'FICE std':>9} | "
-          f"{'QLever mean':>12} {'QLever std':>11}")
+          f"{'endpoint mean':>12} {'endpoint std':>11}")
     for n_ in sorted(sub["n_triples"].unique()):
         sel = (sub["n_triples"] == n_).values
         lr_f = logratio_col_fice[sel]
@@ -805,7 +805,7 @@ def main():
         t = grp["true_card"].values.astype(float)
         if np.unique(t).size < 2:
             continue
-        rho_q, _ = spearmanr(grp["qlever_est_card"].values, t)
+        rho_q, _ = spearmanr(grp["endpoint_est_card"].values, t)
         rho_f, _ = spearmanr(grp["pred_card"].values, t)
         if np.isfinite(rho_q): ql_rhos.append(rho_q)
         if np.isfinite(rho_f): fice_rhos.append(rho_f)
@@ -819,7 +819,7 @@ def main():
               f"p10={pct(a,10):.3f}  min={a.min():.3f}")
     if ql_rhos:
         a = np.array(ql_rhos)
-        print(f"    QLever: N={len(a)}  mean={a.mean():.3f}  "
+        print(f"    endpoint: N={len(a)}  mean={a.mean():.3f}  "
               f"median={np.median(a):.3f}  "
               f"p10={pct(a,10):.3f}  min={a.min():.3f}")
 
@@ -836,24 +836,24 @@ def main():
           f"p90={pct(cqe,90):.2f}  p99={pct(cqe,99):.2f}  "
           f"max={np.nanmax(cqe):.2f}")
 
-    # QLever native planner comparison
-    print("\n===== QLEVER NATIVE PLAN (its own planner) =====")
-    ql_ok = (plan["qlever_n_ops"] > 0) & np.isfinite(plan["qlever_cout_true"])
+    # endpoint native planner comparison
+    print("\n===== ENDPOINT NATIVE PLAN (its own planner) =====")
+    ql_ok = (plan["endpoint_n_ops"] > 0) & np.isfinite(plan["endpoint_cout_true"])
     if ql_ok.any():
         p = plan[ql_ok]
         qe_ql = np.maximum(
-            p["qlever_cout_pred"].clip(lower=1) / p["qlever_cout_true"].clip(lower=1),
-            p["qlever_cout_true"].clip(lower=1) / p["qlever_cout_pred"].clip(lower=1)).values
-        print(f"  N={len(p)}  QLever planner's c-out q-error:")
+            p["endpoint_cout_pred"].clip(lower=1) / p["endpoint_cout_true"].clip(lower=1),
+            p["endpoint_cout_true"].clip(lower=1) / p["endpoint_cout_pred"].clip(lower=1)).values
+        print(f"  N={len(p)}  endpoint planner's c-out q-error:")
         print(f"    median={np.nanmedian(qe_ql):.2f}  mean={np.nanmean(qe_ql):.2f}  "
               f"p90={pct(qe_ql,90):.2f}  p99={pct(qe_ql,99):.2f}  "
               f"max={np.nanmax(qe_ql):.2f}")
 
-        print("\n  Actual c-out (true intermediate sizes) — FICE-DP plan vs QLever plan:")
+        print("\n  Actual c-out (true intermediate sizes) — FICE-DP plan vs endpoint plan:")
         fice_true = p["cout_true_same_plan"].clip(lower=1)
-        ql_true = p["qlever_cout_true"].clip(lower=1)
+        ql_true = p["endpoint_cout_true"].clip(lower=1)
         ratio = (fice_true / ql_true).values
-        print(f"    FICE/QLever ratio  median={np.nanmedian(ratio):.2f}  "
+        print(f"    FICE/endpoint ratio  median={np.nanmedian(ratio):.2f}  "
               f"mean={np.nanmean(ratio):.2f}  p90={pct(ratio,90):.2f}  "
               f"p99={pct(ratio,99):.2f}  max={np.nanmax(ratio):.2f}")
         print(f"    (ratio>1 = FICE's plan is more expensive; <1 = FICE's plan is better)")
@@ -861,11 +861,11 @@ def main():
               f"{int(np.nansum(ratio < 1))}/{len(p)} queries")
 
     # ---- Combo comparison (DP vs greedy, c-out vs UCB) ----
-    print("\n===== ALL PLANNER/COST COMBOS vs QLever (true c-out ratio) =====")
+    print("\n===== ALL PLANNER/COST COMBOS vs endpoint (true c-out ratio) =====")
     print(f"  {'combo':<14} {'N':>4} {'median':>8} {'mean':>10} "
           f"{'p90':>8} {'p99':>10} {'max':>10} {'wins':>6}")
     p = plan[ql_ok] if ql_ok.any() else plan
-    ql_true_vec = p["qlever_cout_true"].clip(lower=1)
+    ql_true_vec = p["endpoint_cout_true"].clip(lower=1)
     for col in combo_cols:
         cn = f"{col}_cout_true"
         if cn not in p.columns:
@@ -879,7 +879,7 @@ def main():
               f"{int(np.nansum(r < 1)):>3}/{len(p):<2}")
 
     # ---- "FICE-DP loses" diagnostic: dominant subquery error per query ----
-    print("\n===== WHERE FICE-DP LOSES TO QLEVER (top 10 by ratio) =====")
+    print("\n===== WHERE FICE-DP LOSES TO ENDPOINT (top 10 by ratio) =====")
     if ql_ok.any():
         # Build per-query subquery dicts for fast lookup.
         sub_by_q = {}
@@ -898,7 +898,7 @@ def main():
                 plans_by_q[int(rec["query_idx"])] = rec["plans"]
 
         cand = p.assign(ratio_col=(p["cout_true_same_plan"].clip(lower=1) /
-                                p["qlever_cout_true"].clip(lower=1)))
+                                p["endpoint_cout_true"].clip(lower=1)))
         worse = cand[cand["ratio_col"] > 1].sort_values("ratio_col", ascending=False)
         worse = worse.head(10)
         if worse.empty:
@@ -932,7 +932,7 @@ def main():
                         if worst else "(no info)")
                 print(f"  {qi_:>4} {int(r.n_triples):>3} {r.ratio_col:>8.2f} "
                       f"{r.cout_true_same_plan:>11.0f} "
-                      f"{r.qlever_cout_true:>10.0f} | {wstr}")
+                      f"{r.endpoint_cout_true:>10.0f} | {wstr}")
 
     print(f"\nWrote: {sub_tsv}\nWrote: {plan_tsv}\nWrote: {plans_jsonl}")
 

@@ -56,6 +56,9 @@ benchmarks/gcare/gcare
 # gcare/
 logs/
 
+# Local endpoint configuration (not for submission)
+inference/.endpoint_action
+
 # macOS
 .DS_Store
 CLAUDE.md
