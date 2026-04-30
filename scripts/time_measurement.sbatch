@@ -8,10 +8,10 @@
 # -------------------------------
 # Variables
 # -------------------------------
-PROJECT_DIR="/storage/home/lukasketzer/fully-inductive-cardinality-estimation"
+PROJECT_DIR="/home/to/user/fully-inductive-cardinality-estimation"
 CONFIG_FILE="$config_file"
 SCRIPT="$PROJECT_DIR/scripts/time_measurement.py"
-CONTAINER="/storage/home/lukasketzer/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
+CONTAINER="/home/to/user/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"
 # -------------------------------
 # Environment setup
