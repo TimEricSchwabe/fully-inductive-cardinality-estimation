@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 # Weights & Biases configuration
 WANDB_CONFIG = {
     'project': 'fice',
-    'entity': "fice",  # Set to your wandb username/team or leave None for default
+    'entity': None,  # Set to your wandb username/team or leave None for default
     'run_name': None,  # Will be auto-generated if None
     'tags': [],
     'notes': '',

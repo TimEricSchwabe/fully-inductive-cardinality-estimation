@@ -3,15 +3,10 @@
 Reads one CSV per method with columns `n_triple_pattern, runtime` (µs).
 Produces LNCS-styled PDFs and a per-(method, size) summary CSV.
 
-
-uv run python scripts/evaluation/run_runtime_plot.py --csv fice=output/runtime_measurement_dbpedia100k.csv --csv
-   gnce=/Users/timschwabe/Projects/GNCE/output/runtime_measurement_dbpedia100k.csv --csv wj=output/runtime_gcare_wj_dbpedia100k.csv --csv cset=output/runtime_gcare_cset_dbpedia100k.csv
-   --output-dir output/evaluation/runtime/ --tag dbpedia100k 2>&1 | tail -5 && echo '---summary---' && cat output/evaluation/runtime/runtime_summary_dbpedia100k.csv
-
 Example:
     uv run python scripts/evaluation/run_runtime_plot.py \\
         --csv fice=output/runtime_measurement_dbpedia100k.csv \\
-        --csv gnce=/Users/timschwabe/Projects/GNCE/output/runtime_measurement_dbpedia100k.csv \\
+        --csv gnce=output/runtime_measurement_dbpedia100k_gnce.csv \\
         --output-dir output/evaluation/runtime/ \\
         --tag dbpedia100k
 """

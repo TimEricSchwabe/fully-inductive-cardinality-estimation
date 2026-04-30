@@ -1,0 +1,11 @@
+# FICE Inference Configuration for dbpedia100k latency benchmark
+
+checkpoint: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/output/final/FICE/dbpedia/checkpoints/best_model_16.pt
+
+graph_dataset: dbpedia100k
+
+output_dir: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/output/inference_dbpedia100k/
+
+batch_size: 256
+
+device: cpu

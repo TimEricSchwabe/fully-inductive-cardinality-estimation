@@ -1,5 +1,5 @@
-checkpoint: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/scripts/output/run_2026-04-24_22-01-55/checkpoints/best_model_5.pt
+checkpoint: scripts/output/run_2026-04-24_22-01-55/checkpoints/best_model_5.pt
 graph_dataset: dbpedia100k
-output_dir: /Users/timschwabe/Projects/fully-inductive-cardinality-estimation/output/inference_dbpedia100k_ranking_v3/
+output_dir: output/inference_dbpedia100k_ranking_v3/
 batch_size: 256
 device: cpu
