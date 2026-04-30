@@ -174,9 +174,17 @@ def endpoint_bgp_stats(endpoint_url, triples, timeout=120):
 
 def endpoint_plan_cout(endpoint_url, triples, timeout=120):
     """Run `SELECT * WHERE { BGP }` and sum estimated_size / result_rows over
-    non-scan operations (Joins, Filters, ...) of the endpoint's chosen plan.
+    join-style operations of the endpoint's chosen plan.
 
-    Returns (cout_pred, cout_true, n_ops). Base IndexScans are excluded.
+    Returns (cout_pred, cout_true, n_ops).
+
+    Excluded node kinds:
+      - IndexScan: base relation, not an intermediate join result.
+      - Sort: QLever's Sort operator's result_rows always equals its
+        single child's result_rows (it reorders rows, doesn't change cardinality).
+        Counting both double-counts that intermediate size and inflates c-out
+        for the endpoint relative to FICE-DP's c-out (which sums one value per
+        non-singleton subset). Skip Sort to keep the c-out metric comparable.
     """
     sparql = f"SELECT * WHERE {{\n  {triples_to_bgp(triples)}\n}}"
     url = endpoint_url.rstrip("/") + "/?" + urlencode({
@@ -191,12 +199,13 @@ def endpoint_plan_cout(endpoint_url, triples, timeout=120):
     cout_pred = 0.0
     cout_true = 0.0
     n_ops = 0
+    SKIP_PREFIXES = ("IndexScan", "Sort")
 
     def walk(node):
         nonlocal cout_pred, cout_true, n_ops
         desc = node.get("description", "")
-        is_scan = desc.startswith("IndexScan")
-        if not is_scan:
+        skip = any(desc.startswith(p) for p in SKIP_PREFIXES)
+        if not skip:
             cout_pred += float(node.get("estimated_size", 0))
             cout_true += float(node.get("result_rows", 0))
             n_ops += 1
