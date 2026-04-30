@@ -1,177 +1,320 @@
-import os
-import subprocess
-import time
-from datetime import datetime
-import numpy as np
+"""Run G-Care cardinality estimation (wj + cset + sumrdf) for a single experiment.
+
+Loads *num_queries* queries from the FICE JSON file, takes the last 20 % as the
+evaluation split (discarding the training portion – G-Care has no training step),
+and runs the G-Care binary once per method over all eval queries.
+
+Timing is taken from the binary's own per-query avg_time (estimator->Run() only,
+in milliseconds), matching the measurement boundary used by FICE and GNCE.
+
+Can be used as a CLI script or imported and called as run_estimation().
+"""
+import argparse
 import json
-from transform_query import query_to_gcare
-import random
-from pathlib import Path
-import glob
-import shutil
 import logging
+import os
+import random
+import subprocess
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
 
-GCARE_HOME = os.environ.get('GCARE_HOME', '/usr/src/app/gcare')
-DATA_ROOT = os.environ.get('DATA_ROOT', '/usr/src/app/data')
-RESULTS_ROOT = os.environ.get('RESULTS_ROOT', '/usr/src/app/results')
-RDF_TYPE_URI = os.environ.get('RDF_TYPE_URI', '0')
+import numpy as np
 
-# configure logging so messages show in container logs
-logging.basicConfig(level=logging.INFO)
+from transform_query import query_to_gcare
 
-
-def run_gcare(dataset, eval_folder, query_root, dataset_root, inductive, num_queries: int = 100):
-    methods = ['wj', 'cset']
-    #methods = ['impr']
-    # Loading Queries and IDX transform mappings
-
-    query_path = Path(glob.glob(str(query_root / '*.json'))[0])
-    id2id_mapping_path = dataset_root / 'id_to_id_mapping.json'
-    id2id_mapping_predicate_path = dataset_root / 'id_to_id_mapping_predicate.json'
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
-    print('Loading Queries from:')
-    print(str(query_path))
-    with query_path.open() as f:
-        raw_data = json.load(f)
-    
-    data = random.sample(raw_data, num_queries)
-    # Same split as other methods
-    if not inductive == 'full':
-        random.Random(4).shuffle(data)
-        data = data[int(0.8 * len(data)):]
-    
-    logging.info(f"Total number of queries loaded: {len(data)}")
-    with id2id_mapping_path.open("r") as f:
-        id_to_id_mapping = json.load(f)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
-    with id2id_mapping_predicate_path.open("r") as f:
-        id_to_id_mapping_predicate = json.load(f)
+def _find_query_json(query_path: Path) -> Path:
+    """Return a query JSON file given either a direct file path or a directory.
 
-    
+    Handles three cases:
+    - explicit .json file   → returned as-is
+    - file without extension (e.g. numeric IDs like 60037037) → returned as-is
+    - directory            → first *.json match inside it
+    """
+    if query_path.is_file():
+        return query_path
+    if query_path.is_dir():
+        candidates = sorted(query_path.glob("*.json"))
+        if not candidates:
+            candidates = sorted(query_path.rglob("*.json"))
+        if candidates:
+            return candidates[0]
+    raise FileNotFoundError(f"No query JSON file found at {query_path}")
 
+
+def _eval_split(queries: list, num_queries: int, seed: int = 42) -> list:
+    """Sample *num_queries* then return the last 20 % as the evaluation set.
+
+    This mirrors the 80/20 split used by the other benchmarks.  G-Care has no
+    training step so we only need the eval portion.
+    """
+    rng = random.Random(seed)
+    sample_size = min(num_queries, len(queries))
+    sampled = rng.sample(queries, sample_size)
+    # Consistent deterministic shuffle so the split boundary is stable.
+    rng.shuffle(sampled)
+    split_idx = int(0.8 * len(sampled))
+    return sampled[split_idx:]
+
+
+def _parse_output_file(output_file: Path) -> Dict[int, Tuple[float, float]]:
+    """Parse binary output file → {query_idx: (avg_est, avg_time_sec)}.
+
+    The binary writes two lines per query:
+      {filepath} {avg_est} {avg_time_ms} {var}
+      {num_trials} {est1} {est2} ...
+    avg_time_ms is the mean estimator->Run() time across trials (milliseconds).
+    """
+    results: Dict[int, Tuple[float, float]] = {}
+    lines = [l.strip() for l in output_file.read_text().splitlines()
+             if l.strip() and not l.startswith('#')]
+    i = 0
+    while i < len(lines):
+        parts = lines[i].split()
+        if len(parts) < 3:
+            i += 1
+            continue
+        filepath = parts[0]
+        avg_est = float(parts[1])
+        avg_time_ms = float(parts[2])
+        # filename is {exp_name}_{idx}.txt; split on '_' and take last token
+        idx = int(Path(filepath).stem.split('_')[-1])
+        results[idx] = (avg_est, avg_time_ms / 1000.0)  # ms → sec
+        i += 2  # skip the individual est_vec line
+    return results
+
+
+def _predict_batch(
+    method: str, dataset: str, gcare_home: Path
+) -> Dict[int, Tuple[float, float]]:
+    """Run the G-Care binary once over all queries in the queryset directory.
+
+    Returns {query_idx: (avg_est, avg_time_sec)} where avg_time is the binary's
+    own per-query estimator->Run() time (hot path only, no graph-load overhead).
+    """
+    seed = 0
+    p = 0.03
+    repeat = 1 if method in ("cset", "bsk", "sumrdf") else 30
+    result_dir = gcare_home / "data" / "result" / "accuracy" / "current"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    bsk_budget = "4096"
+    if method == "bsk":
+        os.environ["GCARE_BSK_BUDGET"] = bsk_budget
+    if method == "sumrdf":
+        os.environ["GCARE_SUMRDF_THRESHOLD"] = "0.15"
+
+    command = f"./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}"
+    logging.info("Running batch: %s", command)
+
+    proc = subprocess.run(
+        f'bash -lc "{command}"',
+        shell=True,
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        cwd=str(gcare_home / "scripts"),
+    )
+
+    if "GCARE_BSK_BUDGET" in os.environ:
+        del os.environ["GCARE_BSK_BUDGET"]
+    if "GCARE_SUMRDF_THRESHOLD" in os.environ:
+        del os.environ["GCARE_SUMRDF_THRESHOLD"]
+
+    if proc.returncode != 0:
+        stderr_out = proc.stderr.decode(errors="replace").strip()
+        raise subprocess.CalledProcessError(
+            proc.returncode, command,
+            output=proc.stdout,
+            stderr=stderr_out.encode(),
+        )
+
+    if method == "bsk":
+        output_file = result_dir / f"{dataset}_{method}_b{bsk_budget}_s{seed}_query_result.txt"
+    else:
+        output_file = result_dir / f"{dataset}_{method}_p{p}_s{seed}_query_result.txt"
+
+    if not output_file.exists():
+        raise FileNotFoundError(
+            f"Binary wrote no output file for {method}/{dataset}: expected {output_file}"
+        )
+
+    return _parse_output_file(output_file)
+
+
+# ---------------------------------------------------------------------------
+# Core estimation function
+# ---------------------------------------------------------------------------
+
+def run_estimation(
+    *,
+    exp_name: str,
+    dataset_name: str,
+    query_type: str,
+    query_path: Path,
+    rdf_type_uri: str,
+    num_queries: int,
+    results_dir: Path,
+    gcare_home: Path,
+    methods: Optional[List[str]] = None,
+) -> None:
+    """Run wj + cset + sumrdf estimation for one experiment and write results to *results_dir*.
+
+    Pass *methods* to restrict which estimators are run (default: all three).
+    """
+
+    logging.info(
+        "Starting estimation: exp=%s dataset=%s query_type=%s num_queries=%d",
+        exp_name, dataset_name, query_type, num_queries,
+    )
+
+    gcare_dataset_dir = gcare_home / "data" / "dataset" / exp_name
+    gcare_queryset_dir = gcare_home / "data" / "queryset" / exp_name
+
+    id2id_path = gcare_dataset_dir / "id_to_id_mapping.json"
+    id2id_pred_path = gcare_dataset_dir / "id_to_id_mapping_predicate.json"
+
+    for p in (id2id_path, id2id_pred_path):
+        if not p.exists():
+            raise FileNotFoundError(f"Missing ID mapping: {p}")
+
+    # ------------------------------------------------------------------
+    # Load queries and take the 20 % eval split
+    # ------------------------------------------------------------------
+    raw_json = _find_query_json(query_path)
+    logging.info("[%s] Loading queries from %s", exp_name, raw_json)
+    with raw_json.open() as f:
+        all_queries = json.load(f)
+
+    eval_queries = _eval_split(all_queries, num_queries)
+    logging.info("[%s] Eval queries: %d (from %d total)", exp_name, len(eval_queries), len(all_queries))
+
+    with id2id_path.open() as f:
+        id_to_id = json.load(f)
+    with id2id_pred_path.open() as f:
+        id_to_id_pred = json.load(f)
+
+    # ------------------------------------------------------------------
+    # Write all eval queries to the queryset directory at once
+    # ------------------------------------------------------------------
+    for old in gcare_queryset_dir.glob("*.txt"):
+        old.unlink()
+
+    for i, query in enumerate(eval_queries):
+        query_to_gcare(
+            query["triples"],
+            i,
+            id_to_id_mapping=id_to_id,
+            id_to_id_mapping_predicate=id_to_id_pred,
+            dataset=exp_name,
+            card=query["y"],
+            rdf_type_uri=rdf_type_uri,
+            gcare_home=gcare_home,
+        )
+
+    logging.info("[%s] Wrote %d query files to %s", exp_name, len(eval_queries), gcare_queryset_dir)
+
+    # ------------------------------------------------------------------
+    # Run each method once over all queries
+    # ------------------------------------------------------------------
+    all_methods = ["wj", "cset", "sumrdf"]
+    methods = methods if methods is not None else all_methods
     for method in methods:
-        print(f"Starting {method}")
-        preds = []
-        gts = []
-        sizes = []
-        result_data = []
-        pred_times = []
-        result_dir = eval_folder / method
-        result_dir.mkdir(parents=True, exist_ok=True)
+        logging.info("[%s] Running method: %s (batch over %d queries)", exp_name, method, len(eval_queries))
 
+        preds: List[float] = []
+        gts: List[int] = []
+        sizes: List[int] = []
+        pred_times: List[float] = []
+        result_records = []
 
-        # Predicting top n queries of the testset
-        queries = data[:]
-        print(len(queries))
-        for i, query in enumerate(queries):
-            # Clear the query directory to ensure only one query file exists
-            query_dir = Path(f'{GCARE_HOME}/data/queryset/{dataset}')
-            for old_query in query_dir.glob('*.txt'):
-                old_query.unlink()
-            
-            query_to_gcare(query["triples"], 0, id_to_id_mapping=id_to_id_mapping,
-                           id_to_id_mapping_predicate=id_to_id_mapping_predicate, dataset=dataset, 
-                           card=query["y"], rdf_type_uri=RDF_TYPE_URI)
-            try:
-                y_pred, pred_time = predict(method=method, dataset=dataset)
-            except subprocess.CalledProcessError as e:
-                logging.error(str(e))
+        method_dir = results_dir / method
+        method_dir.mkdir(parents=True, exist_ok=True)
+
+        try:
+            batch = _predict_batch(method, exp_name, gcare_home)
+        except subprocess.CalledProcessError as exc:
+            stderr_msg = exc.stderr.decode(errors="replace").strip() if isinstance(exc.stderr, bytes) else (exc.stderr or "")
+            logging.error(
+                "[%s] %s binary exited %d\n%s",
+                exp_name, method, exc.returncode, stderr_msg,
+            )
+            continue
+        except Exception as exc:
+            logging.error("[%s] %s failed: %s", exp_name, method, exc)
+            continue
+
+        for i, query in enumerate(eval_queries):
+            if i not in batch:
+                logging.error("[%s] %s query %d missing from binary output", exp_name, method, i)
                 continue
 
+            y_pred, pred_time = batch[i]
             preds.append(y_pred)
             gts.append(query["y"])
             pred_times.append(pred_time)
             sizes.append(len(query["triples"]))
-            query["y_pred"] = y_pred
-            query["exec_time_total"] = pred_time
-            result_data.append(query)
+            result_records.append({
+                **query,
+                "y_pred": y_pred,
+                "exec_time_total": pred_time,
+            })
 
-            # log completion so container logs capture progress
-            logging.info(f"{method} idx={i+1}/{len(queries)} size={len(query['triples'])} y={query['y']} y_pred={y_pred} time={pred_time}")
-        np.save(result_dir / 'preds.npy', preds)
-        np.save(result_dir / 'gts.npy', gts)
-        np.save(result_dir / 'sizes.npy', sizes)
-        np.save(result_dir / 'pred_times.npy', pred_times)
+            logging.info(
+                "[%s] %s %d/%d  size=%d  y=%s  y_pred=%.1f  t=%.4fs",
+                exp_name, method, i + 1, len(eval_queries),
+                len(query["triples"]), query["y"], y_pred, pred_time,
+            )
 
-        with (result_dir / 'results.json').open('w') as file:
-            json.dump(result_data, file, indent=4)
+        np.save(method_dir / "preds.npy", preds)
+        np.save(method_dir / "gts.npy", gts)
+        np.save(method_dir / "sizes.npy", sizes)
+        np.save(method_dir / "pred_times.npy", pred_times)
+        with (method_dir / "results.json").open("w") as f:
+            json.dump(result_records, f, indent=2)
 
-def predict(method: str, dataset: str):
-    seed = 0
-    now = 'current'
-    result_dir = f'{GCARE_HOME}/data/result/accuracy/{now}'
-    p = 0.03
-    repeat = 1 if method in ['cset', 'bsk', 'sumrdf'] else 30
-    if method == 'bsk':
-        os.environ['GCARE_BSK_BUDGET'] = '4096'
-    command = f'./run-exp.sh {method} {dataset} {p} {seed} {repeat} {result_dir}'
-    logging.info(f"Running command: {command}")
-    start_time = time.time()
-    proc = subprocess.run(
-        # f'bash -lc "{command} | grep -A 2 \"Average Time\""',
-        f'bash -lc "{command}"',
-        check=True,
-        shell=True,
-        stdout=subprocess.PIPE,
-        cwd=Path(f'{GCARE_HOME}/scripts')
+        logging.info("[%s] %s done – %d predictions written to %s", exp_name, method, len(preds), method_dir)
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run G-Care estimation for one experiment")
+    parser.add_argument("--exp-name", required=True)
+    parser.add_argument("--dataset-name", required=True)
+    parser.add_argument("--query-type", required=True)
+    parser.add_argument("--query-path", type=Path, required=True,
+                        help="Path to the FICE query JSON file or its parent directory")
+    parser.add_argument("--rdf-type-uri", required=True)
+    parser.add_argument("--num-queries", type=int, default=500)
+    parser.add_argument("--results-dir", type=Path, required=True)
+    parser.add_argument(
+        "--gcare-home",
+        type=Path,
+        default=Path(__file__).resolve().parent / "gcare",
+        help="Path to compiled G-Care directory (default: ./gcare/)",
     )
-    end_time = time.time() - start_time
-    result = proc.stdout.decode()
+    args = parser.parse_args()
 
-    lines = result.strip().split(' ')
-    predicted_cardinalities = np.asarray(lines[-repeat:], dtype=float)
-    logging.info(predicted_cardinalities)
-    prediction_time = end_time
-    pred_cardinality = np.mean(predicted_cardinalities) 
+    run_estimation(
+        exp_name=args.exp_name,
+        dataset_name=args.dataset_name,
+        query_type=args.query_type,
+        query_path=args.query_path,
+        rdf_type_uri=args.rdf_type_uri,
+        num_queries=args.num_queries,
+        results_dir=args.results_dir,
+        gcare_home=args.gcare_home,
+    )
 
-    # predicted_cardinalities = np.asarray(lines[2].split(' ')[1:], dtype=float)
-    # prediction_time = float(lines[0].split(" ")[4])
-    # pred_cardinality = np.mean(predicted_cardinalities)
-
-    # Clear the environment variable if it was set
-    if 'GCARE_BSK_BUDGET' in os.environ:
-        del os.environ['GCARE_BSK_BUDGET']
-
-    return pred_cardinality, prediction_time
-
-
-def main():
-    dataset_name = os.environ.get('DATASET_NAME', 'unknown_graph')
-    query_type = os.environ.get('DATASET_TYPE', 'unknown_query')
-    
-    graph_path = Path('./gcare/data/dataset') / dataset_name
-    queries_path = Path('./gcare/data/queryset') / dataset_name 
-    print('Graph Path:', str(graph_path))
-    print('Query Path:', str(queries_path))
-    eval_folder = Path('/usr/src/app/results/')
-    eval_folder = eval_folder / query_type / dataset_name
-
-    if eval_folder.exists():
-        for child in eval_folder.iterdir():
-            try:
-                if child.is_dir() and not child.is_symlink():
-                    shutil.rmtree(child)
-                else:
-                    child.unlink()
-            except Exception as e:
-                print(f"Failed to remove {child}: {e}")
-
-    # command = f'./run-build.sh'
-    # proc = subprocess.run(
-    #     f'bash -lc "{command}"',
-    #     check=True,
-    #     shell=True,
-    #     cwd=Path(f'{GCARE_HOME}/scripts')
-    # )
-    num_queries = int(os.environ.get('NUM_QUERIES', '150'))
-    run_gcare(dataset=dataset_name,
-              eval_folder=eval_folder,
-              query_root=queries_path,
-              dataset_root=graph_path,
-              inductive='full',
-              num_queries=num_queries)
 
 if __name__ == "__main__":
     main()
-    

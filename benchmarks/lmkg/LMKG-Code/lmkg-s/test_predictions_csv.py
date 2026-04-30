@@ -22,7 +22,7 @@ def test_write_predictions_csv_per_run_file(tmp_path, monkeypatch):
     assert rows[0]["batch_idx"] == "0"
     assert float(rows[0]["prediction"]) == pytest.approx(3.0)
     assert float(rows[0]["true_value"]) == pytest.approx(3.0)
-    assert set(rows[0].keys()) == {"stage", "dataset_name", "query_set_name", "query_type", "batch_idx", "prediction", "true_value"}
+    assert set(rows[0].keys()) == {"stage", "dataset_name", "query_set_name", "query_type", "batch_idx", "prediction", "true_value", "est_ms"}
 
 
 def test_write_predictions_csv_master_file_accumulates(tmp_path, monkeypatch):

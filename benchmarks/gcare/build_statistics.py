@@ -1,67 +1,89 @@
-import subprocess
+"""Build G-Care statistical summaries (wj, cset, sumrdf) for a single dataset.
+
+Can be used as a CLI script or imported and called as build_statistics().
+"""
+import argparse
 import os
 import shutil
+import subprocess
 import time
-from datetime import datetime
 from pathlib import Path
-import json
-from typing import Union, List
+from typing import List, Optional
 
-# Environment variables for Docker container paths
-GCARE_HOME = os.environ.get('GCARE_HOME', '/usr/src/app/gcare')
-DATA_ROOT = os.environ.get('DATA_ROOT', '/usr/src/app/gcare/data')
-RESULTS_ROOT = os.environ.get('RESULTS_ROOT', '/usr/src/app/results')
 
-def remove_files_in_directory(directory_path, exclude_file: Union[str, List[str]]='yago.txt'):
-    if isinstance(exclude_file, str):
-        exclude_file = [exclude_file]
-
-    for filename in os.listdir(directory_path):
-        if filename in exclude_file:
-            continue  # Skip the file to be excluded
-        file_path = os.path.join(directory_path, filename)
+def _remove_files_except(directory_path: Path, exclude: List[str]) -> None:
+    for child in directory_path.iterdir():
+        if child.name in exclude:
+            continue
         try:
-            if os.path.isfile(file_path):
-                os.unlink(file_path)
-            elif os.path.isdir(file_path):
-                shutil.rmtree(file_path)
+            if child.is_file():
+                child.unlink()
+            elif child.is_dir():
+                shutil.rmtree(child)
         except Exception as e:
-            print(f"Failed to delete {file_path}. Reason: {e}")
+            print(f"Failed to delete {child}: {e}")
 
-def main():
-    dataset = os.environ.get('DATASET_NAME', 'unknown_graph')
-    hard_reset = True
 
-    # check if build statistics is neccessary
-    data_root = Path(f"{DATA_ROOT}")
-    graph_folder = data_root / "dataset" / dataset
-    if graph_folder.exists() and graph_folder.is_dir() and not hard_reset:
-        graph_files = list(graph_folder.glob("*.graph"))
-        if len(graph_files) > 0:
-            print(f"Graph files already exist for dataset {dataset}. Skipping build statistics.")
-            exit(0)
+def build_statistics(dataset: str, gcare_home: Path, methods: Optional[List[str]] = None) -> None:
+    """Build selected G-Care statistics for *dataset* inside *gcare_home*.
 
-    # empty build fodler except dataset.txt
-    if graph_folder.is_dir():
-        exclude_files = ["id_to_id_mapping.json", "id_to_id_mapping_predicate.json", f"{dataset}.txt"]
-        remove_files_in_directory(graph_folder, exclude_file=exclude_files)
+    Expects the graph file at:
+        gcare_home/data/dataset/<dataset>/<dataset>.txt
 
-    savetag = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+    Writes compiled .graph files next to the dataset text file.
+    Skips individual methods whose .graph files are already present.
+    """
+    graph_folder = gcare_home / "data" / "dataset" / dataset
 
-    # Remove all files in ../data/dataset/data
-    # remove_files_in_directory(f"/home/tim/gcare/data/dataset/{dataset}", exclude_file=f'{dataset}.txt')
+    if not (graph_folder / f"{dataset}.txt").exists():
+        raise FileNotFoundError(
+            f"Graph file not found: {graph_folder / f'{dataset}.txt'}"
+        )
 
-    starting_time = time.time()
+    all_methods = methods if methods is not None else ["wj", "cset", "sumrdf"]
+    p, seed = 0.03, 0
+    needed = [
+        m for m in all_methods
+        if not (graph_folder / f"{dataset}.{m}.{p}.{seed}.graph").exists()
+    ]
 
-    os.chdir(f"{GCARE_HOME}/scripts")
-    # Execute the building for the specific method
-    gcare_home_path = Path(GCARE_HOME)
-    # script_path = gcare_home_path / "scripts" / "run-build.sh"
+    if not needed:
+        print(f"[{dataset}] Statistics already built for: {', '.join(all_methods)}, skipping.")
+        return
+
     script_path = Path(__file__).resolve().parent / "custom-run-build.sh"
-    subprocess.run(["bash", str(script_path), dataset], check=True)
-    end_time = time.time() - starting_time
+    env = {**os.environ, "GCARE_HOME": str(gcare_home), "GCARE_BUILD_METHODS": ",".join(needed)}
+
+    start = time.time()
+    print(f"[{dataset}] Building statistics for: {', '.join(needed)} …")
+    subprocess.run(
+        ["bash", str(script_path), dataset],
+        check=True,
+        env=env,
+        cwd=str(gcare_home / "scripts"),
+    )
+    print(f"[{dataset}] Statistics built in {time.time() - start:.1f}s")
 
 
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Build G-Care statistics for a dataset")
+    parser.add_argument("--dataset", required=True, help="Dataset name")
+    parser.add_argument(
+        "--methods",
+        type=str,
+        default=None,
+        help="Comma-separated build methods, e.g. sumrdf or wj,cset,sumrdf",
+    )
+    parser.add_argument(
+        "--gcare-home",
+        type=Path,
+        default=Path(__file__).resolve().parent / "gcare",
+        help="Path to compiled G-Care directory (default: ./gcare/)",
+    )
+    args = parser.parse_args()
+    methods = [m.strip() for m in (args.methods or "").split(",") if m.strip()] or None
+    build_statistics(args.dataset, args.gcare_home, methods)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

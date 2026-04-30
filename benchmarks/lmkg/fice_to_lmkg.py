@@ -4,9 +4,9 @@ Convert FICE RDF data to LMKG-S format.
 
 LMKG-S needs:
   - final_datasets/generated_{dataset}/star/star_{N}.txt   (training queries)
-  - final_datasets/generated_{dataset}/star/eval_600_star_{N}.txt
+    - final_datasets/generated_{dataset}/star/eval_{K}_star_{N}.txt
   - final_datasets/generated_{dataset}/path/chain_{N}.txt
-  - final_datasets/generated_{dataset}/path/eval_600_chain_{N}.txt
+    - final_datasets/generated_{dataset}/path/eval_{K}_chain_{N}.txt
   - statistics/{dataset}_stats.json  (d, b, n, e values for lmkgs.py)
 
 Query formats:
@@ -33,31 +33,39 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 DATA_DIR = PROJECT_ROOT / "data"
 LMKG_S_DIR = PROJECT_ROOT / "benchmarks/lmkg/LMKG-Code/lmkg-s"
 
-EVAL_NUM = 600
+EVAL_RATIO = 0.2
+MAX_LOADED_QUERIES = 20000
+SUPPORTED_QUERY_TYPES = {"star", "path"}
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
 
-def compute_mappings(dataset_name):
+def compute_mappings(dataset_name, graph_path=None):
     """Build (relation_to_id, entity_to_id) by parsing the raw .nt file.
 
     IDs are assigned in order of first appearance, matching FICE's own
     processing logic in datasets.py.
     """
-    raw_dir = DATA_DIR / dataset_name / "raw"
-    raw_files = [p for p in raw_dir.iterdir() if p.is_file()]
-    if not raw_files:
-        raise FileNotFoundError(f"No raw file found in {raw_dir}")
-    raw_path = raw_files[0]
+    if graph_path is None:
+        raise ValueError(
+            f"Missing graph_path for dataset '{dataset_name}'. "
+            "LMKG conversion expects dataset graph paths from benchmarks/experiments_config.yaml"
+        )
+
+    raw_path = Path(graph_path)
+    if not raw_path.is_absolute():
+        raw_path = PROJECT_ROOT / raw_path
+    if not raw_path.exists():
+        raise FileNotFoundError(f"Configured graph_path does not exist: {raw_path}")
 
     ent_to_id: dict = {}
     rel_to_id: dict = {}
 
     with open(raw_path, "r", encoding="utf-8") as f:
         for line in f:
-            parts = line.strip().split(" ")[:3]
+            parts = line.strip().split()[:3]
             if len(parts) != 3:
                 continue
             s, p, o = parts
@@ -69,6 +77,17 @@ def compute_mappings(dataset_name):
                 rel_to_id[p] = len(rel_to_id)
 
     return rel_to_id, ent_to_id
+
+
+def build_dataset_graph_path_map(config):
+    """Build dataset_name -> graph_path map from shared experiments config."""
+    mapping = {}
+    for ds in config.get("datasets", []):
+        name = ds.get("name")
+        graph_path = ds.get("graph_path")
+        if name and graph_path:
+            mapping[name] = graph_path
+    return mapping
 
 
 def load_fice_queries(query_path):
@@ -199,7 +218,12 @@ def write_lmkgs_files(by_size, dataset_name, query_type):
     stats = {}
     for size, lines in sorted(by_size.items()):
         random.shuffle(lines)
-        n_eval = min(EVAL_NUM, len(lines))
+
+        # Exact 80/20 split on the loaded subset.
+        if not lines:
+            continue
+        n_eval = int(len(lines) * EVAL_RATIO)
+
         eval_lines = lines[:n_eval]
         train_lines = lines[n_eval:]
 
@@ -249,21 +273,31 @@ def write_stats_file(dataset_name, num_entities, num_relations, star_sizes, path
 # Main processing
 # ---------------------------------------------------------------------------
 
-def process_experiment(exp: dict):
-    name = exp["name"]
+def process_experiment(exp: dict, dataset_graph_paths=None):
+    name = exp["id"]
     dataset_name = exp["dataset_name"]
     query_type = exp["query_type"]  # "star" or "path"
-    query_path = exp["query_path"]
+    query_path = str(PROJECT_ROOT / exp["path"])
 
     print(f"\n=== {name} (dataset={dataset_name}, type={query_type}) ===")
 
-    rel_to_id, ent_to_id = compute_mappings(dataset_name)
+    graph_path = None
+    if dataset_graph_paths:
+        graph_path = dataset_graph_paths.get(dataset_name)
+
+    rel_to_id, ent_to_id = compute_mappings(dataset_name, graph_path=graph_path)
     num_entities = len(ent_to_id)
     num_relations = len(rel_to_id)
     print(f"  Entities: {num_entities}, Relations: {num_relations}")
 
     queries = load_fice_queries(query_path)
     print(f"  Loaded {len(queries)} queries")
+
+    # Use only a 20k subset, then split 80/20 from this loaded list.
+    if len(queries) > MAX_LOADED_QUERIES:
+        random.shuffle(queries)
+        queries = queries[:MAX_LOADED_QUERIES]
+        print(f"  Capped to {len(queries)} queries (load_limit={MAX_LOADED_QUERIES})")
 
     converter = convert_star_query if query_type == "star" else convert_path_query
     converted = []
@@ -289,7 +323,7 @@ def main():
     parser = argparse.ArgumentParser(description="Convert FICE data to LMKG-S format")
     parser.add_argument(
         "--config",
-        default="benchmarks/lmkg/experiments_config.yaml",
+        default="benchmarks/experiments_config.yaml",
         help="Path to experiments_config.yaml",
     )
     parser.add_argument(
@@ -311,16 +345,28 @@ def main():
     with open(config_path) as f:
         config = yaml.safe_load(f)
 
-    experiments = config["experiments"]
+    dataset_graph_paths = build_dataset_graph_path_map(config)
+
+    experiments = config["queries"]
+
+    # LMKG-S supports only star/path query types.
+    total_experiments = len(experiments)
+    experiments = [e for e in experiments if e.get("query_type") in SUPPORTED_QUERY_TYPES]
+    skipped = total_experiments - len(experiments)
+    if skipped:
+        print(f"Skipping {skipped} non-LMKG query configs (only star/path are supported)")
+
     if args.experiments:
-        experiments = [e for e in experiments if e["name"] in args.experiments]
-        print(f"Running {len(experiments)} experiment(s): {[e['name'] for e in experiments]}")
+        experiments = [e for e in experiments if e["id"] in args.experiments]
+        print(f"Running {len(experiments)} experiment(s): {[e['id'] for e in experiments]}")
 
     # Accumulate per-dataset stats across star + path experiments
     dataset_stats = {}
 
     for exp in experiments:
-        by_size, num_entities, num_relations = process_experiment(exp)
+        by_size, num_entities, num_relations = process_experiment(
+            exp, dataset_graph_paths=dataset_graph_paths
+        )
         dname = exp["dataset_name"]
         qtype = exp["query_type"]
 
