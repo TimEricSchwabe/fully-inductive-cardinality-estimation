@@ -11,5 +11,3 @@ find_package(Torch REQUIRED)
 add_executable(fice_inference example_inference.cpp)
 target_link_libraries(fice_inference "${TORCH_LIBRARIES}")
 
-# Copy nlohmann/json single-header if present (optional: install via package manager)
-# For simplicity we bundle a minimal JSON parser inline in the example.

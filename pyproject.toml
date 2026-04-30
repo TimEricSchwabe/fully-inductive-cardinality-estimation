@@ -38,7 +38,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-# Compiled PyG extensions — required by fice/gnce/models.py and fice/tasks.py
+# Compiled PyG extensions — required by fice/decoder/models.py and fice/tasks.py
 # (they import scatter_max / scatter_min / scatter_add directly from torch_scatter).
 # Wheels are not on PyPI; they live on the PyG wheel index:
 #   https://data.pyg.org/whl/torch-2.8.0+<cpu|cu121|cu126|...>.html

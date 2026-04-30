@@ -6,7 +6,7 @@ from torch_geometric.nn import GATv2Conv, GINEConv, GINConv, GPSConv
 from torch_geometric.nn.conv import MessagePassing
 from torch_geometric.utils import degree
 import time 
-from fice.gnce.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN, BoxTripleModel
+from fice.decoder.models import TripleModel, QueryCardinalityGNN, IndependentQueryGNN, QueryTransformer, SimpleSumGNN, BoxTripleModel
 from fice.embedding_spaces import EmbeddingProjection
 
 

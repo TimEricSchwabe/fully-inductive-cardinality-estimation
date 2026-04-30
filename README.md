@@ -181,6 +181,71 @@ output/<run_name>/
   config.yaml                   snapshot of the resolved configuration
 ```
 
+## Baselines
+
+Three baselines are under `benchmarks/`. All three read the same
+shared experiment config (`benchmarks/experiments_config.yaml`), which
+lists the datasets, query files, and per-experiment LOCO folds.
+
+### LSS — multi-graph LOCO
+
+LSS is run in a leave-one-graph-out (LOCO) setup: for each held-out KG, a
+single LSS model is trained on a shared mega-graph built from the
+N KGs (with globally distinct entity / relation IDs and ProNE
+embeddings per graph) and evaluated on the held-out KG.
+
+```sh
+pip install -r benchmarks/lss/requirements.txt
+python benchmarks/lss/run_all_experiments.py
+# optional flags:
+#   --epochs 80
+#   --experiments loco_swdf loco_lubm
+```
+
+Outputs are saved in `benchmarks/lss/results/run_<timestamp>/<exp_id>/predictions.csv`,
+which is the layout the unified evaluation pipeline expects under `--lss-root`.
+
+### LMKG-S — multi-graph LOCO
+
+LMKG-S is also run in LOCO; for each held-out KG, two models (one for
+star, one for path) are trained on the merged mega-graph of the other
+N−1 KGs and evaluated on the held-out KG.
+
+```sh
+# Python 3.8 + tensorflow 2.13 are required (see benchmarks/lmkg/README.md).
+pip install -r benchmarks/lmkg/LMKG-Code/lmkg-s/requirements.txt
+python benchmarks/lmkg/run_all_experiemnts.py
+```
+
+Outputs are stored under `benchmarks/lmkg/LMKG-Code/lmkg-s/results/`. The
+unified evaluation pipeline expects an `all_predictions.csv` under
+`--lmkg-root` (produced by the LMKG run script). See
+[`benchmarks/lmkg/README.md`](benchmarks/lmkg/README.md) for more details.
+
+### G-CARE — single-graph estimators
+
+G-CARE provides classical single-graph cardinality estimators
+(`wj`, `cset`, `sumrdf`, …) via a compiled C++ binary. Unlike LSS and
+LMKG-S, each experiment runs against a single KG (no LOCO mega-graph)
+and there is no learned model — only a build-statistics step followed by
+estimation. Build the binary once (e.g. inside the supplied Apptainer
+image; see `benchmarks/gcare/gcare.def`), then:
+
+```sh
+python benchmarks/gcare/run_all_experiments.py \
+    --gcare-home benchmarks/gcare/gcare \
+    --max-parallel 5
+# optional filters:
+#   --dataset yago,hetionet
+#   --query-types path,star
+#   --methods wj,cset,sumrdf
+```
+
+Outputs are stored in
+`benchmarks/gcare/results/run_<timestamp>/<graph>_<qtype>/<method>/{preds,gts}.npy`,
+which is the layout the unified evaluation pipeline expects under
+`--gcare-root`.
+
 ## Evaluation
 
 The evaluation pipeline expects prediction files from FICE and the
