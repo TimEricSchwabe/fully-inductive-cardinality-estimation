@@ -45,7 +45,7 @@ The full dependency list is in `pyproject.toml`.
 Knowledge graph `.nt` files, query `.json` files, and pre-computed
 ranking-query files for the datasets used in the paper are available at:
 
-> Datasets: `<RAW_DATA_LINK_PLACEHOLDER>`
+[Dataset Link](https://zenodo.org/records/19854409?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjIxNTdhOTA1LWRhYTItNDJkYi04YzM5LWNmMDRmYjljODI3MCIsImRhdGEiOnt9LCJyYW5kb20iOiI2ODdkYjkzNDA3Y2ZhMTkzYzFhYzA3Njc3ODRmNDA5MiJ9.GdKHwm47R90cA0P0PWT83QMyXwbmP1dbfv4z5XcMj1T2RnheuU2Ze9El-uxAp13hSmhEs1L5s8N1mA_-BynVYw)
 
 Download and unpack into `data/` so each dataset is located at
 `data/<dataset_name>/raw/<file>.nt` and each query set at
