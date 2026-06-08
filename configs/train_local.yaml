@@ -1,14 +1,14 @@
 # Example YAML config for local training
 data: # All datasets to include in training
  
-  - dataset: "fb237_v4". # the KG name
-    queries: "fb237_v4_star_queries" # the specific query dataset for this graph 
+  - dataset: "cycle_dataset" # the KG name
+    queries: "cycle_queries" # the specific query dataset for this graph
     batch_size: 2 # batch size to use (must be the same for all datasets)
-    num_queries: 1000 # how many queries to take from this dataset
+    num_queries: 20 # how many queries to take from this dataset
     type: "train-val" # train-val means the dataset is used in training, 'validation' means its sued as leave-out inductive
 
 
-epochs: 10 # how many epochs to train
+epochs: 1000 # how many epochs to train
 wandb: False # log to wandb or not
 wandb_run_name: "RelationalGNN-local"
 learning_rate: 1e-4 #learning rate of FICE

@@ -194,7 +194,8 @@ class NTDatasets(InMemoryDataset):
         graph.dataset_name = self.dataset_name
         torch.save(self.collate([graph]), self.processed_paths[0])
 
-class LUBM(NTDatasets):       
+
+class LUBM(NTDatasets):
     def __init__(
         self,**kwargs
     ):
@@ -552,6 +553,30 @@ class NTRankingQueries(NTQueries):
         ends = starts[1:] + [int(flat.numel())]
         return list(zip(starts, ends))
 
+
+class cycle_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            dataset_name="cycle_dataset",
+            url="",
+            **kwargs
+        )
+
+class path_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            dataset_name="path_dataset",
+            url="",
+            **kwargs
+        )
+
+class implication_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(
+            dataset_name="implication_dataset",
+            url="",
+            **kwargs
+        )
 
 class LUBMQueries(NTQueries):
     def __init__(
@@ -2492,4 +2517,45 @@ class yago_path_queries_ranking(NTRankingQueries):
             global_relation_mapping=global_relation_mapping,
             type="path", **kwargs,
         )
+
+class cycle_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="cycle_dataset", **kwargs)
+    def download(self):
+        pass
+
+class cycle_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(
+            url="file://cycle_queries.json",
+            dataset_name="cycle_queries",
+            type="cycle",
+            **kwargs
+        )
+    def download(self):
+        pass
+
+class path_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="path_dataset", **kwargs)
+    def download(self):
+        pass
+
+class path_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://localhost", dataset_name="path_dataset", type="path", **kwargs)
+    def download(self):
+        pass
+
+class implication_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="implication_dataset", **kwargs)
+    def download(self):
+        pass
+
+class implication_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://localhost", dataset_name="implication_dataset", type="implication", **kwargs)
+    def download(self):
+        pass
 
