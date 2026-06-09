@@ -11,37 +11,40 @@ import numpy as np
 import pandas as pd
 from matplotlib.ticker import FuncFormatter
 
-from .schema import CARDINALITY_BIN_LABELS
+from .schema import CARDINALITY_BIN_LABELS, EPSILON
 
 # LNCS single-column figure geometry. LNCS text width is ~4.6 in; there is no
 # two-column layout, so we cap all figures at COL_W and scale height.
 COL_W: float = 4.6
 GOLDEN: float = 0.618
 
-METHOD_ORDER: tuple[str, ...] = ("fice", "gnce", "lmkg", "lss", "wj", "cset")
+METHOD_ORDER: tuple[str, ...] = ("fice", "gnce", "lmkg", "lss", "wj", "cset", "sumrdf")
 METHOD_COLORS: dict[str, str] = {
-    "fice": "#1f77b4",  # blue
-    "gnce": "#ff7f0e",  # orange
-    "lmkg": "#2ca02c",  # green
-    "wj":   "#d62728",  # red
-    "cset": "#9467bd",  # purple
-    "lss":  "#8c564b",  # brown
+    "fice":   "#1f77b4",  # blue
+    "gnce":   "#ff7f0e",  # orange
+    "lmkg":   "#2ca02c",  # green
+    "wj":     "#d62728",  # red
+    "cset":   "#9467bd",  # purple
+    "lss":    "#8c564b",  # brown
+    "sumrdf": "#17becf",  # cyan
 }
 METHOD_LINESTYLE: dict[str, object] = {
-    "fice": "-",
-    "gnce": "--",
-    "lmkg": "-.",
-    "wj":   ":",
-    "cset": (0, (3, 1, 1, 1)),
-    "lss":  (0, (1, 1)),  # dotted
+    "fice":   "-",
+    "gnce":   "--",
+    "lmkg":   "-.",
+    "wj":     ":",
+    "cset":   (0, (3, 1, 1, 1)),
+    "lss":    (0, (1, 1)),  # dotted
+    "sumrdf": (0, (5, 2)),  # long dashes
 }
 DISPLAY_NAME: dict[str, str] = {
-    "fice": "FICE",
-    "gnce": "GNCE",
-    "lmkg": "LMKG",
-    "wj":   "WJ",
-    "cset": "CSet",
-    "lss":  "LSS",
+    "fice":   "FICE",
+    "gnce":   "GNCE",
+    "lmkg":   "LMKG",
+    "wj":     "WJ",
+    "cset":   "CSet",
+    "lss":    "LSS",
+    "sumrdf": "SumRDF",
 }
 GRAPH_DISPLAY_NAME: dict[str, str] = {
     "wn18rr": "WN18RR",
@@ -117,7 +120,7 @@ def _safe_filename(s: str) -> str:
     return "".join(c if c.isalnum() or c in ("-", "_") else "_" for c in s)
 
 
-def _signed_q_error(sub: pd.DataFrame, eps: float = 1e-7) -> np.ndarray:
+def _signed_q_error(sub: pd.DataFrame, eps: float = EPSILON) -> np.ndarray:
     p = np.maximum(sub["prediction"].to_numpy(), eps)
     t = np.maximum(sub["true_value"].to_numpy(), eps)
     over = p >= t
@@ -127,7 +130,7 @@ def _signed_q_error(sub: pd.DataFrame, eps: float = 1e-7) -> np.ndarray:
     return out
 
 
-def _signed_log_q(sub: pd.DataFrame, eps: float = 1e-7) -> np.ndarray:
+def _signed_log_q(sub: pd.DataFrame, eps: float = EPSILON) -> np.ndarray:
     p = np.maximum(sub["prediction"].to_numpy(), eps)
     t = np.maximum(sub["true_value"].to_numpy(), eps)
     return np.log10(p / t)

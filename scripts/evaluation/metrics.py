@@ -23,10 +23,16 @@ def _log_pearson(pred: np.ndarray, true: np.ndarray) -> float:
     return float(np.corrcoef(lp, lt)[0, 1])
 
 
+def _geomean(s: pd.Series) -> float:
+    # q_error is always >= 1 under EPSILON=1.0, so log is safe.
+    return float(np.exp(np.mean(np.log(s.to_numpy(dtype=np.float64)))))
+
+
 def aggregate(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     grouped = df.groupby(by, observed=True)
     q_agg = grouped["q_error"].agg(
         mean_q="mean",
+        geomean_q=_geomean,
         median_q="median",
         p90_q=lambda s: np.percentile(s, 90),
         p95_q=lambda s: np.percentile(s, 95),
@@ -44,11 +50,31 @@ def aggregate(df: pd.DataFrame, by: list[str]) -> pd.DataFrame:
     return q_agg.join(zero_rate).join(corr).reset_index()
 
 
+def macro_average(per_method_graph: pd.DataFrame) -> pd.DataFrame:
+    """Macro-average of per-graph statistics: each graph weighted equally.
+
+    Reports macro_median_q and macro_geomean_q (arithmetic mean across graphs of
+    the per-graph median and per-graph geomean), alongside the n_graphs each
+    method covers (so SumRDF's smaller coverage is visible).
+    """
+    rows = []
+    for method, grp in per_method_graph.groupby("method", observed=True):
+        rows.append({
+            "method": method,
+            "n_graphs": int(len(grp)),
+            "macro_median_q": float(grp["median_q"].mean()),
+            "macro_geomean_q": float(grp["geomean_q"].mean()),
+        })
+    return pd.DataFrame(rows).sort_values("macro_median_q").reset_index(drop=True)
+
+
 def compute_tables(df: pd.DataFrame) -> dict[str, pd.DataFrame]:
+    per_method_graph = aggregate(df, ["method", "graph"])
     return {
         "per_method_graph_queryset": aggregate(df, ["method", "graph", "query_dataset"]),
-        "per_method_graph": aggregate(df, ["method", "graph"]),
+        "per_method_graph": per_method_graph,
         "per_method": aggregate(df, ["method"]),
+        "per_method_macro": macro_average(per_method_graph),
     }
 
 

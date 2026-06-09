@@ -26,6 +26,7 @@ ADAPTER_REGISTRY: dict[str, MethodAdapter] = {
     "cset": GcareAdapter("cset"),
     "lmkg": LmkgAdapter(),
     "lss": LssAdapter(),
+    "sumrdf": GcareAdapter("sumrdf"),
 }
 
 __all__ = [

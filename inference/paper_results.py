@@ -255,6 +255,113 @@ def build_per_query(prefix, leftdeep_dir, ep_cache):
 
 
 # ---------------------------------------------------------------------------
+# DP p-error: same plan space as the c-out comparison (bushy)
+# ---------------------------------------------------------------------------
+#
+# Today's `p_error_fice` / `p_error_endpoint` from leftdeep_perror.py are
+# computed by exhaustive enumeration over *left-deep* plans. The c-out
+# comparison reported above is in the *bushy* plan space (FICE-DP plan vs
+# endpoint's actually-emitted plan). The function below closes that gap by
+# computing p-error in the bushy plan space:
+#
+#     oracle_min(q) = dp_best_plan(masks_q, true_card_q).cost[full_mask]
+#     p_error_fice_dp(q)     = cout_true_same_plan(q) / oracle_min(q)
+#     p_error_endpoint_dp(q) = cout_skip_sort(q)      / oracle_min(q)
+#
+# All inputs are already on disk after dp_subquery_eval has run — no endpoint
+# round-trips are needed here.
+
+def build_per_query_dp(prefix, ep_cache):
+    """Per-query bushy-DP p-error, dual to ``build_per_query`` (left-deep).
+
+    For each shape under ``output/<prefix>_<shape>/``:
+      - Read ``subqueries.tsv`` → run ``dp_best_plan(masks, true_card)`` to get
+        the bushy oracle minimum c-out.
+      - Read ``plans.tsv`` → ``cout_true_same_plan`` is the true c-out of the
+        FICE-DP plan.
+      - Look up endpoint emitted-plan true c-out from the skip-Sort cache.
+
+    Returns one row per query with both p-errors plus the raw c-outs.
+    """
+    # Local import — dp_subquery_eval imports torch and mutates sys.path; we do
+    # not want either of those at module load time.
+    from dp_subquery_eval import dp_best_plan
+
+    rows = []
+    for shape in SHAPES:
+        sd = REPO_ROOT / "output" / f"{prefix}_{shape}"
+        sub_path = sd / "subqueries.tsv"
+        plans_path = sd / "plans.tsv"
+        if not sub_path.exists() or not plans_path.exists():
+            continue
+
+        sub = pd.read_csv(sub_path, sep="\t")
+        sub = sub[sub["true_card"] >= 0]   # drop subsets where the endpoint failed
+        if sub.empty:
+            continue
+
+        plans = pd.read_csv(plans_path, sep="\t")
+        plans = plans[(plans["n_triples"] >= DEFAULT_MIN_N)
+                      & (plans["n_triples"] <= DEFAULT_MAX_N)
+                      & np.isfinite(plans["cout_true_same_plan"])]
+        if plans.empty:
+            continue
+        plans_by_qi = plans.set_index("query_idx")
+
+        ep_shape = ep_cache[ep_cache["shape"] == shape].set_index("query_idx") \
+            if "shape" in ep_cache.columns else pd.DataFrame()
+
+        for qi, grp in sub.groupby("query_idx"):
+            if qi not in plans_by_qi.index:
+                continue
+            masks = grp["mask"].astype(int).tolist()
+            tcard = {int(r.mask): float(r.true_card) for r in grp.itertuples()}
+            cost, _, full_mask = dp_best_plan(masks, tcard)
+            oracle = cost.get(full_mask, float("nan"))
+            if not np.isfinite(oracle) or oracle <= 0:
+                continue
+
+            fice_true = float(plans_by_qi.loc[qi, "cout_true_same_plan"])
+            ep_true = float("nan")
+            if not ep_shape.empty and qi in ep_shape.index:
+                v = ep_shape.loc[qi, "cout_skip_sort"]
+                if np.isfinite(v):
+                    ep_true = float(v)
+
+            p_error_fice = fice_true / oracle
+            p_error_ep = (ep_true / oracle) if np.isfinite(ep_true) else float("nan")
+
+            # Sanity: the FICE-DP plan is in the same search space as the oracle,
+            # so its true c-out must be ≥ the oracle minimum (modulo FP noise).
+            assert p_error_fice >= 1.0 - 1e-6, (
+                f"FICE-DP p_error < 1 at shape={shape} qi={qi}: "
+                f"{p_error_fice!r} (fice_true={fice_true}, oracle={oracle})"
+            )
+            # The endpoint's plan should also be in that search space (BGP-only,
+            # no cross products). If a value dips below 1 it's almost certainly
+            # FP noise from QLever's `result_rows` vs our enumerated true_card;
+            # warn rather than crash so the run still produces a table.
+            if np.isfinite(p_error_ep) and p_error_ep < 1.0 - 1e-3:
+                logger.warning(
+                    f"endpoint p_error < 1 at shape={shape} qi={qi}: "
+                    f"{p_error_ep:.6f} (ep_true={ep_true}, oracle={oracle})"
+                )
+
+            rows.append({
+                "shape": shape,
+                "query_idx": int(qi),
+                "n_triples": int(grp["n_triples"].iloc[0]),
+                "oracle_min_cout": oracle,
+                "fice_dp_cout_true": fice_true,
+                "endpoint_cout_true": ep_true,
+                "p_error_fice_dp": p_error_fice,
+                "p_error_endpoint_dp": p_error_ep,
+            })
+
+    return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
 # Calibration
 # ---------------------------------------------------------------------------
 
@@ -471,6 +578,124 @@ def emit_tables(merged, label, calib_per_shape, calib_pooled, lines):
     return pooled, pd.DataFrame(per_shape_records)
 
 
+def emit_dp_perror_tables(merged_dp, label, lines):
+    """Pooled + per-shape tables for bushy-DP p-error (dual to ``emit_tables``).
+
+    Returns ``(pooled_dict, per_shape_df, winrates_df)``. ``winrates_df`` has
+    one row per shape plus a ``POOLED`` row, ready to dump as a CSV.
+    """
+    def out(s=""):
+        print(s)
+        lines.append(s)
+
+    if merged_dp.empty:
+        out("\n========== DP p-error (bushy plan space) — no data, skipping ==========\n")
+        return None, None, None
+
+    out(f"\n========== DP p-error (bushy plan space) — run: {label} ==========\n")
+    out("Plan space: bushy DP. Oracle = min c-out over bushy plans on TRUE cards.")
+    out("FICE numerator = cout_true_same_plan (FICE-DP plan).  "
+        "Endpoint numerator = endpoint emitted-plan c-out (skip-Sort).")
+
+    pe_f = merged_dp["p_error_fice_dp"].values
+    pe_e = merged_dp["p_error_endpoint_dp"].dropna().values
+    n_pq = int(len(merged_dp))
+    n_ep = int(np.isfinite(merged_dp["p_error_endpoint_dp"]).sum())
+
+    pf_g = boot_geomean(pe_f)
+    pe_g = boot_geomean(pe_e)
+
+    out(f"\n  N_FICE = {n_pq}    N_endpoint = {n_ep}")
+    out(f"  p-error geomean (95% CI)   FICE: {fmt_ci(*pf_g)}    "
+        f"endpoint: {fmt_ci(*pe_g)}")
+    out(f"  p-error p90 / p99 / max    "
+        f"FICE: {percentile(pe_f, 90):.2f} / {percentile(pe_f, 99):.2f} / "
+        f"{(np.nanmax(pe_f) if n_pq else float('nan')):.1f}    "
+        f"endpoint: {percentile(pe_e, 90):.2f} / {percentile(pe_e, 99):.2f} / "
+        f"{(np.nanmax(pe_e) if n_ep else float('nan')):.1f}")
+
+    # Win/tie/loss on per-query (p_error_fice_dp < / == / > p_error_endpoint_dp).
+    both = merged_dp.dropna(subset=["p_error_fice_dp", "p_error_endpoint_dp"])
+    n_total = int(len(both))
+    n_w = int((both["p_error_fice_dp"] < both["p_error_endpoint_dp"]).sum())
+    n_t = int(np.isclose(both["p_error_fice_dp"].values,
+                         both["p_error_endpoint_dp"].values).sum())
+    n_l = n_total - n_w - n_t
+    p, lo, hi = wilson_ci(n_w, n_total)
+    out(f"  FICE strict-win on p-error: {n_w}/{n_total} = {p*100:.1f}% "
+        f"[{lo*100:.1f}, {hi*100:.1f}]   tie={n_t}  loss={n_l}")
+
+    pooled = {
+        "label": label,
+        "N_pq_fice": n_pq,
+        "N_pq_endp": n_ep,
+        "pe_fice_geom": pf_g[0], "pe_fice_lo": pf_g[1], "pe_fice_hi": pf_g[2],
+        "pe_endp_geom": pe_g[0], "pe_endp_lo": pe_g[1], "pe_endp_hi": pe_g[2],
+        "pe_fice_p90": percentile(pe_f, 90),
+        "pe_fice_p99": percentile(pe_f, 99),
+        "pe_fice_max": float(np.nanmax(pe_f)) if n_pq else float("nan"),
+        "pe_endp_p90": percentile(pe_e, 90),
+        "pe_endp_p99": percentile(pe_e, 99),
+        "pe_endp_max": float(np.nanmax(pe_e)) if n_ep else float("nan"),
+        "win_strict": n_w, "win_tie": n_t, "win_loss": n_l,
+        "win_total": n_total, "win_pct": p, "win_lo": lo, "win_hi": hi,
+    }
+
+    # --- Per-shape ---
+    out("\nPer-shape:")
+    hdr = (f"  {'shape':<14} | {'N':>3} | {'p-err FICE (CI)':<26} | "
+           f"{'p-err endpoint (CI)':<26} | {'F.p99':>7} | {'E.p99':>7} | {'win%':>14}")
+    out(hdr)
+    out("  " + "-" * (len(hdr) - 2))
+
+    per_shape_records = []
+    winrate_rows = []
+    for shape, g in merged_dp.groupby("shape", sort=False):
+        n = int(len(g))
+        pf = g["p_error_fice_dp"].values
+        pe = g["p_error_endpoint_dp"].dropna().values
+        gf = boot_geomean(pf)
+        ge = boot_geomean(pe)
+        bb = g.dropna(subset=["p_error_fice_dp", "p_error_endpoint_dp"])
+        nw = int((bb["p_error_fice_dp"] < bb["p_error_endpoint_dp"]).sum())
+        nt = int(np.isclose(bb["p_error_fice_dp"].values,
+                            bb["p_error_endpoint_dp"].values).sum())
+        nl = int(len(bb)) - nw - nt
+        wp, wlo, whi = wilson_ci(nw, len(bb)) if len(bb) else (float("nan"),) * 3
+        out(f"  {shape:<14} | {n:>3} | {fmt_ci(*gf):<26} | {fmt_ci(*ge):<26} | "
+            f"{percentile(pf, 99):>7.2f} | {percentile(pe, 99):>7.2f} | "
+            f"{wp*100:>5.1f}%[{wlo*100:>4.1f},{whi*100:>4.1f}]")
+        per_shape_records.append({
+            "shape": shape, "N": n,
+            "pe_fice_geom": gf[0], "pe_fice_lo": gf[1], "pe_fice_hi": gf[2],
+            "pe_endp_geom": ge[0], "pe_endp_lo": ge[1], "pe_endp_hi": ge[2],
+            "pe_fice_p90": percentile(pf, 90),
+            "pe_fice_p99": percentile(pf, 99),
+            "pe_fice_max": float(np.nanmax(pf)) if n else float("nan"),
+            "pe_endp_p90": percentile(pe, 90),
+            "pe_endp_p99": percentile(pe, 99),
+            "pe_endp_max": float(np.nanmax(pe)) if len(pe) else float("nan"),
+            "win_strict": nw, "win_tie": nt, "win_loss": nl,
+            "win_total": int(len(bb)),
+            "win_pct": wp, "win_lo": wlo, "win_hi": whi,
+        })
+        winrate_rows.append({
+            "label": label, "shape": shape,
+            "win_strict": nw, "win_tie": nt, "win_loss": nl,
+            "win_total": int(len(bb)),
+            "win_pct": wp, "win_lo": wlo, "win_hi": whi,
+        })
+
+    winrate_rows.append({
+        "label": label, "shape": "POOLED",
+        "win_strict": n_w, "win_tie": n_t, "win_loss": n_l,
+        "win_total": n_total,
+        "win_pct": p, "win_lo": lo, "win_hi": hi,
+    })
+
+    return pooled, pd.DataFrame(per_shape_records), pd.DataFrame(winrate_rows)
+
+
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -495,6 +720,10 @@ def main():
     ap.add_argument("--max-queries", type=int, default=DEFAULT_MAX_QUERIES)
     ap.add_argument("--min-n", type=int, default=DEFAULT_MIN_N)
     ap.add_argument("--max-n", type=int, default=DEFAULT_MAX_N)
+    ap.add_argument("--dp-perror", dest="dp_perror", action="store_true", default=True,
+                    help="Compute p-error in the bushy-DP plan space (default: on)")
+    ap.add_argument("--no-dp-perror", dest="dp_perror", action="store_false",
+                    help="Skip the bushy-DP p-error tables")
     args = ap.parse_args()
 
     out_dir = Path(args.out) if args.out else REPO_ROOT / f"output/evaluation/paper_{args.label}"
@@ -522,11 +751,37 @@ def main():
     # Step 4: tables
     lines = []
     pooled, per_shape = emit_tables(merged, args.label, calib_per_shape, calib_pooled, lines)
-    (out_dir / "paper_table.txt").write_text("\n".join(lines))
     pd.DataFrame([pooled]).to_csv(out_dir / "paper_table_pooled.csv", index=False)
     per_shape.to_csv(out_dir / "paper_table_per_shape.csv", index=False)
     calib_per_shape.to_csv(out_dir / "calibration_per_shape.csv", index=False)
+
+    # Step 4b: DP p-error tables (bushy plan space — same plan space as the
+    # c-out comparison above). Same query universe as plans.tsv; nothing is
+    # re-queried from the endpoint here.
+    n_dp_fice = n_dp_endp = 0
+    if args.dp_perror:
+        merged_dp = build_per_query_dp(args.prefix, ep_cache)
+        merged_dp.to_csv(out_dir / "per_query_dp_perror.csv", index=False)
+        result = emit_dp_perror_tables(merged_dp, args.label, lines)
+        if result is not None and result[0] is not None:
+            pooled_dp, per_shape_dp, winrates_dp = result
+            pd.DataFrame([pooled_dp]).to_csv(out_dir / "paper_dp_perror_pooled.csv", index=False)
+            per_shape_dp.to_csv(out_dir / "paper_dp_perror_per_shape.csv", index=False)
+            winrates_dp.to_csv(out_dir / "paper_dp_perror_winrates.csv", index=False)
+            n_dp_fice = pooled_dp["N_pq_fice"]
+            n_dp_endp = pooled_dp["N_pq_endp"]
+
+    # Sanity: same query universe as left-deep p-error (per shape).
+    if args.dp_perror and n_dp_fice:
+        n_ld = int(merged["p_error_fice"].notna().sum())
+        lines.append("")
+        lines.append(f"[universe check] left-deep p-error N = {n_ld}    "
+                     f"DP p-error N (FICE / endpoint) = {n_dp_fice} / {n_dp_endp}")
+
+    (out_dir / "paper_table.txt").write_text("\n".join(lines))
     logger.info(f"Wrote paper_table.txt, paper_table_pooled.csv, paper_table_per_shape.csv to {out_dir}")
+    if args.dp_perror:
+        logger.info(f"Wrote paper_dp_perror_*.csv (bushy-DP plan space) to {out_dir}")
 
     # Step 5: plots
     try:

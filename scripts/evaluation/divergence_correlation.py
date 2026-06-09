@@ -39,18 +39,18 @@ from scipy.stats import t as tdist
 # Per-KG median q-error, paper Table 2.
 QERROR = pd.DataFrame(
     [
-        ("aids",        1.70,  4.00,   78.64,    7.00,  26.67,  758.76),
-        ("codex_l",     8.19,  10.31,  18.66,   23.00,  28.08,  359.00),
-        ("dbpedia100k", 3.22,  7.56,   6.79,    11.00,  41.39,  255.00),
-        ("fb237",       5.27,  16.44,  7.75,    15.00,  63.46,  211.96),
-        ("hetionet",    5.91,  61.86,  304.29, 129.78,  36.30,  346.56),
-        ("lubm",        2.07,  3.06,   8.41,    31.13,  9.92,   98.83),
-        ("swdf",        2.45,  4.28,   5.24,    23.00,  30.51,  334.51),
-        ("wikidata",    16.48, 15.76,  5.99,     8.00,  13.04,  309.00),
-        ("wn18rr",      3.25,  3.46,   7.15,    17.63,  39.59,  107.00),
-        ("yago",        4.85,  8.69,   80.19,   14.71,  2.92,   197.56),
+        ("aids",        1.70,  4.00,   78.64,    7.00,  26.67,  758.76,    3.00),
+        ("codex_l",     8.19,  10.31,  18.66,   23.00,  28.08,  359.00,   13.12),
+        ("dbpedia100k", 3.22,  7.56,   6.79,    11.00,  41.39,  255.00,  123.20),
+        ("fb237",       5.27,  16.44,  7.75,    15.00,  63.46,  211.96,    7.35),
+        ("hetionet",    5.91,  61.86,  304.29, 129.78,  36.30,  346.56,  463.56),
+        ("lubm",        2.07,  3.06,   8.41,    31.13,  9.92,   98.83,    2.00),
+        ("swdf",        2.45,  4.28,   5.24,    23.00,  30.51,  334.51,   14.00),
+        ("wikidata",    16.48, 15.76,  5.99,     8.00,  13.04,  309.00,    9.00),
+        ("wn18rr",      3.25,  3.46,   7.15,    17.63,  39.59,  107.00,   16.00),
+        ("yago",        4.85,  8.69,   80.19,   14.71,  2.92,   197.56,   21.42),
     ],
-    columns=["kg", "FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet"],
+    columns=["kg", "FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet", "SumRDF"],
 ).set_index("kg")
 
 # Per-KG number of triples (from structural_divergence.py parsing output).
@@ -67,7 +67,7 @@ TRIPLES = pd.Series({
     "wn18rr":         9_842,
 }, name="triples")
 
-METHODS = ["FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet"]
+METHODS = ["FICE", "GNCE", "LMKG", "LSS", "WJ", "CSet", "SumRDF"]
 DIVERGENCE_COLS = ["deg", "csize", "cset_mult", "pred_freq", "mean"]
 
 
@@ -111,14 +111,16 @@ def residualize(x: np.ndarray, z: np.ndarray) -> np.ndarray:
 def marginal_divergence_table(df: pd.DataFrame) -> pd.DataFrame:
     rows = []
     for method in METHODS:
-        log_qe = np.log(df[method].to_numpy())
-        qe = df[method].to_numpy()
+        qe_full = df[method].to_numpy()
+        mask = ~np.isnan(qe_full)
+        qe = qe_full[mask]
+        log_qe = np.log(qe)
         for col in DIVERGENCE_COLS:
-            d = df[col].to_numpy()
+            d = df[col].to_numpy()[mask]
             pr, pp = pearsonr(log_qe, d)
             sr, sp = spearmanr(qe, d)
             rows.append({
-                "method": method, "divergence_metric": col,
+                "method": method, "divergence_metric": col, "n": int(mask.sum()),
                 "pearson_logqE": float(pr), "pearson_p": float(pp),
                 "spearman_qE": float(sr),  "spearman_p": float(sp),
             })
@@ -135,11 +137,15 @@ def size_and_partial_table(df: pd.DataFrame) -> pd.DataFrame:
     Sanity: Recipe A (residualize-then-correlate) should match Recipe B
     (closed form) to numerical precision; both reported.
     """
-    log_G = np.log(df["triples"].to_numpy())
-    jsd = df["mean"].to_numpy()
+    log_G_full = np.log(df["triples"].to_numpy())
+    jsd_full = df["mean"].to_numpy()
     rows = []
     for method in METHODS:
-        log_qe = np.log(df[method].to_numpy())
+        qe_full = df[method].to_numpy()
+        mask = ~np.isnan(qe_full)
+        log_qe = np.log(qe_full[mask])
+        log_G = log_G_full[mask]
+        jsd = jsd_full[mask]
         # Marginals
         r_jsd, p_jsd = pearsonr(log_qe, jsd)
         r_size, p_size = pearsonr(log_qe, log_G)
@@ -151,7 +157,7 @@ def size_and_partial_table(df: pd.DataFrame) -> pd.DataFrame:
         ry = residualize(log_qe, log_G)
         r_jsd_part_resid, _ = pearsonr(rx, ry)
         rows.append({
-            "method": method,
+            "method": method, "n": int(mask.sum()),
             "pearson_logqE_JSD": r_jsd,        "p_JSD": p_jsd,
             "pearson_logqE_logG": r_size,       "p_logG": p_size,
             "partial_JSD_given_logG": r_jsd_part,
@@ -185,15 +191,18 @@ def leave_one_out_fice(df: pd.DataFrame) -> pd.DataFrame:
 
 def scatter_per_method(df: pd.DataFrame, out_path: Path) -> None:
     fig, axes = plt.subplots(1, len(METHODS), figsize=(4.5 * len(METHODS), 4.5), sharex=True)
-    x = df["mean"].to_numpy()
-    xs = np.linspace(x.min(), x.max(), 50)
+    x_full = df["mean"].to_numpy()
+    xs = np.linspace(x_full.min(), x_full.max(), 50)
     for ax, method in zip(axes, METHODS):
-        y = df[method].to_numpy()
+        y_full = df[method].to_numpy()
+        mask = ~np.isnan(y_full)
+        x = x_full[mask]
+        y = y_full[mask]
         log_y = np.log(y)
         pr, pp = pearsonr(log_y, x)
         sr, sp = spearmanr(y, x)
         ax.scatter(x, y, s=42, zorder=3)
-        for kg, row in df.iterrows():
+        for kg, row in df[mask].iterrows():
             ax.annotate(kg, (row["mean"], row[method]),
                         fontsize=7, xytext=(3, 3), textcoords="offset points")
         a, b = np.polyfit(x, log_y, 1)
@@ -214,12 +223,15 @@ def scatter_per_method(df: pd.DataFrame, out_path: Path) -> None:
 def scatter_overlay(df: pd.DataFrame, xcol: str, xlabel: str, out_path: Path,
                     log_x: bool = False) -> None:
     fig, ax = plt.subplots(figsize=(7.5, 5.5))
-    x = df[xcol].to_numpy()
-    x_plot = np.log(x) if log_x else x
-    xs = np.linspace(x_plot.min(), x_plot.max(), 50)
+    x_full = df[xcol].to_numpy()
+    x_plot_full = np.log(x_full) if log_x else x_full
+    xs = np.linspace(x_plot_full.min(), x_plot_full.max(), 50)
     colors = plt.cm.tab10.colors[: len(METHODS)]
     for method, c in zip(METHODS, colors):
-        y = df[method].to_numpy()
+        y_full = df[method].to_numpy()
+        mask = ~np.isnan(y_full)
+        x_plot = x_plot_full[mask]
+        y = y_full[mask]
         ax.scatter(x_plot, y, s=42, color=c, label=method, zorder=3)
         a, b = np.polyfit(x_plot, np.log(y), 1)
         ax.plot(xs, np.exp(a * xs + b), "--", color=c, alpha=0.5, zorder=2)
@@ -231,6 +243,116 @@ def scatter_overlay(df: pd.DataFrame, xcol: str, xlabel: str, out_path: Path,
     fig.tight_layout()
     fig.savefig(out_path)
     plt.close(fig)
+
+
+# ---------------------------------------------------------------------------
+# Distribution plots
+# ---------------------------------------------------------------------------
+
+def load_histograms(
+    path: Path, kgs: list[str]
+) -> dict[str, tuple[np.ndarray, dict[str, np.ndarray]]]:
+    """Inverse of the savez in structural_divergence.py."""
+    z = np.load(path)
+    hists: dict[str, tuple[np.ndarray, dict[str, np.ndarray]]] = {}
+    for metric in DIVERGENCE_COLS[:-1]:  # skip "mean"
+        edges = z[f"edges__{metric}"]
+        kg_hists = {kg: z[f"hist__{metric}__{kg}"] for kg in kgs}
+        hists[metric] = (edges, kg_hists)
+    return hists
+
+
+def plot_raw_distributions(
+    hists: dict[str, tuple[np.ndarray, dict[str, np.ndarray]]],
+    kgs: list[str],
+    out_path: Path,
+) -> None:
+    """Plot 1: 4 panels (one per metric), all KGs overlaid as line histograms."""
+    metrics = [m for m in DIVERGENCE_COLS if m != "mean"]
+    fig, axes = plt.subplots(1, 4, figsize=(4 * 3.0, 3.0))
+    cmap = plt.cm.tab10.colors  # 10 distinct colors for 10 KGs
+    for ax, metric in zip(axes, metrics):
+        edges, kg_hists = hists[metric]
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        for kg, color in zip(kgs, cmap):
+            ax.plot(centers, kg_hists[kg], color=color, label=kg, linewidth=1.0)
+        ax.set_title(metric)
+        ax.set_xlabel("bin (log2 scale where applicable)")
+        ax.grid(True, alpha=0.25)
+    axes[0].set_ylabel("density")
+    axes[-1].legend(fontsize=6, loc="upper right", frameon=False)
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+
+
+def plot_train_mixtures(
+    hists: dict[str, tuple[np.ndarray, dict[str, np.ndarray]]],
+    kgs: list[str],
+    out_path: Path,
+) -> None:
+    """Plot 2: 4 panels (one per metric), each showing the equal-weight mixture
+    histogram across all KGs."""
+    metrics = [m for m in DIVERGENCE_COLS if m != "mean"]
+    fig, axes = plt.subplots(1, 4, figsize=(4 * 3.0, 3.0))
+    for ax, metric in zip(axes, metrics):
+        edges, kg_hists = hists[metric]
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        mix = np.mean(np.stack([kg_hists[k] for k in kgs]), axis=0)
+        mix /= mix.sum()
+        ax.fill_between(centers, mix, alpha=0.4, color="#444")
+        ax.plot(centers, mix, color="black", linewidth=1.0)
+        ax.set_title(f"{metric}: equal-weight mixture (all {len(kgs)} KGs)")
+        ax.grid(True, alpha=0.25)
+    axes[0].set_ylabel("density")
+    fig.tight_layout()
+    fig.savefig(out_path)
+    plt.close(fig)
+
+
+def plot_loo_pairs(
+    hists: dict[str, tuple[np.ndarray, dict[str, np.ndarray]]],
+    kgs: list[str],
+    out_dir: Path,
+) -> None:
+    """Plot 3: per-metric file. Top row: global train-mix. Below: 10 panels,
+    one per held-out KG, each overlaying the leave-one-out train-mix on the
+    held-out KG's histogram."""
+    metrics = [m for m in DIVERGENCE_COLS if m != "mean"]
+    n_kgs = len(kgs)
+    n_cols = 5
+    n_rows_below = (n_kgs + n_cols - 1) // n_cols
+    for metric in metrics:
+        edges, kg_hists = hists[metric]
+        centers = 0.5 * (edges[:-1] + edges[1:])
+        fig = plt.figure(figsize=(n_cols * 2.4, 2.4 * (1 + n_rows_below)))
+        gs = fig.add_gridspec(1 + n_rows_below, n_cols, hspace=0.5, wspace=0.3)
+        # Top row: global train mixture (mean of all 10).
+        ax_top = fig.add_subplot(gs[0, :])
+        mix_all = np.mean(np.stack([kg_hists[k] for k in kgs]), axis=0)
+        mix_all /= mix_all.sum()
+        ax_top.fill_between(centers, mix_all, alpha=0.4, color="#444")
+        ax_top.plot(centers, mix_all, color="black", linewidth=1.0)
+        ax_top.set_title(f"{metric}: train mixture (mean of all {n_kgs} KGs)")
+        ax_top.grid(True, alpha=0.25)
+        # Below: one panel per held-out KG.
+        for idx, kg in enumerate(kgs):
+            r, c = 1 + idx // n_cols, idx % n_cols
+            ax = fig.add_subplot(gs[r, c])
+            mix_loo = np.mean(
+                np.stack([kg_hists[k] for k in kgs if k != kg]), axis=0
+            )
+            mix_loo /= mix_loo.sum()
+            ax.plot(centers, mix_loo, color="#888", linewidth=1.0,
+                    linestyle="--", label="LOO train-mix")
+            ax.plot(centers, kg_hists[kg], color="C0", linewidth=1.2, label=kg)
+            ax.set_title(kg, fontsize=8)
+            ax.grid(True, alpha=0.25)
+            if idx == 0:
+                ax.legend(fontsize=6, frameon=False)
+        fig.tight_layout()
+        fig.savefig(out_dir / f"loo_pairs_{metric}.pdf")
+        plt.close(fig)
 
 
 # ---------------------------------------------------------------------------
@@ -283,6 +405,19 @@ def main() -> None:
                     out_dir / "scatter_overlay.pdf")
     scatter_overlay(df, "triples", "log |G| (triples)",
                     out_dir / "scatter_size.pdf", log_x=True)
+
+    # 5. Distribution plots (require histograms.npz from structural_divergence.py).
+    hist_path = Path(args.divergence_csv).with_name("histograms.npz")
+    if hist_path.exists():
+        kgs = list(df.index)
+        hists = load_histograms(hist_path, kgs)
+        plot_raw_distributions(hists, kgs, out_dir / "raw_distributions.pdf")
+        plot_train_mixtures(hists, kgs, out_dir / "train_mixtures.pdf")
+        plot_loo_pairs(hists, kgs, out_dir)
+        print("Wrote raw_distributions.pdf, train_mixtures.pdf, loo_pairs_*.pdf")
+    else:
+        print(f"[warn] {hist_path} not found; "
+              "re-run structural_divergence.py to generate it.")
 
     print(f"\nAll artifacts in {out_dir}")
 

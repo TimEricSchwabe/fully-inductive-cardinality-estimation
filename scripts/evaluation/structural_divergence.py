@@ -271,6 +271,15 @@ def main() -> None:
     print(df.round(3).to_string())
     print(f"\nWrote {csv_path}")
 
+    hist_path = out_dir / "histograms.npz"
+    arrays: dict[str, np.ndarray] = {}
+    for metric, (edges, kg_hists) in hists_by_metric.items():
+        arrays[f"edges__{metric}"] = edges
+        for kg, h in kg_hists.items():
+            arrays[f"hist__{metric}__{kg}"] = h
+    np.savez(hist_path, **arrays)
+    print(f"Wrote {hist_path}")
+
     heatmap_path = out_dir / "pairwise_heatmaps.pdf"
     plot_heatmaps(hists_by_metric, args.kgs, heatmap_path)
     print(f"Wrote {heatmap_path}")
