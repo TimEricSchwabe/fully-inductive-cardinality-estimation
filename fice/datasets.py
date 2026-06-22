@@ -2541,21 +2541,17 @@ class path_dataset(NTDatasets):
     def download(self):
         pass
 
+class path_queries_new(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://localhost", dataset_name="path_dataset", type="path_queries_new", **kwargs)
+    def download(self):
+        pass
+
 class path_queries(NTQueries):
     def __init__(self, **kwargs):
-        super().__init__(url="file://localhost", dataset_name="path_dataset", type="path", **kwargs)
+        super().__init__(url="file://localhost", dataset_name="path_queries", type="path", **kwargs)
     def download(self):
         pass
 
-class implication_dataset(NTDatasets):
-    def __init__(self, **kwargs):
-        super().__init__(url="http://localhost", dataset_name="implication_dataset", **kwargs)
-    def download(self):
-        pass
 
-class implication_queries(NTQueries):
-    def __init__(self, **kwargs):
-        super().__init__(url="file://localhost", dataset_name="implication_dataset", type="implication", **kwargs)
-    def download(self):
-        pass
 

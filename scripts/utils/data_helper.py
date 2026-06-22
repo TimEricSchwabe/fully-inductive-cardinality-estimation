@@ -18,6 +18,9 @@ from torch_geometric.utils import coalesce
 logger = logging.getLogger(__name__)
 
 DATASET_REGISTRY = {
+    "cycle_dataset": datasets.cycle_dataset,
+    "path_dataset": datasets.path_dataset,
+    "implication_dataset": datasets.implication_dataset,
     "LUBM": datasets.LUBM,
     "SWDF": datasets.SWDF,
     "Wikidata": datasets.Wikidata,
@@ -33,6 +36,9 @@ DATASET_REGISTRY = {
 }
 
 QUERY_REGISTRY = {
+    "cycle_queries": datasets.cycle_queries,
+    "path_queries": datasets.path_queries,
+    "path_queries_new": datasets.path_queries_new,
     # LUBM
     "LUBMQueries": datasets.LUBMQueries,
     "lubm_path_queries": datasets.lubm_path_queries,
@@ -231,7 +237,7 @@ def get_query_class(query_name: str):
     """Get the query class from the registry based on config name."""
     if query_name not in QUERY_REGISTRY:
         raise ValueError(
-            f"Unknown query type: {query_name}. Available query types: {list(QUERY_REGISTRY.keys())}"
+                            f"Unknown query type: {query_name}. Available query types: {list(QUERY_REGISTRY.keys())}"
         )
     return QUERY_REGISTRY[query_name]
 
