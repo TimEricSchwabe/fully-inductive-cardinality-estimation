@@ -7,7 +7,7 @@
 # Variables
 # -------------------------------
 PROJECT_DIR="/storage/home/tschwabe/fully-inductive-cardinality-estimation"
-CONFIG_FILE="$PROJECT_DIR/configs/train_ranking_inductive.yaml" #CONFIG_FILE="$PROJECT_DIR/configs/train_full.yaml"
+CONFIG_FILE="$PROJECT_DIR/configs/train_ranking_gt_ppr.yaml" #CONFIG_FILE="$PROJECT_DIR/configs/train_ranking_inductive.yaml" #CONFIG_FILE="$PROJECT_DIR/configs/train_full.yaml"
 SCRIPT="$PROJECT_DIR/scripts/train.py"
 CONTAINER="/storage/home/tschwabe//fully-inductive-cardinality-estimation/pytorch_2.8.0-cuda12.6-cudnn9-devel.sif"
 VENV_PATH="$PROJECT_DIR/venv_apptainer/bin/activate"

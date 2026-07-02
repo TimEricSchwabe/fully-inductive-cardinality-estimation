@@ -64,6 +64,7 @@ from utils.logging_helper import (
 )
 from utils.models import ModelComponents, TrainingContext, TrainingState
 from utils.neighborhood_sampler import MultigraphNeighborSampler
+from utils.subgraph_provider import get_provider
 from torch_geometric.utils import k_hop_subgraph
 logger = logging.getLogger(__name__)
 
@@ -184,6 +185,9 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             relation_attention=relation_attention,
             relational=relational,
             role_aware_degrees=role_aware_degrees,
+            relation_heads=config.relation_gnn.heads,
+            relation_attn_type=config.relation_gnn.attn_type,
+            relation_local_mp=config.relation_gnn.local_mp,
 
             # Query Params
             query_gnn_type=query_gnn_model,
@@ -372,12 +376,46 @@ class PreparedBatch:
     dataset_name: str
 
 
-def prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class):
+def prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class, training=True):
     """Prepare all graphs on CPU. Runs in background thread."""
     entity_source = config.entity_gnn.source
     relation_source = config.relation_gnn.source
     use_bipartite_entity = entity_source in ("bipartite", "factor")
     use_factor = relation_source == "factor"
+
+    if config.neighborhood_mode == 'per_node':
+        # Per-seed independent subgraphs: no joint neighborhood, no batch context.
+        raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
+        provider = get_provider(raw_graph, config)
+        offset = full_graph.num_nodes
+
+        node_idx = query_batch.node_embedding_indices.detach().cpu()
+        edge_idx = query_batch.edge_embedding_indices.detach().cpu()
+        seeds = torch.cat((node_idx[node_idx >= 0], edge_idx[edge_idx >= 0] + offset)).unique()
+
+        # Remap query indices from global ids to seed-slot ids. `seeds` is
+        # sorted (torch.unique), and every valid query id is in it by
+        # construction, so searchsorted gives the slot directly — avoids
+        # allocating a num_nodes-sized lookup tensor per batch (~0.5GB on yago)
+        query_batch.original_node_embedding_indices = query_batch.node_embedding_indices
+        query_batch.original_edge_embedding_indices = query_batch.edge_embedding_indices
+        query_batch.node_embedding_indices = torch.where(
+            node_idx >= 0, torch.searchsorted(seeds, node_idx.clamp(min=0)),
+            torch.full_like(node_idx, -1))
+        query_batch.edge_embedding_indices = torch.where(
+            edge_idx >= 0, torch.searchsorted(seeds, (edge_idx + offset).clamp(min=0)),
+            torch.full_like(edge_idx, -1))
+
+        entity_graph = None
+        if not issubclass(model_class, (FiceBinary, FiceIndependent)):
+            entity_graph = provider.build_batch(seeds, mc_samples=config.mc_samples, training=training)
+
+        return PreparedBatch(
+            entity_graph=entity_graph,
+            query_batch=query_batch,
+            graph_num_edges=full_graph.num_edges,
+            dataset_name=full_graph.dataset_name,
+        )
 
     # 1. Bipartite/factor graph sampling + RWPE (on CPU)
     raw_graph = full_graph.factor_graph if use_factor else full_graph.bipartite_graph
@@ -433,10 +471,10 @@ def prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class
     )
 
 
-def make_prepare_fn(config, neighbor_sampler, model_class):
+def make_prepare_fn(config, neighbor_sampler, model_class, training=True):
     def prepare(batch):
         full_graph, query_batch = batch
-        return prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class)
+        return prepare_batch(full_graph, query_batch, config, neighbor_sampler, model_class, training=training)
     return prepare
 
 
@@ -725,6 +763,7 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
         state.training_context.config,
         state.data_components.neighbor_sampler,
         type(model),
+        training=False,
     )
     prefetch_loader = PrefetchLoader(loader, prepare_fn, prefetch=2)
 
@@ -857,7 +896,7 @@ def train_model(
                 best_model_path = state.training_context.checkpoint_dir / "best_model.pt"
 
                 if state.model_components.optimizer is not None:
-                    save_checkpoint(state, best_model_path)
+                    save_checkpoint(state, best_model_path, overwrite=True)
                     logger.info(
                         f"New best model saved with test loss: {state.best_test_loss:.6f}"
                     )

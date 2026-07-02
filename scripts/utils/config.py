@@ -29,6 +29,10 @@ class RelationGNNConfig(BaseSettings):
     relation_attention: bool = False
     relational: bool = False
     role_aware_degrees: bool = True
+    # GPS options (only used when message_func == 'gps')
+    heads: int = 4  # Attention heads per GPS layer
+    attn_type: Literal['multihead', 'performer'] = 'multihead'  # Global attention type
+    local_mp: bool = True  # If False, GPS layers use attention only (no local GINE conv)
 
 class QueryGNNConfig(BaseSettings):
     message_func: Literal['gine', 'deepset', 'triple', 'edge_triple'] = "gine"
@@ -60,6 +64,21 @@ class Config(BaseSettings):
     n_embedding_layers: int = 2  # Number of layers in embedding MLP
     GNNNeighborhood: List[int] = [100, 100]  # Neighborhood sizes for entity GNN
     Conditioning: Literal['seed only', 'all', 'false', 'random'] = "false"  # Conditioning strategy for GNN
+    # Neighborhood sampling mode:
+    # 'joint'    — one shared neighborhood sampled around the union of all query seeds in the batch (legacy behavior)
+    # 'per_node' — one precalculated, independent neighborhood per seed node, identical at train and test
+    neighborhood_mode: Literal['joint', 'per_node'] = 'joint'
+    # Monte Carlo neighborhood sampling (per_node mode only):
+    # a pool of mc_pool_size neighborhoods is precalculated per node; each forward
+    # pass (train AND inference) averages the embeddings of mc_samples of them.
+    mc_pool_size: int = 1  # Precalculated neighborhoods per node
+    mc_samples: int = 1  # Neighborhoods averaged per forward pass (drawn randomly from pool in training, fixed subset at eval)
+    # Neighbor selection for per_node subgraphs (all use GNNNeighborhood caps):
+    # 'uniform'    — uniform random neighbors per hop
+    # 'ppr'        — top-cap neighbors per hop by personalized PageRank mass (deterministic, mc_pool_size must be 1)
+    # 'ppr_sample' — neighbors sampled without replacement ~ PPR mass (stochastic; composes with MC pooling)
+    neighbor_selection: Literal['uniform', 'ppr', 'ppr_sample'] = 'uniform'
+    ppr_alpha: float = 0.15  # PPR teleport probability
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
@@ -91,6 +110,25 @@ class Config(BaseSettings):
     def validate_gnn_sources(self):
         if self.entity_gnn.source != 'KG' and self.entity_gnn.source != self.relation_gnn.source:
             raise ValueError(f"entity source '{self.entity_gnn.source}' must match relation source '{self.relation_gnn.source}'")
+        return self
+
+    @model_validator(mode='after')
+    def validate_neighborhood_mode(self):
+        if self.neighborhood_mode == 'per_node':
+            if self.entity_gnn.source == 'KG':
+                raise ValueError("neighborhood_mode='per_node' requires entity_gnn.source 'bipartite' or 'factor'")
+            if self.relation_gnn.relation_attention:
+                raise ValueError("neighborhood_mode='per_node' is incompatible with relation_gnn.relation_attention")
+            if self.embedding_space not in ('euclidean', 'box', 'gaussian'):
+                raise ValueError("neighborhood_mode='per_node' only supports euclidean/box/gaussian embedding spaces")
+        if self.mc_samples > self.mc_pool_size:
+            raise ValueError(f"mc_samples ({self.mc_samples}) must be <= mc_pool_size ({self.mc_pool_size})")
+        if self.mc_pool_size > 1 and self.neighborhood_mode != 'per_node':
+            raise ValueError("mc_pool_size > 1 requires neighborhood_mode='per_node'")
+        if self.neighbor_selection != 'uniform' and self.neighborhood_mode != 'per_node':
+            raise ValueError(f"neighbor_selection='{self.neighbor_selection}' requires neighborhood_mode='per_node'")
+        if self.neighbor_selection == 'ppr' and self.mc_pool_size != 1:
+            raise ValueError("neighbor_selection='ppr' is deterministic; mc_pool_size must be 1")
         return self
 
     # class Config:

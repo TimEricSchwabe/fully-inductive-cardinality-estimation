@@ -493,6 +493,9 @@ class BipartiteGraphGNN(nn.Module):
         relational: bool = False,
         role_aware_degrees: bool = True,
         embedding_space: str = 'euclidean',
+        heads: int = 4,
+        attn_type: str = 'multihead',
+        local_mp: bool = True,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -543,9 +546,11 @@ class BipartiteGraphGNN(nn.Module):
                 )
             elif self.message_func == 'gps':
                 # GPS: local GINEConv + global self-attention in each layer
-                local_conv = GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
+                local_conv = None
+                if local_mp:
+                    local_conv = GINEConv(gine_mlp(dims[i], dims[i + 1]), edge_dim=input_dim, train_eps=False)
                 self.layers.append(
-                    GPSConv(dims[i + 1], local_conv, heads=4, dropout=0.0)
+                    GPSConv(dims[i + 1], local_conv, heads=heads, dropout=0.0, attn_type=attn_type)
                 )
             elif self.message_func == 'gine':
                 self.layers.append(
@@ -734,6 +739,91 @@ class BipartiteGraphGNN(nn.Module):
 
         return self.embed_proj(out)
 
+    def forward_per_node(self, data):
+        """
+        Disjoint batch of independent per-seed subgraphs (see
+        PerNodeSubgraphProvider). Every subgraph is encoded in isolation —
+        for GPS, attention stays within each subgraph via ``data.batch_vec`` —
+        and the embedding is read out at the seed (center) node.
+
+        data : PyG Data with edge_index/edge_attr of the concatenated
+               subgraphs plus batch_vec, center_index, node_type.
+        Returns (num_subgraphs, out_dim).
+        """
+        device = data.edge_index.device
+        num_nodes = data.num_nodes
+
+        if num_nodes == 0:
+            return torch.zeros(0, self.embed_proj.embed_dim, device=device)
+
+        # --- Structural Feature Construction (single disjoint graph, no batch replication) ---
+        if self.role_aware_degrees and data.edge_attr is not None and data.edge_attr.shape[1] >= 2:
+            edge_roles_attr = data.edge_attr[:, 1].to(device)
+            dst = data.edge_index[1].to(device)
+            feat_deg = torch.zeros(num_nodes, 6, device=device)
+            for i, role_val in enumerate([1, 2, 3, -1, -2, -3]):
+                mask = (edge_roles_attr == role_val)
+                if mask.any():
+                    feat_deg[:, i].scatter_add_(0, dst[mask], torch.ones(mask.sum(), device=device))
+            feat_deg = torch.log1p(feat_deg)
+        else:
+            deg = degree(data.edge_index[0], num_nodes, dtype=torch.float)
+            feat_deg = torch.log1p(deg).unsqueeze(-1).to(device)
+
+        if self.pe_dim > 0 and hasattr(data, 'random_walk_pe'):
+            pe = data.random_walk_pe.to(device)
+            if pe.shape[-1] > self.pe_dim:
+                pe = pe[:, :self.pe_dim]
+            elif pe.shape[-1] < self.pe_dim:
+                padding = torch.zeros(pe.shape[0], self.pe_dim - pe.shape[-1], device=device)
+                pe = torch.cat([pe, padding], dim=-1)
+            feat_pe = pe
+        else:
+            feat_pe = torch.zeros(num_nodes, self.pe_dim, device=device)
+
+        # Seed flag = center flag (the node whose embedding is read out)
+        feat_seed = torch.zeros(num_nodes, 1, device=device)
+        if self.conditioning != "false":
+            feat_seed[data.center_index] = 1.0
+
+        if self.conditioning == 'random':
+            feat_base = torch.randn(num_nodes, self.input_dim, device=device)
+        else:
+            feat_base = torch.ones(num_nodes, 1, device=device) * 0.1
+
+        raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
+        x = self.feature_encoder(raw_h)
+        x = self.input_norm(x)
+        x = F.silu(x)
+        x = F.dropout(x, p=self.dropout, training=self.training)
+
+        if self.relational:
+            x = x + self.node_type_emb(data.node_type)
+
+        edge_attr = self.edge_encoder(data.edge_attr.to(torch.float32))
+        if self.relational:
+            edge_roles = data.edge_attr[:, 1].abs().long()
+
+        for i, layer in enumerate(self.layers):
+            x_in = x
+            if self.relational:
+                x = layer(x, data.edge_index, edge_attr=edge_attr, edge_roles=edge_roles)
+            elif self.use_gps:
+                x = layer(x, data.edge_index, data.batch_vec, edge_attr=edge_attr)
+            else:
+                x = layer(x, data.edge_index, edge_attr=edge_attr)
+
+            if self.enable_layer_norm and not self.use_gps:  # GPS has its own internal norms
+                x = self.norms[i](x)
+
+            if x.shape == x_in.shape and self.skip_connection and not self.use_gps:  # GPS has its own residual
+                x = x + x_in
+
+            x = F.dropout(x, p=self.dropout, training=self.training)
+
+        out = self.embed_proj(x)
+        return out[data.center_index]
+
 
 class FICE(nn.Module):
 
@@ -754,6 +844,9 @@ class FICE(nn.Module):
                  relation_attention=False,
                  relational=False,
                  role_aware_degrees=True,
+                 relation_heads=4,
+                 relation_attn_type='multihead',
+                 relation_local_mp=True,
                  # Query GNN params
                  query_gnn_type='TripleModel',
                  query_message_func='gine',
@@ -802,6 +895,11 @@ class FICE(nn.Module):
         else:
             BipartiteGNNCls = BipartiteGraphGNN
 
+        # GPS-specific options only exist on the Euclidean BipartiteGraphGNN
+        gps_kwargs = {}
+        if BipartiteGNNCls is BipartiteGraphGNN:
+            gps_kwargs = dict(heads=relation_heads, attn_type=relation_attn_type, local_mp=relation_local_mp)
+
         if self.use_unified_bipartite_graph:
             self.embedding_model = BipartiteGNNCls(
                 input_dim=self.vector_dim,
@@ -816,6 +914,7 @@ class FICE(nn.Module):
                 relational=relational,
                 role_aware_degrees=role_aware_degrees,
                 embedding_space=embedding_space,
+                **gps_kwargs,
             )
 
         else:
@@ -832,6 +931,7 @@ class FICE(nn.Module):
                 relational=relational,
                 role_aware_degrees=role_aware_degrees,
                 embedding_space=embedding_space,
+                **gps_kwargs,
             )
 
             self.entity_model = EntityGNN(
@@ -927,6 +1027,42 @@ class FICE(nn.Module):
         # Ablation: skip embedding GNN; batch.x/edge_attr already have [counts | zeros]
         if self.disable_embedding_gnn:
             pass
+        elif self.use_unified_bipartite_graph and data is not None and getattr(data, 'per_node', False):
+            # --- PER-NODE INDEPENDENT SUBGRAPHS ---
+            # data is a disjoint batch of num_seeds * mc_samples subgraphs;
+            # node/edge embedding indices in the query batch are seed-slot ids
+            # (remapped in prepare_batch), NOT positions in a shared subgraph.
+            seed_embeddings = self.embedding_model.forward_per_node(data=data)  # (num_seeds * M, dim)
+            M = int(data.mc_samples)
+            if M > 1:
+                # Monte Carlo: average the M independent neighborhood embeddings per seed
+                seed_embeddings = seed_embeddings.view(-1, M, seed_embeddings.shape[-1]).mean(dim=1)
+
+            # 1. Entity embeddings
+            bound_nodes = embedding_indices >= 0
+            node_embeddings_gathered = torch.zeros(embedding_indices.size(0), self.vector_dim, device=device)
+            if bound_nodes.any():
+                node_embeddings_gathered[bound_nodes] = seed_embeddings[embedding_indices[bound_nodes]]
+
+            last = torch.where(bound_nodes.unsqueeze(-1),
+                                node_embeddings_gathered,
+                                query_features[:, 3:])
+            query_features = torch.cat([query_features[:, :3], last], dim=1)
+            batch.x = query_features
+
+            # 2. Relation embeddings (for edges)
+            bound_edges = (edge_embedding_indices >= 0)
+            edge_embeddings_gathered = torch.zeros(edge_embedding_indices.size(0), self.vector_dim, device=device)
+            if bound_edges.any():
+                edge_embeddings_gathered[bound_edges] = seed_embeddings[edge_embedding_indices[bound_edges]]
+
+            edge_last = torch.where(bound_edges.unsqueeze(-1),
+                                    edge_embeddings_gathered,
+                                    edge_attr[:, 3:])
+            edge_features = torch.cat([edge_attr[:, :3], edge_last], dim=1)
+            batch.edge_attr = edge_features
+
+            del seed_embeddings
         elif self.use_unified_bipartite_graph:
             # Check integrity just in case: data should be the bipartite graph
             if data is None and relation_graph is not None:

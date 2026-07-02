@@ -1,0 +1,66 @@
+data:
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries"
+    batch_size: 8
+    num_queries: 2000
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_star_queries"
+    batch_size: 8
+    num_queries: 2000
+    type: "train-val"
+
+epochs: 50
+wandb: False
+learning_rate: 1e-4
+train_ratio: 0.8
+output_dir: "output/wn18rr_comparison/baseline/"
+save_every: 50
+save_metrics_every: 1
+eval_every: 1
+seed: 42
+device: "auto"
+weight_decay: 0.00
+n_embedding_layers: 4
+min_cardinality: null
+model: "FICE"
+embedding_dim: 128
+gradient_clipping: 1.0
+prediction_mode: "log-cardinality"
+embedding_space: "euclidean"
+Conditioning: "false"
+
+entity_gnn:
+  message_func: "gine"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+
+query_gnn:
+  message_func: "gine"
+  model: "TripleModel"
+  skip_connection: False
+  readout: "sum"
+  layer_norm: True
+  dropout: 0.0
+  num_layers: 2
+  message_activation: "relu"
+
+scheduler:
+  enabled: False
+  min_lr: 1.0e-6
+
+# ARM: baseline — current model (joint neighborhood sampling, relational GINE)
+GNNNeighborhood: [100, 100]
+neighborhood_mode: "joint"
+random_walk_pe: 0
+relation_gnn:
+  message_func: "gine"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+  relation_attention: False
+  relational: True
+  role_aware_degrees: False

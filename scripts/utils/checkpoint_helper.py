@@ -10,7 +10,7 @@ from utils.helper import wandb_log_artifact_with_retry
 
 logger = logging.getLogger(__name__)
 
-def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
+def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path], overwrite: bool = False):
     def to_cpu(obj):
         if isinstance(obj, torch.Tensor):
             return obj.cpu()
@@ -30,13 +30,15 @@ def save_checkpoint(state: TrainingState, checkpoint_path: Union[str, Path]):
     checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Handle file name conflicts by adding a counter if file already exists
-    original_path = checkpoint_path
-    counter = 0
-    while checkpoint_path.exists():
-        stem = original_path.stem
-        suffix = original_path.suffix
-        checkpoint_path = original_path.parent / f"{stem}_{counter}{suffix}"
-        counter += 1
+    # (skipped with overwrite=True, e.g. for best_model.pt which must track the best epoch)
+    if not overwrite:
+        original_path = checkpoint_path
+        counter = 0
+        while checkpoint_path.exists():
+            stem = original_path.stem
+            suffix = original_path.suffix
+            checkpoint_path = original_path.parent / f"{stem}_{counter}{suffix}"
+            counter += 1
 
     model_state_dict = state.model_components.model.state_dict()
     optimizer_state_dict = state.model_components.optimizer.state_dict()
