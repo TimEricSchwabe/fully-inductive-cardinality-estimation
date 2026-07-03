@@ -79,6 +79,11 @@ class Config(BaseSettings):
     # 'ppr_sample' — neighbors sampled without replacement ~ PPR mass (stochastic; composes with MC pooling)
     neighbor_selection: Literal['uniform', 'ppr', 'ppr_sample'] = 'uniform'
     ppr_alpha: float = 0.15  # PPR teleport probability
+    # Append true (uncapped) structural features to per_node subgraph nodes,
+    # computed once from the FULL factor/bipartite graph: log1p degree per
+    # role (3, all nodes) + log1p per-relation max fan-out bounds (2, only on
+    # relation nodes; GBJO pred_stats: max triples sharing one subject/object)
+    degree_features: bool = False
     min_cardinality: int | None = None  # Minimum cardinality filter
     model: Literal['FICE', 'FiceBinary', 'FiceIndependent'] = "FICE"  # Model type to use
     embedding_dim: int = 128  # Dimension of entity and relation embeddings
@@ -129,6 +134,8 @@ class Config(BaseSettings):
             raise ValueError(f"neighbor_selection='{self.neighbor_selection}' requires neighborhood_mode='per_node'")
         if self.neighbor_selection == 'ppr' and self.mc_pool_size != 1:
             raise ValueError("neighbor_selection='ppr' is deterministic; mc_pool_size must be 1")
+        if self.degree_features and self.neighborhood_mode != 'per_node':
+            raise ValueError("degree_features=True requires neighborhood_mode='per_node'")
         return self
 
     # class Config:

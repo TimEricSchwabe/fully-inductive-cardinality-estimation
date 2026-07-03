@@ -496,6 +496,7 @@ class BipartiteGraphGNN(nn.Module):
         heads: int = 4,
         attn_type: str = 'multihead',
         local_mp: bool = True,
+        extra_node_feats: int = 0,
     ):
         def gine_mlp(in_dim, out_dim):
             # The MLP used inside each GINEConv (applied after aggregation)
@@ -532,7 +533,10 @@ class BipartiteGraphGNN(nn.Module):
         else:
             self.base_dim = 1
         self.degree_dim = 6 if role_aware_degrees else 1
-        self.raw_in_dim = self.base_dim + self.degree_dim + self.pe_dim + 1
+        # Extra per-node features (per_node mode only, e.g. true degree /
+        # fan-out features from the full graph via data.node_feats)
+        self.extra_node_feats = extra_node_feats
+        self.raw_in_dim = self.base_dim + self.degree_dim + extra_node_feats + self.pe_dim + 1
         self.feature_encoder = nn.Linear(self.raw_in_dim, input_dim)
         self.input_norm = nn.LayerNorm(input_dim)
 
@@ -791,6 +795,9 @@ class BipartiteGraphGNN(nn.Module):
         else:
             feat_base = torch.ones(num_nodes, 1, device=device) * 0.1
 
+        if self.extra_node_feats > 0:
+            feat_deg = torch.cat([feat_deg, data.node_feats.to(device)], dim=-1)
+
         raw_h = torch.cat([feat_base, feat_deg, feat_pe, feat_seed], dim=-1)
         x = self.feature_encoder(raw_h)
         x = self.input_norm(x)
@@ -847,6 +854,7 @@ class FICE(nn.Module):
                  relation_heads=4,
                  relation_attn_type='multihead',
                  relation_local_mp=True,
+                 extra_node_feats=0,
                  # Query GNN params
                  query_gnn_type='TripleModel',
                  query_message_func='gine',
@@ -898,7 +906,8 @@ class FICE(nn.Module):
         # GPS-specific options only exist on the Euclidean BipartiteGraphGNN
         gps_kwargs = {}
         if BipartiteGNNCls is BipartiteGraphGNN:
-            gps_kwargs = dict(heads=relation_heads, attn_type=relation_attn_type, local_mp=relation_local_mp)
+            gps_kwargs = dict(heads=relation_heads, attn_type=relation_attn_type, local_mp=relation_local_mp,
+                              extra_node_feats=extra_node_feats)
 
         if self.use_unified_bipartite_graph:
             self.embedding_model = BipartiteGNNCls(

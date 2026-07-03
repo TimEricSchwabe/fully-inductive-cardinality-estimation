@@ -188,6 +188,7 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             relation_heads=config.relation_gnn.heads,
             relation_attn_type=config.relation_gnn.attn_type,
             relation_local_mp=config.relation_gnn.local_mp,
+            extra_node_feats=(5 if config.degree_features else 0),
 
             # Query Params
             query_gnn_type=query_gnn_model,

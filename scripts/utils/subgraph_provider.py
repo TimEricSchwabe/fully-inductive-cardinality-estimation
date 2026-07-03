@@ -40,7 +40,7 @@ def _compute_rwpe(edge_index, edge_attr, num_nodes, walk_length, role_aware):
 class PerNodeSubgraphProvider:
 
     def __init__(self, graph, caps, walk_length=0, role_aware=False, pool_size=1,
-                 selection='uniform', ppr_alpha=0.15):
+                 selection='uniform', ppr_alpha=0.15, degree_features=False):
         """graph: full bipartite/factor graph (Data with edge_index containing
         both directions and edge_attr = [count, role]).
 
@@ -78,6 +78,58 @@ class PerNodeSubgraphProvider:
                                  degrees.cumsum(0)]).numpy()
         self.cache: Dict[Tuple[int, int], tuple] = {}
         self._train_rng = np.random.default_rng()
+        # True (uncapped) structural features from the full graph
+        self._node_role_deg = None  # (num_nodes, 3) log1p degree per |role|
+        self._rel_fanout = None     # (num_relations, 2) log1p max out/in fan-out
+        if degree_features:
+            self._compute_degree_features()
+
+    def _compute_degree_features(self):
+        """log1p true degree per role for every node, plus GBJO's per-relation
+        max fan-out bounds (max triples sharing one subject / one object).
+        One vectorized pass over the full edge list."""
+        n = self.num_nodes
+        src = np.repeat(np.arange(n, dtype=np.int64),
+                        np.diff(self.indptr).astype(np.int64))
+        roles = np.abs(self.edge_roles).astype(np.int64)  # 1=subj, 2=pred, 3=obj
+        deg = np.zeros((n, 3), dtype=np.float32)
+        for k in (1, 2, 3):
+            m = roles == k
+            if m.any():
+                deg[:, k - 1] = np.bincount(src[m], minlength=n).astype(np.float32)
+        self._node_role_deg = np.log1p(deg)
+
+        t0 = self.n_entities + self.n_relations
+        n_tr = n - t0
+        fan = np.zeros((self.n_relations, 2), dtype=np.float32)
+        if n_tr > 0 and self.n_relations > 0:
+            tmask = src >= t0
+            tsrc = src[tmask] - t0
+            tdst = self.indices[tmask].astype(np.int64)
+            trole = roles[tmask]
+            subj = np.zeros(n_tr, dtype=np.int64)
+            rel = np.zeros(n_tr, dtype=np.int64)
+            obj = np.zeros(n_tr, dtype=np.int64)
+            subj[tsrc[trole == 1]] = tdst[trole == 1]
+            rel[tsrc[trole == 2]] = tdst[trole == 2] - self.n_entities
+            obj[tsrc[trole == 3]] = tdst[trole == 3]
+            for col, ent in ((0, subj), (1, obj)):
+                keys, cnt = np.unique(ent * self.n_relations + rel,
+                                      return_counts=True)
+                np.maximum.at(fan[:, col], keys % self.n_relations,
+                              cnt.astype(np.float32))
+        self._rel_fanout = np.log1p(fan)
+
+    def _degree_feature_rows(self, node_ids):
+        """(n, 5) float32: [deg_subj, deg_pred, deg_obj, fan_out, fan_in];
+        fan-out columns are nonzero only on relation nodes."""
+        nid = node_ids.numpy()
+        f = np.zeros((len(nid), 5), dtype=np.float32)
+        f[:, :3] = self._node_role_deg[nid]
+        is_rel = (nid >= self.n_entities) & (nid < self.n_entities + self.n_relations)
+        if is_rel.any():
+            f[is_rel, 3:] = self._rel_fanout[nid[is_rel] - self.n_entities]
+        return torch.from_numpy(f)
 
     def _sample_subgraph(self, node, sample_idx):
         """Capped k-hop neighborhood around `node` (local id 0). RNG is seeded
@@ -250,7 +302,9 @@ class PerNodeSubgraphProvider:
             node_type = torch.zeros(node_ids.numel(), dtype=torch.long)
             node_type[node_ids >= self.n_entities] = 1
             node_type[node_ids >= self.n_entities + self.n_relations] = 2
-            e = self.cache[key] = (edge_index, edge_attr, pe, node_type, node_ids.numel())
+            feats = (self._degree_feature_rows(node_ids)
+                     if self._node_role_deg is not None else None)
+            e = self.cache[key] = (edge_index, edge_attr, pe, node_type, feats, node_ids.numel())
         return e
 
     def draw_sample_ids(self, mc_samples, training):
@@ -267,17 +321,19 @@ class PerNodeSubgraphProvider:
         S * mc_samples subgraphs (ordered seed-major), where `center_index`
         holds the local index of each subgraph's seed node.
         """
-        eis, eas, pes, ntypes, bvec, centers = [], [], [], [], [], []
+        eis, eas, pes, ntypes, feats_l, bvec, centers = [], [], [], [], [], [], []
         off = 0
         gi = 0
         for s in seeds.tolist():
             sample_ids = self.draw_sample_ids(mc_samples, training)
             for k in sample_ids:
-                edge_index, edge_attr, pe, node_type, n = self._entry(s, k)
+                edge_index, edge_attr, pe, node_type, feats, n = self._entry(s, k)
                 eis.append(edge_index + off)
                 eas.append(edge_attr)
                 if pe is not None:
                     pes.append(pe)
+                if feats is not None:
+                    feats_l.append(feats)
                 ntypes.append(node_type)
                 bvec.append(torch.full((n,), gi, dtype=torch.long))
                 centers.append(off)  # seed is local node 0 of its subgraph
@@ -293,6 +349,8 @@ class PerNodeSubgraphProvider:
         data.center_index = torch.tensor(centers, dtype=torch.long)
         if pes:
             data.random_walk_pe = torch.cat(pes, dim=0)
+        if feats_l:
+            data.node_feats = torch.cat(feats_l, dim=0)
         data.per_node = True
         data.mc_samples = mc_samples
         data.num_seeds = seeds.numel()
@@ -314,6 +372,7 @@ def get_provider(graph, config) -> PerNodeSubgraphProvider:
             pool_size=config.mc_pool_size,
             selection=config.neighbor_selection,
             ppr_alpha=config.ppr_alpha,
+            degree_features=config.degree_features,
         )
         _PROVIDER_REGISTRY[graph.dataset_name] = provider
     return provider
