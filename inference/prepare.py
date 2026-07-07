@@ -394,7 +394,15 @@ def main():
     # ---- 1. Load checkpoint and reconstruct model ----
     logger.info(f"Loading checkpoint: {checkpoint_path}")
     checkpoint = load_checkpoint(checkpoint_path)
-    config = Config(**checkpoint["config"])
+    # Checkpoints trained with newer fice versions carry extra training-time
+    # keys (e.g. ranking_loss_*) that this Config (extra=forbid) rejects.
+    # They don't affect model reconstruction, so drop them.
+    known = set(Config.model_fields)
+    ckpt_cfg = {k: v for k, v in checkpoint["config"].items() if k in known}
+    dropped = set(checkpoint["config"]) - known
+    if dropped:
+        logger.warning(f"Ignoring unknown config keys: {sorted(dropped)}")
+    config = Config(**ckpt_cfg)
 
     if config.Conditioning != "false":
         raise ValueError(
