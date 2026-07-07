@@ -1,0 +1,78 @@
+__pycache__/
+
+# Virtual environment
+notebooks/fice_runs/
+notebooks/lmkg_runs/
+notebooks/gcare_runs/
+notebooks/gnce_runs/
+notebooks/plots_output/
+benchmarks/gcare/results/*
+benchmarks/gcare/*.sif
+benchmarks/gcare/gcare/build/
+benchmarks/gnce/GNCE/
+benchmarks/gnce/data/
+graphen.zip
+benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/conjunctive-queries/*
+benchmarks/oxford-cardinality-estimator/CardinalityEstimator/data/UserDataset/ttl/*
+benchmarks/neuso/NeuSO/
+benchmarks/lmkg/LMKG-Code/lmkg-s/final_datasets/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/weights/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/statistics/*
+benchmarks/lmkg/LMKG-Code/lmkg-s/models/*
+tensorboard_log/
+venv/
+venv*/
+*venv*/
+.venv/
+.env/
+slurm*.out
+*.png
+uv.lock
+*.pdf
+notenbooks/*.pdf
+inference_times.csv
+scripts/inference_times.csv
+
+# Ignore everything under data
+data/*
+
+.env
+# Inside each subdirectory, ignore everything again
+output/
+*.egg-info/
+files/
+
+# …but unignore any raw folder and its contents
+run_*/
+run_*.zip
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints
+
+# PyCharm
+.idea/
+
+# VS Code
+.vscode/
+benchmarks/gcare/gcare/data/**
+benchmarks/lss/LSS/data/dataset/**
+benchmarks/lss/LSS/data/n2v/**
+benchmarks/lss/LSS/data/nrp/**
+benchmarks/lss/LSS/data/prone/**
+benchmarks/lss/LSS/data/queryset_homo/**
+benchmarks/lss/LSS/data/true_homo/**
+benchmarks/lss/LSS/models/
+benchmarks/lss/ProNE/data/
+benchmarks/lss/ProNE/emb/
+benchmarks/lss/results/
+benchmarks/lss/data/**
+# gcare/
+logs/
+
+# Local endpoint configuration (not for submission)
+inference/.endpoint_action
+
+# macOS
+.DS_Store
+CLAUDE.md
+.claude/

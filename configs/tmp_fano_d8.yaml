@@ -1,0 +1,57 @@
+Conditioning: all
+GNNNeighborhood:
+- 100
+- 100
+data:
+- batch_size: 64
+  dataset: fano
+  num_queries: 20000
+  queries: fano_queries
+  type: train-val
+device: auto
+embedding_dim: 8
+embedding_space: euclidean
+entity_gnn:
+  dropout: 0.1
+  layer_norm: true
+  message_func: gine
+  skip_connection: true
+  source: factor
+epochs: 200
+eval_every: 1
+gradient_clipping: 1.0
+learning_rate: 1e-4
+min_cardinality: 1
+model: FICE
+n_embedding_layers: 4
+output_dir: output/
+prediction_mode: log-cardinality
+query_gnn:
+  dropout: 0.0
+  layer_norm: true
+  message_activation: relu
+  message_func: gine
+  model: TripleModel
+  num_layers: 2
+  readout: sum
+  skip_connection: false
+random_walk_pe: 0
+relation_gnn:
+  dropout: 0.1
+  layer_norm: true
+  message_func: gine
+  relation_attention: false
+  relational: true
+  role_aware_degrees: false
+  skip_connection: true
+  source: factor
+save_every: 5
+save_metrics_every: 1
+scheduler:
+  enabled: false
+  min_lr: 1.0e-06
+seed: 42
+train_ratio: 0.8
+wandb: false
+wandb_run_name: transductive_fano_d8
+weight_decay: 0.0

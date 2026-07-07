@@ -1,0 +1,21 @@
+
+services:
+  gcare-benchmark:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: gcare-benchmark
+    working_dir: /workspace/benchmarks/gcare
+    cpus: 10
+    mem_limit: 30g
+    memswap_limit: 30g
+    environment:
+      - MAX_PARALLEL=10
+      - EXTRA_ARGS=--methods sumrdf --dataset dbpedia100k
+    volumes:
+      - ../../..:/workspace
+    command:
+      - sh
+      - -lc
+      - python3 run_all_experiments.py --gcare-home /usr/src/app/gcare --max-parallel "$${MAX_PARALLEL:-6}" $${EXTRA_ARGS:-}
+

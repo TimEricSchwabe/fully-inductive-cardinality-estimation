@@ -1,0 +1,1005 @@
+import torch
+import torch.nn.functional as F
+from torch_geometric.nn import Linear, GINEConv, GPSConv
+from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool
+from torch_geometric.nn.aggr import AttentionalAggregation
+from torch_geometric.nn.conv import MessagePassing
+from torch_geometric.transforms import AddLaplacianEigenvectorPE
+from typing import Optional, Union
+from torch_geometric.typing import Adj, OptPairTensor, OptTensor, Size
+from torch import Tensor
+from torch_geometric.nn.inits import reset
+import torch.nn as nn
+from torch_scatter import scatter_max, scatter_min, scatter_add
+
+
+
+############ Baseline Query GNN ############
+
+class QueryGNN(torch.nn.Module):
+
+    def __init__(self, hidden_dim: int, dropout: float = 0.0, train_eps: bool =False):
+        super().__init__()
+
+        self.dropout = dropout
+
+
+        def gine_mlp():
+            # The MLP used inside each GINEConv (applied after aggregation)
+            return nn.Sequential(
+                nn.Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                nn.Linear(hidden_dim, hidden_dim),
+            )
+
+        self.layers = nn.ModuleList([
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+            GINEConv(gine_mlp(), edge_dim=hidden_dim, train_eps=train_eps),
+        ])
+
+        self.bns = nn.ModuleList([
+            nn.BatchNorm1d(hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+            nn.BatchNorm1d(hidden_dim),
+        ])
+
+        # 2-layer MLP head to a single scalar (linear activation)
+        # Input dimension is hidden_dim + 1 to account for graph_size concatenation
+        self.head = nn.Sequential(
+            nn.Linear(hidden_dim + 1, hidden_dim),
+            nn.ReLU(),
+            # nn.Dropout(dropout),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, batch, graph_size):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+
+        for layer, bn in zip(self.layers, self.bns):
+            if edge_attr is not None:
+                x = layer(x, edge_index, edge_attr)
+            else:
+                x = layer(x, edge_index)
+            x = bn(x)
+            x = F.silu(x)
+            x = F.dropout(x, p=self.dropout, training=self.training)
+
+        # Global add pooling over nodes -> graph embedding
+        # TODO: Funktioniert, aber kein ahnung ob es das macht, was es machen soll
+        g = (x, batch.batch)
+
+
+        # TODO: Adding the graph size |E| to the final MLP
+        if graph_size.dim() == 1 and graph_size.size(0) == 1:
+            graph_size_expanded = graph_size.expand(g.size(0))
+        else:
+            graph_size_expanded = graph_size
+        
+        # Concatenate along feature dimension
+        g_with_size = torch.cat([g, graph_size_expanded.unsqueeze(-1)], dim=-1)
+
+
+        out = self.head(g_with_size)     # [batch_size, 1]
+        return torch.abs(out.squeeze(-1))           # [batch_size]
+
+
+_MSG_ACTIVATIONS = {
+    'relu': F.relu,
+    'silu': F.silu,
+    'linear': lambda x: x,
+}
+
+############ Oroginal GNCE model ############
+
+class TripleConv(MessagePassing):
+    r"""
+    Message passing function for directional message passing
+    based on the GINE Conv operator
+    Equation:
+        .. math::
+             x_i^{(k)} = h_\theta^{(k)}  \biggl( x_i^{(k-1)} \ +& \sum_{j \in \mathcal{N}^+(i)}
+            \mathrm{ReLU}(x_i^{(k-1)}||e^{j,i}||x_j^{(k-1)}) \ +\\
+            & \sum_{j \in \mathcal{N}^-(i)}
+            \mathrm{ReLU}(x_j^{(k-1)}||e^{i,j}||x_i^{(k-1)}) \biggr)
+
+
+    The modified :class:`GINConv` operator from the `"Strategies for
+    Pre-training Graph Neural Networks" <https://arxiv.org/abs/1905.12265>`_
+    paper
+
+    .. math::
+        \mathbf{x}^{\prime}_i = h_{\mathbf{\Theta}} \left( (1 + \epsilon) \cdot
+        \mathbf{x}_i + \sum_{j \in \mathcal{N}(i)} \mathrm{ReLU}
+        ( \mathbf{x}_j + \mathbf{e}_{j,i} ) \right)
+
+    that is able to incorporate edge features :math:`\mathbf{e}_{j,i}` into
+    the aggregation procedure.
+
+    Args:
+        nn (torch.nn.Module): A neural network :math:`h_{\mathbf{\Theta}}` that
+            maps node features :obj:`x` of shape :obj:`[-1, in_channels]` to
+            shape :obj:`[-1, out_channels]`, *e.g.*, defined by
+            :class:`torch.nn.Sequential`.
+        eps (float, optional): (Initial) :math:`\epsilon`-value.
+            (default: :obj:`0.`)
+        train_eps (bool, optional): If set to :obj:`True`, :math:`\epsilon`
+            will be a trainable parameter. (default: :obj:`False`)
+        edge_dim (int, optional): Edge feature dimensionality. If set to
+            :obj:`None`, node and edge feature dimensionality is expected to
+            match. Other-wise, edge features are linearly transformed to match
+            node feature dimensionality. (default: :obj:`None`)
+        **kwargs (optional): Additional arguments of
+            :class:`torch_geometric.nn.conv.MessagePassing`.
+
+    Shapes:
+        - **input:**
+          node features :math:`(|\mathcal{V}|, F_{in})` or
+          :math:`((|\mathcal{V_s}|, F_{s}), (|\mathcal{V_t}|, F_{t}))`
+          if bipartite,
+          edge indices :math:`(2, |\mathcal{E}|)`,
+          edge features :math:`(|\mathcal{E}|, D)` *(optional)*
+        - **output:** node features :math:`(|\mathcal{V}|, F_{out})` or
+          :math:`(|\mathcal{V}_t|, F_{out})` if bipartite
+    """
+
+    def __init__(self, nn: torch.nn.Module, eps: float = 0.,
+                 train_eps: bool = False, edge_dim: Optional[int] = None,
+                 message_activation: str = 'relu',
+                 **kwargs):
+        kwargs.setdefault('aggr', 'add')
+        super().__init__(**kwargs)
+        self.nn = nn
+        self.initial_eps = eps
+        self.msg_act = _MSG_ACTIVATIONS[message_activation]
+
+        # Whether to switch the input to the MLP based on the directionality
+        self.DIRECTIONAL = False
+
+        if train_eps:
+            self.eps = torch.nn.Parameter(torch.Tensor([eps]))
+        else:
+            self.register_buffer('eps', torch.Tensor([eps]))
+        if edge_dim is not None:
+            # Use the provided edge_dim as the edge feature dimensionality.
+            # Do not override with a hard-coded value here — the dataset
+            # determines the true feature size (e.g. feat_dim + 3).
+            self.lin = Linear(3 * edge_dim, edge_dim)
+
+        else:
+            self.lin = None
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        reset(self.nn)
+        self.eps.data.fill_(self.initial_eps)
+        if self.lin is not None:
+            self.lin.reset_parameters()
+
+    def forward(self, x: Union[Tensor, OptPairTensor], edge_index: Adj,
+                edge_attr: OptTensor = None, size: Size = None) -> Tensor:
+        """"""
+        if isinstance(x, Tensor):
+            x: OptPairTensor = (x, x)
+
+        # propagate_type: (x: OptPairTensor, edge_attr: OptTensor)
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr, size=size)
+
+        x_r = x[1]
+        if x_r is not None:
+            out = out + (1 + self.eps) * x_r
+
+        return self.nn(out)
+
+    def message(self, x_i: Tensor, x_j: Tensor, edge_attr: Tensor) -> Tensor:
+
+
+        # Switch i and j based on direction of triple:
+        reverse = edge_attr[:, -1] == -1
+
+        if self.DIRECTIONAL:
+            x_i[reverse], x_j[reverse] = x_j[reverse], x_i[reverse]
+
+        #x_i[edge_attr[:, -1] == -1] = x_j[edge_attr[:, -1] == -1]
+        # edge_attr = edge_attr[:, :-1]
+
+
+        return self.msg_act(self.lin(torch.cat((x_i, edge_attr, x_j), 1)))
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(nn={self.nn})'
+
+
+class EdgeUpdatingTripleConv(nn.Module):
+    """TripleConv variant that also updates edge features per layer.
+
+    Node update: same as TripleConv — cat(x_i, e, x_j) → lin → ReLU → aggregate → GIN-style update.
+    Edge update: per-edge messages (pre-aggregation) become the new edge features.
+    """
+
+    def __init__(self, nn_module, edge_dim, eps=0., train_eps=False, message_activation='relu'):
+        super().__init__()
+        self.nn = nn_module
+        self.edge_lin = Linear(3 * edge_dim, edge_dim)
+        self.msg_act = _MSG_ACTIVATIONS[message_activation]
+        if train_eps:
+            self.eps = nn.Parameter(torch.Tensor([eps]))
+        else:
+            self.register_buffer('eps', torch.Tensor([eps]))
+
+    def forward(self, x, edge_index, edge_attr=None):
+        src, dst = edge_index[0], edge_index[1]
+        # Per-edge messages: cat(target, edge, source) matching TripleConv convention
+        edge_msg = self.msg_act(self.edge_lin(torch.cat([x[dst], edge_attr, x[src]], dim=1)))
+        # Aggregate at target nodes
+        agg = torch.zeros_like(x)
+        agg.scatter_add_(0, dst.unsqueeze(1).expand_as(edge_msg), edge_msg)
+        # GIN-style node update
+        out = self.nn(agg + (1 + self.eps) * x)
+        return out, edge_msg
+
+
+class TripleModel(torch.nn.Module):
+    """
+    GNN model to predict cardinality of a query,
+    given the query graph and embeddings of nodes
+    and edges.
+
+    Args:
+
+
+    """
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu', embedding_space: str = 'euclidean'):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.layer_norm = layer_norm
+        self.skip_connection = skip_connection
+        self.message_func = message_func
+        self.embedding_space = embedding_space
+        self.use_graph_size = use_graph_size
+        self.use_softplus = use_softplus
+        self.num_layers = num_layers
+        self.edge_updating = (message_func == 'edge_triple')
+
+        readout_dim = 200
+
+        def make_conv(in_dim, out_dim):
+            mlp = torch.nn.Sequential(
+                torch.nn.Linear(in_dim, out_dim),
+                torch.nn.Dropout(p=dropout),
+                torch.nn.SiLU(),
+                torch.nn.Linear(out_dim, out_dim),
+                torch.nn.Dropout(p=dropout)
+            )
+            if self.message_func == 'gine':
+                return GINEConv(nn=mlp, edge_dim=self.feat_dim)
+            elif self.message_func == 'triple':
+                return TripleConv(nn=mlp, edge_dim=self.feat_dim, message_activation=message_activation)
+            elif self.message_func == 'edge_triple':
+                return EdgeUpdatingTripleConv(nn_module=mlp, edge_dim=self.feat_dim, message_activation=message_activation)
+            elif self.message_func == 'deepset':
+                from fice.models import DeepSetConv
+                return DeepSetConv(nn_module=mlp, edge_dim=self.feat_dim)
+            else:
+                raise ValueError(f"Invalid query message function: {self.message_func}")
+
+        # Build layers: all feat_dim→feat_dim except last which is feat_dim→readout_dim
+        self.convs = nn.ModuleList()
+        self.norms = nn.ModuleList()
+        for i in range(num_layers):
+            out_dim = readout_dim if i == num_layers - 1 else feat_dim
+            self.convs.append(make_conv(feat_dim if i == 0 else feat_dim, out_dim))
+            self.norms.append(nn.LayerNorm(out_dim))
+
+        self.skip_proj = Linear(self.feat_dim, readout_dim)
+
+        # Readout: sum or attention pooling
+        self.readout = readout
+        if readout == 'attention':
+            gate_nn = nn.Sequential(
+                nn.Linear(readout_dim, readout_dim // 2),
+                nn.SiLU(),
+                nn.Linear(readout_dim // 2, 1),
+            )
+            self.pool = AttentionalAggregation(gate_nn)
+
+        lin_input_dim = readout_dim + 1 if use_graph_size else readout_dim
+        self.lin = Linear(lin_input_dim, 50)
+        self.lin2 = Linear(50, 1)
+
+        self.dropout_layer = torch.nn.Dropout(p=dropout)
+
+    def _box_to_center_logwidth(self, features):
+        """Transform box [counts | min | max] → [counts | center | log_width]."""
+        half = (self.feat_dim - 3) // 2
+        counts = features[:, :3]
+        emb = features[:, 3:]
+        mins, maxs = emb[:, :half], emb[:, half:]
+        center = (mins + maxs) / 2
+        log_width = F.softplus(maxs - mins).log()
+        return torch.cat([counts, center, log_width], dim=1)
+
+    def forward(self, batch, graph_size):
+        x = batch.x
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr
+
+        # Preprocess box embeddings: [min, max] → [center, log_width]
+        # Makes GINEConv addition geometrically meaningful
+        if self.embedding_space == 'box':
+            x = self._box_to_center_logwidth(x)
+            edge_attr = self._box_to_center_logwidth(edge_attr)
+
+        for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+            x_input = x
+            if self.edge_updating:
+                x, edge_attr = conv(x, edge_index, edge_attr=edge_attr)
+                x = F.silu(x)
+            else:
+                x = F.silu(conv(x, edge_index, edge_attr=edge_attr))
+            if self.layer_norm:
+                x = norm(x)
+            if self.skip_connection:
+                if x.size(-1) != x_input.size(-1):
+                    x = x + self.skip_proj(x_input)
+                else:
+                    x = x + x_input
+
+        if self.readout == 'attention':
+            x = self.pool(x, batch.batch)
+        else:
+            x = global_add_pool(x, batch.batch)
+        if self.use_graph_size:
+            log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(x.size(0), -1)
+            x = torch.cat([x, log_gs], dim=-1)
+        x = self.dropout_layer(x)
+        x = self.lin(x)
+        x = F.silu(x)
+        x = self.lin2(x)
+
+        if self.use_softplus:
+            return x.squeeze(-1)
+        return torch.abs(x.squeeze(-1))
+
+############Independent Query GNN ############
+# this model only usees the raw count to predict based on independence assumption
+
+class IndependentQueryGNN(torch.nn.Module):
+    def __init__(self, feat_dim):
+        super().__init__()
+        # feat_dim is the total width of input vector (3 counts + embedding)
+        self.emb_dim = feat_dim - 3 
+        
+        # Layer 1: Handles 3-count input
+        self.layer1 = IndependentNeuralJoin(self.emb_dim, is_first_layer=True)
+        
+        
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+        log_N = torch.log1p(torch.tensor(N))
+        
+        
+        # Layer 1
+        # Output x becomes [Nodes, 1 + D]
+        x = self.layer1(x, edge_index, edge_attr, log_N)
+        
+        
+        # --- Step 3: Global Aggregation ---
+        global_sum = x[batch.ptr[:-1]]
+        
+        c_global = global_sum[:, 0:1]
+        e_global = global_sum[:, 1:]
+        
+        final_est = c_global
+        
+        return torch.abs(final_est.squeeze(-1))
+
+
+class IndependentNeuralJoin(MessagePassing):
+    """
+    Implements the Generalized Neural Cardinality Operator (Psi).
+    Handles specific slicing for the first layer where inputs have 3 count dimensions.
+
+    The model expects log values for all counts ! And log(N) for all variable counts !
+    """
+    def __init__(self, emb_dim, is_first_layer=False):
+        super().__init__(aggr='add', flow='target_to_source') 
+        self.emb_dim = emb_dim
+        self.is_first_layer = is_first_layer
+
+
+
+    def forward(self, x_curr, edge_index, edge_attr, log_N):
+        self.log_N = log_N
+        # Propagate generates the messages (m_j->i) and sums them.
+        aggr_out = self.propagate(edge_index, x=x_curr, edge_attr=edge_attr)
+        
+
+        # Split Aggregated Message in cardinality estimate and semantic embeddings
+        c_agg = aggr_out[:, 0:1]
+        e_agg = aggr_out[:, 1:]
+        
+        # 1. Independence Assumption (Sum of logs)
+        c_base = c_agg
+        
+        # 2. Selectivity Correction
+        e_combined = e_agg
+        
+        c_new = c_base
+        
+        # 3. Update Embedding
+        e_new = e_combined
+        
+        return torch.cat([c_new, e_new], dim=1)
+
+    def message(self, x_i, x_j, edge_attr):
+        # --- Case Distinction for Message (Source Node j) ---
+        
+        # Handle x_j (Source)
+        if self.is_first_layer:
+            # Layer 1: x_j has shape [N, 3 + D]
+            c_j = x_j[:, 0:1] #x_j is the sender, i.e. we pick the subject counts
+            c_i = x_i[:, 2:3] #x_i is the receiver, i.e. we pick the object counts
+            e_j = x_j[:, 3:]
+            e_i = x_i[:, 3:]
+        else:
+            # Layer >1: x_j has shape [N, 1 + D]
+            c_j = x_j[:, 0:1]
+            c_i = x_i[:, 0:1]
+            e_j = x_j[:, 1:]
+            e_i = x_i[:, 1:]
+            
+        # Handle edge_attr (Predicate)
+        # We assume edge_attr ALWAYS has shape [E, 3 + D] (raw stats as they are not transformed by message-passing)
+        # We always pick Index 1 (Count as Predicate)
+        c_edge = edge_attr[:, 1:2]
+        e_edge = edge_attr[:, 3:]
+        
+        # L2 Normalize the embedding inputs
+        e_i = F.normalize(e_i, p=2, dim=1)
+        e_j = F.normalize(e_j, p=2, dim=1)
+        e_edge = F.normalize(e_edge, p=2, dim=1)
+
+        # 1. Independence Assumption (Triple Pattern)
+        c_base = c_i + c_j + c_edge - 2*self.log_N
+        
+        # Calculating Embedding of triple pattern
+        e_combined = e_i + e_j + e_edge
+
+        
+        # Complete Cardinality Estimate
+        c_msg = c_base
+        
+        # 3. Update Embedding for message
+        e_msg = e_combined
+        
+        return torch.cat([c_msg, e_msg], dim=1)
+
+
+############ Query Cardinality GNN ############
+# uses the raw counts for independence cardinality and then subtracts a learned selectivity correction
+
+class CardinalityConv(MessagePassing):
+    """
+    Phase 1:
+    1. Calculates independent log-cardinality for every triple pattern.
+    2. Predicts and subtracts a Triple Correction (ψ_edge) from it.
+    3. Aggregates (sums) these corrected triple estimates at the node.
+    4. Predicts and subtracts a Join Correction (ψ_node) at the node
+    IMPORTANT: This conv should be only appplied ONCE to the initial query graph.
+    """
+    def __init__(self, emb_dim, hidden_dim=128, embedding_space='euclidean'):
+        super().__init__(aggr='mean', flow='target_to_source')
+        self.emb_dim = emb_dim
+        self.embedding_space = embedding_space
+        self.half_dim = emb_dim // 2
+
+        # Aggregation dim: full emb_dim for euclidean, half for box/gaussian (centers/means)
+        self.agg_dim = emb_dim // 2 if embedding_space in ('box', 'gaussian') else emb_dim
+
+        # Triple Pattern Correction
+        # Input: [emb_s, emb_p, emb_o] (full embeddings for MLP correction)
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(3 * emb_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1), # Outputs ψ_edge
+        )
+
+        # Node Join Correction (Node Level)
+        # Input: [aggregated_embedding] (centers/means for box/gaussian)
+        self.node_mlp = nn.Sequential(
+            nn.Linear(self.agg_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1), # Outputs ψ_node
+        )
+
+        # Embedding Update (to pass to Phase 2)
+        self.emb_update = nn.Sequential(
+            nn.Linear(self.agg_dim, self.agg_dim),
+            nn.SiLU(),
+            nn.Linear(self.agg_dim, self.agg_dim)
+        )
+        
+        
+    def forward(self, x, edge_index, edge_attr, log_N):
+        self.log_N = log_N
+        
+        # Propagate: Calculates corrected edge messages and sums them
+        # Returns: [log_card_sum, aggregated_embedding]
+        out = self.propagate(edge_index, x=x, edge_attr=edge_attr)
+        
+        c_sum = out[:, 0:1]
+        e_agg = out[:, 1:]
+        
+        # --- Node Level Correction (Join) ---
+        # The sum of edge logs implies a Cartesian product of all incoming edges.
+        # We need to subtract a correction because they join on this node.
+        join_correction = self.node_mlp(e_agg)
+        
+        c_final = c_sum - join_correction
+        
+        # Update embedding for next phase
+        e_final = self.emb_update(e_agg)
+        
+        return c_final, e_final
+
+    def message(self, x_i, x_j, edge_attr):
+        # x_j: Source (Subject), x_i: Target (Object)
+
+        # 1. Counts (Log Space)
+        c_s = x_j[:, 0:1]
+        c_o = x_i[:, 2:3]
+        c_p = edge_attr[:, 1:2]
+
+        # 2. Embeddings
+        e_s = x_j[:, 3:]
+        e_o = x_i[:, 3:]
+        e_p = edge_attr[:, 3:]
+
+        # Normalize embeddings for euclidean (so model learns similarity via orientation, not magnitude)
+        # For box/gaussian: skip normalization — magnitudes encode volume/spread
+        if self.embedding_space == 'euclidean':
+            e_s = F.normalize(e_s, p=2, dim=1)
+            e_o = F.normalize(e_o, p=2, dim=1)
+            e_p = F.normalize(e_p, p=2, dim=1)
+
+        # --- Independent Cardinality ---
+        # log(|t|) = log(|s|) + log(|p|) + log(|o|) - 2*log(N)
+        log_card_ind = c_s + c_p + c_o - 2 * self.log_N
+
+        # --- Learned Triple Correction ---
+        # ψ_edge(e_s, e_p, e_o)
+        triple_emb = torch.cat([e_s, e_p, e_o], dim=1)
+        triple_selectivity = self.edge_mlp(triple_emb)
+
+        # Corrected Edge Estimate
+        log_card_corrected = log_card_ind - triple_selectivity
+
+        # Pass the combined embedding to the node for aggregation
+        if self.embedding_space == 'box':
+            # For boxes: aggregate centers (midpoint of min/max)
+            from fice.embedding_spaces import box_center
+            hd = self.half_dim
+            msg_emb = box_center(e_s, hd) + box_center(e_p, hd) + box_center(e_o, hd)
+        elif self.embedding_space == 'gaussian':
+            # For gaussians: aggregate means (first half)
+            hd = self.half_dim
+            msg_emb = e_s[:, :hd] + e_p[:, :hd] + e_o[:, :hd]
+        else:
+            msg_emb = e_s + e_p + e_o
+
+        return torch.cat([log_card_corrected, msg_emb], dim=1)
+
+
+class SelectivityConv(MessagePassing):
+    """
+    Phase 2: Refinement
+    Operates on the graph structure to refine estimates.
+    Does NOT use raw edge counts, only embeddings.
+    """
+    def __init__(self, emb_dim, hidden_dim=128, agg_dim=None):
+        super().__init__(aggr='add', flow='target_to_source')
+        self.emb_dim = emb_dim
+        d = agg_dim if agg_dim is not None else emb_dim
+
+        self.mlp = nn.Sequential(
+            nn.Linear(2 * d, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 1) # Outputs scalar correction update
+        )
+
+        self.emb_update = nn.Sequential(
+            nn.Linear(2 * d, d),
+            nn.SiLU(),
+            nn.Linear(d, d)
+        )
+
+    def forward(self, x_emb, edge_index):
+        # x_emb: Node embeddings from previous step
+        return self.propagate(edge_index, x=x_emb)
+
+    def message(self, x_i, x_j):
+        # Only uses node embeddings (source and target)
+        # No edge features used here as per requirement
+        cat_emb = torch.cat([x_i, x_j], dim=1)
+        
+        correction = self.mlp(cat_emb)
+        new_emb = self.emb_update(cat_emb)
+        
+        return torch.cat([correction, new_emb], dim=1)
+        
+    def update(self, aggr_out, x):
+        # aggr_out has [sum_correction, sum_new_emb]
+        delta_c = aggr_out[:, 0:1]
+        delta_e = aggr_out[:, 1:]
+        
+        # Update embedding residual
+        x_new = x + delta_e
+        
+        # Return both correction delta and updated embedding
+        return delta_c, x_new
+
+
+class QueryCardinalityGNN(torch.nn.Module):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=0, embedding_space='euclidean'):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.emb_dim = feat_dim - 3
+
+        # Phase 1: Base + Initial Correction
+        self.phase1 = CardinalityConv(self.emb_dim, hidden_dim, embedding_space=embedding_space)
+
+        # Aggregation dim used by phase 2 (centers/means for box/gaussian)
+        agg_dim = self.emb_dim // 2 if embedding_space in ('box', 'gaussian') else self.emb_dim
+
+        # Phase 2: Refinement (No edge features)
+        self.phase2_layers = nn.ModuleList([
+            SelectivityConv(self.emb_dim, hidden_dim, agg_dim=agg_dim)
+            for _ in range(num_layers)
+        ])
+
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+        log_N = torch.log1p(N).to(x.device)
+
+        # --- Phase 1 ---
+        # c_curr: [Nodes, 1] (Log cardinality estimate per node; accounting for tp cardinalitiies and first node joins)
+        # h_curr: [Nodes, D] (Updated semantic embedding)
+        c_curr, h_curr = self.phase1(x, edge_index, edge_attr, log_N)
+        
+        # --- Phase 2 ---
+        # Propagate first node joins to perform all subsequent joins
+        # Here we only calculate selectivities to avoid overcounting issues
+        for conv in self.phase2_layers:
+            delta_c, h_curr = conv(h_curr, edge_index)
+            # Subtract corrections per node and per local neighborhood aggregation
+            c_curr = c_curr - delta_c
+            
+        # --- Global Aggregation ---
+        # Sum the final log-cardinalities from all nodes
+        # They now already represent selectivity corrected cardinalities
+        
+        global_est = global_add_pool(c_curr, batch.batch)
+        
+        return global_est.squeeze(-1)
+
+
+class SimpleSumConv(MessagePassing):
+    def __init__(self):
+        super().__init__(aggr='add')
+
+    def forward(self, x, edge_index, edge_attr):
+        return self.propagate(edge_index, x=x, edge_attr=edge_attr)
+
+    def message(self, x_i, x_j, edge_attr):
+        return x_i + x_j + edge_attr
+
+
+class SimpleSumGNN(torch.nn.Module):
+    def __init__(self, feat_dim=None, hidden_dim=128, **kwargs):
+        super().__init__()
+        self.conv = SimpleSumConv()
+        
+        # Input dimension is feat_dim - 3 due to slicing
+        input_dim = feat_dim - 3
+        if hidden_dim is None:
+            hidden_dim = 128
+            
+        self.mlp = nn.Sequential(
+            nn.Linear(input_dim, hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, 1)
+        )
+
+    def forward(self, batch, N=None):
+        x, edge_index, edge_attr = batch.x, batch.edge_index, batch.edge_attr
+        x = x[:, 3:]
+        edge_attr = edge_attr[:, 3:]
+        out = self.conv(x, edge_index, edge_attr)
+        out = global_add_pool(out, batch.batch)
+        return self.mlp(out).squeeze(-1)
+
+
+############ BoxTripleModel ############
+
+class BoxLayerNorm(nn.Module):
+    """LayerNorm in [center, log_width] space, then re-project to valid [min, max] box."""
+    def __init__(self, half_dim):
+        super().__init__()
+        self.norm = nn.LayerNorm(2 * half_dim)
+
+    def forward(self, boxes):
+        H = boxes.size(-1) // 2
+        center = (boxes[:, :H] + boxes[:, H:]) / 2
+        log_width = F.softplus(boxes[:, H:] - boxes[:, :H]).clamp(min=1e-8).log()
+        normed = self.norm(torch.cat([center, log_width], dim=-1))
+        center, log_width = normed[:, :H], normed[:, H:]
+        half_w = F.softplus(log_width)
+        return torch.cat([center - half_w, center + half_w], dim=-1)
+
+
+class BoxConv(nn.Module):
+    """Box-semantic message passing for query graphs.
+
+    Per-edge: computes triple intersection box + geometric features.
+    Aggregation: scatter_max(mins), scatter_min(maxes) = box intersection.
+    Node update: MLP on (self_box, agg_box, agg_edge_feat) -> new box.
+    Edge update: MLP on (src_center, dst_center, edge_center) -> new edge box.
+    """
+    def __init__(self, half_dim, hidden_dim=128):
+        super().__init__()
+        self.half_dim = half_dim
+
+        # Per-edge MLP: geometric features -> learned message refinement
+        # Input: [inter_center(H), inter_log_width(H), log_vol_s(1), log_vol_d(1), log_vol_e(1), log_vol_inter(1)]
+        self.edge_mlp = nn.Sequential(
+            nn.Linear(2 * half_dim + 4, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, half_dim),
+        )
+
+        # Node update MLP: combines self box + aggregated box + edge features -> new box
+        # Input: [self_center(H), self_log_width(H), agg_center(H), agg_log_width(H), agg_edge_feat(H)]
+        self.node_mlp = nn.Sequential(
+            nn.Linear(5 * half_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 2 * half_dim),
+        )
+
+        # Edge update MLP: refine edge boxes based on updated node context
+        # Input: [src_center(H), dst_center(H), edge_center(H)] -> [2H]
+        self.edge_update = nn.Sequential(
+            nn.Linear(3 * half_dim, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 2 * half_dim),
+        )
+
+    @staticmethod
+    def _safe_log_width(maxs, mins):
+        """log(softplus(max - min)), clamped for numerical stability."""
+        return F.softplus(maxs - mins).clamp(min=1e-8).log()
+
+    def forward(self, boxes, edge_index, edge_boxes):
+        # boxes: [N, 2H], edge_boxes: [E, 2H]
+        src, dst = edge_index
+        H = self.half_dim
+        N = boxes.size(0)
+
+        # 1. Extract boxes for each edge endpoint
+        min_s, max_s = boxes[src, :H], boxes[src, H:]
+        min_d, max_d = boxes[dst, :H], boxes[dst, H:]
+        min_e, max_e = edge_boxes[:, :H], edge_boxes[:, H:]
+
+        # 2. Triple intersection (soft — softplus ensures positive widths + gradients)
+        inter_min = torch.max(torch.max(min_s, min_d), min_e)
+        inter_max = torch.min(torch.min(max_s, max_d), max_e)
+        inter_log_width = self._safe_log_width(inter_max, inter_min)
+        inter_center = (inter_min + inter_max) / 2
+
+        # 3. Volume features (scalar per edge)
+        log_vol_inter = inter_log_width.sum(-1, keepdim=True)
+        log_vol_s = self._safe_log_width(max_s, min_s).sum(-1, keepdim=True)
+        log_vol_d = self._safe_log_width(max_d, min_d).sum(-1, keepdim=True)
+        log_vol_e = self._safe_log_width(max_e, min_e).sum(-1, keepdim=True)
+
+        # 4. Edge MLP: geometric features -> learned refinement
+        geo = torch.cat([inter_center, inter_log_width, log_vol_s, log_vol_d, log_vol_e, log_vol_inter], dim=-1)
+        edge_feat = self.edge_mlp(geo)  # [E, H]
+
+        # 5. Aggregate at target nodes via box intersection
+        agg_min, _ = scatter_max(inter_min, dst, dim=0, dim_size=N)
+        agg_max, _ = scatter_min(inter_max, dst, dim=0, dim_size=N)
+        agg_feat = scatter_add(edge_feat, dst, dim=0, dim_size=N)
+
+        # Handle isolated nodes: keep their original box
+        deg = scatter_add(torch.ones(src.size(0), 1, device=boxes.device), dst, dim=0, dim_size=N)
+        has_msg = (deg > 0).squeeze(-1)
+        agg_min = torch.where(has_msg.unsqueeze(-1), agg_min, boxes[:, :H])
+        agg_max = torch.where(has_msg.unsqueeze(-1), agg_max, boxes[:, H:])
+        deg = deg.clamp(min=1)
+
+        # 6. Node update — full H-dim edge features (not squashed to scalar)
+        agg_center = (agg_min + agg_max) / 2
+        agg_log_width = self._safe_log_width(agg_max, agg_min)
+        self_center = (boxes[:, :H] + boxes[:, H:]) / 2
+        self_log_width = self._safe_log_width(boxes[:, H:], boxes[:, :H])
+
+        update_input = torch.cat([
+            self_center, self_log_width,
+            agg_center, agg_log_width,
+            agg_feat / deg,  # [N, H] mean edge features (full dimensionality)
+        ], dim=-1)
+        raw_update = self.node_mlp(update_input)  # [N, 2H]
+
+        # 7. Re-project to valid box
+        new_center = raw_update[:, :H]
+        new_half_width = F.softplus(raw_update[:, H:])
+        new_boxes = torch.cat([new_center - new_half_width, new_center + new_half_width], dim=-1)
+
+        # 8. Edge update: refine edge boxes using updated node context
+        src_center = (new_boxes[src, :H] + new_boxes[src, H:]) / 2
+        dst_center = (new_boxes[dst, :H] + new_boxes[dst, H:]) / 2
+        edge_center = (edge_boxes[:, :H] + edge_boxes[:, H:]) / 2
+        edge_raw = self.edge_update(torch.cat([src_center, dst_center, edge_center], dim=-1))
+        edge_c = edge_raw[:, :H]
+        edge_hw = F.softplus(edge_raw[:, H:])
+        new_edge_boxes = torch.cat([edge_c - edge_hw, edge_c + edge_hw], dim=-1)
+
+        return new_boxes, new_edge_boxes
+
+
+def _box_residual(boxes_new, boxes_old):
+    """Additive skip connection in [center, log_width] space, re-projected to valid [min, max] box.
+
+    center_out = center_new + center_old  (position correction)
+    log_width_out = log_width_new + log_width_old  (multiplicative width scaling)
+    """
+    H = boxes_new.size(-1) // 2
+    c_new = (boxes_new[:, :H] + boxes_new[:, H:]) / 2
+    lw_new = F.softplus(boxes_new[:, H:] - boxes_new[:, :H]).clamp(min=1e-8).log()
+    c_old = (boxes_old[:, :H] + boxes_old[:, H:]) / 2
+    lw_old = F.softplus(boxes_old[:, H:] - boxes_old[:, :H]).clamp(min=1e-8).log()
+    c = c_new + c_old
+    lw = lw_new + lw_old
+    half_w = F.softplus(lw)
+    return torch.cat([c - half_w, c + half_w], dim=-1)
+
+
+class BoxTripleModel(nn.Module):
+    """Query GNN where all operations work natively in box semantics.
+
+    Message passing: triple intersection boxes.
+    Aggregation: scatter_max(mins), scatter_min(maxes).
+    Skip connections: box intersection (constraints only tighten).
+    Readout: volume-aware pooling.
+    """
+    def __init__(self, feat_dim, num_layers=2, hidden_dim=128, use_graph_size=True, dropout=0.0, **kwargs):
+        super().__init__()
+        self.half_dim = (feat_dim - 3) // 2  # H = 64 for feat_dim=131
+        self.use_graph_size = use_graph_size
+
+        # Box message passing layers
+        self.layers = nn.ModuleList([
+            BoxConv(self.half_dim, hidden_dim) for _ in range(num_layers)
+        ])
+        self.norms = nn.ModuleList([
+            BoxLayerNorm(self.half_dim) for _ in range(num_layers)
+        ])
+        self.dropout = nn.Dropout(p=dropout)
+
+        # Readout MLP
+        # Input: pooled [log_vol(1), center(H), log_width(H), log_counts(3)] + graph_size(1)
+        readout_in = 1 + 2 * self.half_dim + 3 + (1 if use_graph_size else 0)
+        self.readout = nn.Sequential(
+            nn.Linear(readout_in, hidden_dim),
+            nn.SiLU(),
+            nn.Linear(hidden_dim, 50),
+            nn.SiLU(),
+            nn.Linear(50, 1),
+        )
+
+    def forward(self, batch, graph_size):
+        H = self.half_dim
+
+        # Separate counts from boxes
+        counts = batch.x[:, :3]
+        boxes = batch.x[:, 3:]          # [N, 2H]
+        edge_boxes = batch.edge_attr[:, 3:]  # [E, 2H]
+
+        # Box message passing
+        for layer, norm in zip(self.layers, self.norms):
+            boxes_in = boxes
+            boxes, edge_boxes = layer(boxes, batch.edge_index, edge_boxes)
+            boxes = norm(boxes)
+            boxes = self.dropout(boxes)
+            # Skip connection: additive residual in [center, log_width] space
+            boxes = _box_residual(boxes, boxes_in)
+
+        # Readout: extract geometric features per node
+        mins, maxs = boxes[:, :H], boxes[:, H:]
+        log_width = F.softplus(maxs - mins).clamp(min=1e-8).log()  # [N, H]
+        log_vol = log_width.sum(-1, keepdim=True)                   # [N, 1]
+        center = (mins + maxs) / 2                                  # [N, H]
+        log_counts = torch.log1p(counts)                 # [N, 3]
+
+        feats = torch.cat([log_vol, center, log_width, log_counts], dim=-1)
+        pooled = global_add_pool(feats, batch.batch)
+
+        if self.use_graph_size:
+            log_gs = torch.log1p(graph_size.float()).unsqueeze(-1).expand(pooled.size(0), -1)
+            pooled = torch.cat([pooled, log_gs], dim=-1)
+
+        return torch.abs(self.readout(pooled).squeeze(-1))
+
+
+############ QueryTransformer ############
+
+class QueryTransformer(torch.nn.Module):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=1, laplacian_pe_k=0):
+        super().__init__()
+        self.feat_dim = feat_dim
+        self.hidden_dim = hidden_dim
+        self.laplacian_pe_k = laplacian_pe_k
+
+        # Project input (131) to hidden_dim (128)
+        self.input_proj = Linear(feat_dim, hidden_dim)
+
+        # Optional Laplacian PE
+        if self.laplacian_pe_k > 0:
+            self.pe_transform = AddLaplacianEigenvectorPE(k=self.laplacian_pe_k, attr_name='pe')
+            self.pe_proj = Linear(self.laplacian_pe_k, hidden_dim)
+
+        self.convs = nn.ModuleList()
+
+        for _ in range(num_layers):
+            mlp = nn.Sequential(
+                Linear(hidden_dim, hidden_dim),
+                nn.ReLU(),
+                Linear(hidden_dim, hidden_dim),
+            )
+
+            conv = GPSConv(hidden_dim, GINEConv(mlp, edge_dim=feat_dim), heads=4)
+            self.convs.append(conv)
+
+        self.readout = nn.Sequential(
+            Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.ReLU(),
+            Linear(hidden_dim // 4, 1),
+        )
+
+
+    def forward(self, batch, N):
+        x = batch.x # [Nodes, 3 + D]
+        edge_index = batch.edge_index
+        edge_attr = batch.edge_attr # [Edges, 3 + D]
+
+        x = self.input_proj(x)
+
+        # 2. Optionally compute and ADD Laplacian PE
+        if self.laplacian_pe_k > 0:
+            try:
+                # Compute PE on the fly (warning: might be slow for large batches)
+                # This works because 'batch' is structurally a single large disconnected graph
+                batch = self.pe_transform(batch)
+                pe = batch.pe.to(x.device)  # [Nodes, k]
+                
+                # Project PE to hidden_dim and ADD to features
+                x = x + self.pe_proj(pe)
+            except Exception as e:
+                raise
+
+
+        for conv in self.convs:
+            # Pass batch.batch (the index tensor) instead of the whole batch object
+            x = conv(x, edge_index, batch.batch, edge_attr=edge_attr)
+        x = global_add_pool(x, batch.batch)
+        x = self.readout(x)
+        return x.squeeze(-1)

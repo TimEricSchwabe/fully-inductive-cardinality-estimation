@@ -1,0 +1,13 @@
+*.pdf
+__pycache__
+.DS_Store
+.idea/
+venv/
+.venv/
+lmkg-u/models/*.pt
+results.csv
+results1.csv
+eval_model_old.py
+estimators_old.py
+tmp_results.csv
+datasets_lmkg/

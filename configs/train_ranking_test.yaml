@@ -1,0 +1,109 @@
+# test config for the ranking-loss prototype.
+# Uses the 100-parent dbpedia100k path ranking dataset built in
+# data/dbpedia100k_path_queries_ranking/raw/queries.json.
+data:
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+epochs: 100
+wandb: true
+wandb_run_name: "RelationalGNN-dbpedia-only-ranking-loss"
+learning_rate: 1e-4
+train_ratio: 0.8
+output_dir: "output/"
+save_every: 5
+save_metrics_every: 1
+eval_every: 1
+seed: 42
+device: "cpu"
+weight_decay: 0.0
+n_embedding_layers: 2
+GNNNeighborhood: [100,100]
+Conditioning: "false"
+min_cardinality: null
+model: "FICE"
+embedding_dim: 128
+random_walk_pe: 0
+gradient_clipping: 1.0
+prediction_mode: "log-cardinality"
+embedding_space: "euclidean"
+count_features: "raw"
+disable_embedding_gnn: false
+
+# Ranking-loss prototype
+ranking_loss: true # whether to use the ranking loss
+ranking_loss_weight: 1.0 # weight of ranking loss vs. cardinality regression loss
+ranking_margin: 0 # keep at 0
+ranking_group_batch: 2 # how many top-level queries to use per batch
+ranking_loss_type: ranknet
+ranking_size_weight_exponent: 1.0
+ranking_top_weight_strength: 1.0
+
+entity_gnn:
+  message_func: "gine"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+
+relation_gnn:
+  message_func: "gine"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+  relation_attention: False
+  relational: True
+  role_aware_degrees: False
+
+query_gnn:
+  message_func: "gine"
+  model: "TripleModel"
+  skip_connection: False
+  readout: "attention"
+  layer_norm: True
+  dropout: 0.0
+  num_layers: 2
+  message_activation: "relu"
+
+scheduler:
+  enabled: False
+  min_lr: 1.0e-6

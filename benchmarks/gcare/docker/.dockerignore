@@ -1,0 +1,5 @@
+gcare/results
+gcare/build
+gcare/**/build
+gcare/**/CMakeCache.txt
+gcare/**/CMakeFiles
