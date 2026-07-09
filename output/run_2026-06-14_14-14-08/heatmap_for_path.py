@@ -5,6 +5,7 @@ import matplotlib.pyplot as plt
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Load the model checkpoint
+# Load the model checkpoint
 model_path = "/Users/tomiris/PycharmProjects/fully-inductive-cardinality-estimation/output/run_2026-06-14_14-14-08/checkpoints/best_model.pt"
 checkpoint = torch.load(model_path, map_location='cpu')
 

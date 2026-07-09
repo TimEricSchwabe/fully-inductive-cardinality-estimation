@@ -2,6 +2,7 @@ import torch
 import numpy as np
 
 # Load the model checkpoint
+# Load the model checkpoint
 model_path = "/Users/tomiris/PycharmProjects/fully-inductive-cardinality-estimation/output/run_2026-06-12_16-58-10/checkpoints/best_model.pt"
 checkpoint = torch.load(model_path, map_location='cpu')
 

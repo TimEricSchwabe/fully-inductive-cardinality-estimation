@@ -2553,5 +2553,50 @@ class path_queries(NTQueries):
     def download(self):
         pass
 
+class fano_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="fano_dataset", **kwargs)
+    def download(self):
+        pass
 
+class ising_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="ising_dataset", **kwargs)
+    def download(self):
+        pass
 
+class orthogonal_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="orthogonal_dataset", **kwargs)
+    def download(self):
+        pass
+
+class two_clusters_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="two_clusters_dataset", **kwargs)
+    def download(self):
+        pass
+
+class fano_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://fano_queries.json", dataset_name="fano_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class ising_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://ising_queries.json", dataset_name="ising_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class orthogonal_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://orthogonal_queries.json", dataset_name="orthogonal_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class two_clusters_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://two_clusters_queries.json", dataset_name="two_clusters_queries", type="star", **kwargs)
+    def download(self):
+        pass
