@@ -864,6 +864,11 @@ class FICE(nn.Module):
                  query_gnn_num_layers=2,
                  query_gnn_readout='sum',
                  query_gnn_message_activation='relu',
+                 query_virtual_node=False,
+                 # QueryTransformer knobs; defaults = the previous hardcoded values
+                 query_transformer_layers=1,
+                 query_transformer_heads=4,
+                 query_transformer_laplacian_pe_k=0,
                  # Global params
                  pe_dim=0,
                  entity_dropout=0.0,
@@ -977,6 +982,7 @@ class FICE(nn.Module):
                 readout=query_gnn_readout,
                 message_activation=query_gnn_message_activation,
                 embedding_space=query_embedding_space,
+                virtual_node=query_virtual_node,
             )
         elif self.query_gnn_type == 'BoxTripleModel':
             self.query_gnn = BoxTripleModel(
@@ -999,7 +1005,12 @@ class FICE(nn.Module):
                 readout=query_gnn_readout,
             )
         elif self.query_gnn_type == 'QueryTransformer':
-            self.query_gnn = QueryTransformer(feat_dim=self.vector_dim + 3)
+            self.query_gnn = QueryTransformer(
+                feat_dim=self.vector_dim + 3,
+                num_layers=query_transformer_layers,
+                heads=query_transformer_heads,
+                laplacian_pe_k=query_transformer_laplacian_pe_k,
+            )
         elif self.query_gnn_type == 'SimpleSumGNN':
             self.query_gnn = SimpleSumGNN(feat_dim=self.vector_dim + 3)
         else:

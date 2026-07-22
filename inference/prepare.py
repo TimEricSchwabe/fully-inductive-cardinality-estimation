@@ -129,6 +129,10 @@ def build_fice_from_config(config: Config, state_dict: dict = None) -> FICE:
         query_gnn_num_layers=config.query_gnn.num_layers,
         query_gnn_readout=config.query_gnn.readout,
         query_gnn_message_activation=config.query_gnn.message_activation,
+        query_virtual_node=getattr(config.query_gnn, 'virtual_node', False),
+        query_transformer_layers=getattr(config.query_gnn, 'transformer_layers', 1),
+        query_transformer_heads=getattr(config.query_gnn, 'transformer_heads', 4),
+        query_transformer_laplacian_pe_k=getattr(config.query_gnn, 'transformer_laplacian_pe_k', 0),
         pe_dim=pe_dim,
         prediction_mode=config.prediction_mode,
         embedding_space=config.embedding_space,
@@ -264,6 +268,12 @@ def export_query_gnn(model: FICE, config: Config, output_dir: Path):
             f"TorchScript export only supports euclidean embedding space, "
             f"got {config.embedding_space}"
         )
+    if getattr(config.query_gnn, "virtual_node", False):
+        raise NotImplementedError(
+            "TorchScript export does not support virtual_node yet — the "
+            "scriptable TripleModel replica would silently ignore the "
+            "virtual-node modules and produce wrong estimates."
+        )
 
     feat_dim = config.embedding_dim + 3  # counts (3) + embedding (D)
     scriptable = build_scriptable_from_config(
@@ -394,7 +404,15 @@ def main():
     # ---- 1. Load checkpoint and reconstruct model ----
     logger.info(f"Loading checkpoint: {checkpoint_path}")
     checkpoint = load_checkpoint(checkpoint_path)
-    config = Config(**checkpoint["config"])
+    # Checkpoints trained with newer fice versions carry extra training-time
+    # keys (e.g. ranking_loss_*) that this Config (extra=forbid) rejects.
+    # They don't affect model reconstruction, so drop them.
+    known = set(Config.model_fields)
+    ckpt_cfg = {k: v for k, v in checkpoint["config"].items() if k in known}
+    dropped = set(checkpoint["config"]) - known
+    if dropped:
+        logger.warning(f"Ignoring unknown config keys: {sorted(dropped)}")
+    config = Config(**ckpt_cfg)
 
     if config.Conditioning != "false":
         raise ValueError(

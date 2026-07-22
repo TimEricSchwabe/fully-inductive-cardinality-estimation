@@ -1,0 +1,390 @@
+# Multi-KG inductive ranking-loss training with the gt_ppr encoder
+# (per_node + GPS + role-aware RWPE + deterministic PPR neighbor selection).
+# Data/ranking settings identical to train_ranking_inductive.yaml; only the
+# encoder block differs. dbpedia100k is the held-out validation KG.
+
+
+data:
+
+  # ---- aids ----
+  - dataset: "aids"
+    queries: "aids_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "aids"
+    queries: "aids_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- codex_l ----
+  - dataset: "codex_l"
+    queries: "codex_l_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "codex_l"
+    queries: "codex_l_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- fb237_v4 ----
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "fb237_v4"
+    queries: "fb237_v4_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- hetionet ----
+  - dataset: "hetionet"
+    queries: "hetionet_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "hetionet"
+    queries: "hetionet_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- lubm ----
+  - dataset: "LUBM"
+    queries: "lubm_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "LUBM"
+    queries: "lubm_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- swdf ----
+  - dataset: "SWDF"
+    queries: "swdf_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "SWDF"
+    queries: "swdf_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- wikidata ----
+  - dataset: "Wikidata"
+    queries: "wikidata_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "Wikidata"
+    queries: "wikidata_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- wn18rr_v4 ----
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "wn18rr_v4"
+    queries: "wn18rr_v4_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- yago ----
+  - dataset: "yago"
+    queries: "yago_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+  - dataset: "yago"
+    queries: "yago_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "train-val"
+
+  # ---- DBpedia100k: held-out inductive validation (NEVER trained on) ----
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_star_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_cycle_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_diamond_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_flower_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_snowflake_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_path_star_ends_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+  - dataset: "dbpedia100k"
+    queries: "dbpedia100k_binary_tree_queries_ranking"
+    batch_size: 1
+    num_queries: -1
+    type: "validation"
+
+epochs: 50
+wandb: true
+wandb_run_name: "GT-PPR-DEG-gtdec2-multi-kg-ranking-inductive"
+learning_rate: 1e-4
+train_ratio: 0.8
+output_dir: "output/"
+save_every: 5
+save_metrics_every: 1
+eval_every: 1
+seed: 42
+device: "auto"
+weight_decay: 0.0
+n_embedding_layers: 4
+Conditioning: "false"
+min_cardinality: null
+model: "FICE"
+embedding_dim: 128
+gradient_clipping: 1.0
+prediction_mode: "log-cardinality"
+embedding_space: "euclidean"
+count_features: "raw"
+disable_embedding_gnn: false
+
+# Ranking Loss Parameters (unchanged from train_ranking_inductive.yaml)
+ranking_loss: true
+ranking_loss_weight: 3.0
+ranking_margin: 0
+ranking_group_batch: 2
+ranking_loss_type: ranknet
+ranking_size_weight_exponent: 1.0
+ranking_top_weight_strength: 1.0
+
+# Encoder: gt_ppr (wn18rr winner) + fixes for the star-query/hub failure of
+# run_2026-07-02_14-34-18: 4x larger hop-1 cap and true degree/fan-out
+# features from the full graph (log1p degree per role on all nodes + GBJO
+# per-relation max out/in fan-out bounds on relation nodes).
+neighborhood_mode: "per_node"
+GNNNeighborhood: [64, 16]
+random_walk_pe: 8
+neighbor_selection: "ppr"
+degree_features: true
+ppr_alpha: 0.15
+mc_pool_size: 1
+mc_samples: 1
+
+entity_gnn:
+  message_func: "gine"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+
+relation_gnn:
+  message_func: "gps"
+  source: "factor"
+  skip_connection: True
+  layer_norm: True
+  dropout: 0.1
+  relation_attention: False
+  relational: False   # must be off: relational takes precedence over gps
+  role_aware_degrees: True
+  heads: 4
+  attn_type: "multihead"
+  local_mp: True
+
+query_gnn:
+  message_func: "gine"
+  # SINGLE DELTA vs train_ranking_gt_ppr_deg.yaml: graph-transformer decoder
+  # (2 GPSConv layers, 4 heads) instead of 2-layer GINE TripleModel.
+  model: "QueryTransformer"
+  transformer_layers: 2
+  transformer_heads: 4
+  skip_connection: False
+  readout: "attention"
+  layer_norm: True
+  dropout: 0.0
+  num_layers: 2
+  message_activation: "relu"
+
+scheduler:
+  enabled: False
+  min_lr: 1.0e-6

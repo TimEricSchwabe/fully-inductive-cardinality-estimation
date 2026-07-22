@@ -199,6 +199,10 @@ def initialize_model_components(context: TrainingContext, total_training_steps: 
             query_gnn_num_layers=query_gnn_num_layers,
             query_gnn_readout=query_gnn_readout,
             query_gnn_message_activation=query_gnn_message_activation,
+            query_virtual_node=config.query_gnn.virtual_node,
+            query_transformer_layers=config.query_gnn.transformer_layers,
+            query_transformer_heads=config.query_gnn.transformer_heads,
+            query_transformer_laplacian_pe_k=config.query_gnn.transformer_laplacian_pe_k,
             pe_dim=pe_dim,
             prediction_mode=config.prediction_mode,
             embedding_space=config.embedding_space,
@@ -592,6 +596,21 @@ def pairwise_margin_ranking_loss(
     return total / total_w
 
 
+def regression_loss(log_pred, log_true, cfg):
+    """Pointwise regression term. 'smooth_l1' is the legacy default.
+
+    'pinball' trains the cfg.pinball_tau quantile of log-cardinality:
+    tau > 0.5 penalizes underestimation more than overestimation — the
+    asymmetry matched to join planning, where underestimated subsets are
+    what produce catastrophic plans.
+    """
+    if getattr(cfg, "regression_loss_type", "smooth_l1") == "pinball":
+        diff = log_true - log_pred
+        tau = float(cfg.pinball_tau)
+        return torch.mean(torch.maximum(tau * diff, (tau - 1.0) * diff))
+    return F.smooth_l1_loss(log_pred, log_true)
+
+
 def train_epoch(state: TrainingState):
     """Train the model for one epoch."""
     state.model_components.model.train()
@@ -641,7 +660,8 @@ def train_epoch(state: TrainingState):
         log_true_cardinality = torch.log1p(true_cardinality)
 
         # Compute loss
-        base_loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
+        base_loss = regression_loss(log_cardinality_pred, log_true_cardinality,
+                                    state.training_context.config)
         loss = base_loss
 
         cfg = state.training_context.config
@@ -788,8 +808,10 @@ def evaluate_model(state: TrainingState, mode: Literal['validation', 'test'] = '
             true_cardinality = query_batch.y.to(torch.float32).to(device)
             log_true_cardinality = torch.log1p(true_cardinality)
 
-            # Compute loss
-            loss = F.smooth_l1_loss(log_cardinality_pred, log_true_cardinality)
+            # Compute loss (same objective as training so model selection on
+            # validation loss stays aligned with the configured loss)
+            loss = regression_loss(log_cardinality_pred, log_true_cardinality,
+                                   state.training_context.config)
 
             cfg = state.training_context.config
             if getattr(cfg, "ranking_loss", False) and getattr(query_batch, "group_id", None) is not None:

@@ -43,6 +43,16 @@ class QueryGNNConfig(BaseSettings):
     num_layers: int = 2
     readout: Literal['sum', 'attention'] = 'sum'
     message_activation: Literal['relu', 'silu', 'linear'] = 'relu'
+    # Virtual node for TripleModel: a per-graph global node updated between
+    # message-passing layers. Gives long-range information flow beyond the
+    # num_layers-hop receptive field. False reproduces the legacy model.
+    virtual_node: bool = False
+    # QueryTransformer options (used only when model == 'QueryTransformer').
+    # Defaults match the previously hardcoded prototype (1 GPSConv layer,
+    # 4 heads, no Laplacian PE), so old configs build the identical module.
+    transformer_layers: int = 1
+    transformer_heads: int = 4
+    transformer_laplacian_pe_k: int = 0
 
 class SchedulerConfig(BaseSettings):
     enabled: bool = True
@@ -106,10 +116,23 @@ class Config(BaseSettings):
     ranking_size_weight_exponent: float = 0.0  # Per-pair weight (size_i*size_j)^(exp/2); 0 disables
     ranking_top_weight_strength: float = 0.0  # Per-pair weight 1/(1 + s*min(rank_i,rank_j)); 0 disables
 
+    # Pointwise regression term. 'smooth_l1' is the legacy default.
+    # 'pinball' trains the pinball_tau quantile of log-cardinality: tau > 0.5
+    # penalizes underestimation more than overestimation (asymmetry matched to
+    # join planning, where underestimates produce the catastrophic plans).
+    regression_loss_type: Literal['smooth_l1', 'pinball'] = 'smooth_l1'
+    pinball_tau: float = 0.9  # Target quantile when regression_loss_type == 'pinball'
+
     query_gnn: QueryGNNConfig = QueryGNNConfig()
     entity_gnn: EntityGNNConfig = EntityGNNConfig()
     relation_gnn: RelationGNNConfig = RelationGNNConfig()
     scheduler: SchedulerConfig = SchedulerConfig()
+
+    @model_validator(mode='after')
+    def validate_regression_loss(self):
+        if self.regression_loss_type == 'pinball' and not (0.0 < self.pinball_tau < 1.0):
+            raise ValueError(f"pinball_tau must be in (0, 1), got {self.pinball_tau}")
+        return self
 
     @model_validator(mode='after')
     def validate_gnn_sources(self):

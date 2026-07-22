@@ -251,9 +251,10 @@ class TripleModel(torch.nn.Module):
 
 
     """
-    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu', embedding_space: str = 'euclidean'):
+    def __init__(self, feat_dim: int = 101, layer_norm=True, skip_connection=False, dropout=0.0, message_func='gine', use_graph_size: bool = True, use_softplus: bool = False, num_layers: int = 2, readout: str = 'sum', message_activation: str = 'relu', embedding_space: str = 'euclidean', virtual_node: bool = False):
         super().__init__()
         self.feat_dim = feat_dim
+        self.virtual_node = virtual_node
         self.layer_norm = layer_norm
         self.skip_connection = skip_connection
         self.message_func = message_func
@@ -295,6 +296,21 @@ class TripleModel(torch.nn.Module):
 
         self.skip_proj = Linear(self.feat_dim, readout_dim)
 
+        # Virtual node: one learned per-graph global node, added to every
+        # node's input before each conv and updated from the pooled node
+        # states between layers (OGB style). Modules exist only when enabled,
+        # so state_dicts of legacy checkpoints still load with strict=True.
+        if self.virtual_node:
+            self.vn_init = torch.nn.Parameter(torch.zeros(feat_dim))
+            self.vn_mlps = nn.ModuleList([
+                torch.nn.Sequential(
+                    Linear(feat_dim, feat_dim),
+                    torch.nn.SiLU(),
+                    Linear(feat_dim, feat_dim),
+                )
+                for _ in range(max(num_layers - 1, 0))
+            ])
+
         # Readout: sum or attention pooling
         self.readout = readout
         if readout == 'attention':
@@ -332,7 +348,14 @@ class TripleModel(torch.nn.Module):
             x = self._box_to_center_logwidth(x)
             edge_attr = self._box_to_center_logwidth(edge_attr)
 
+        vn = None
+        if self.virtual_node:
+            num_graphs = int(batch.batch.max().item()) + 1
+            vn = self.vn_init.unsqueeze(0).expand(num_graphs, -1)
+
         for i, (conv, norm) in enumerate(zip(self.convs, self.norms)):
+            if vn is not None:
+                x = x + vn[batch.batch]
             x_input = x
             if self.edge_updating:
                 x, edge_attr = conv(x, edge_index, edge_attr=edge_attr)
@@ -346,6 +369,8 @@ class TripleModel(torch.nn.Module):
                     x = x + self.skip_proj(x_input)
                 else:
                     x = x + x_input
+            if vn is not None and i < self.num_layers - 1:
+                vn = self.vn_mlps[i](vn + global_add_pool(x, batch.batch))
 
         if self.readout == 'attention':
             x = self.pool(x, batch.batch)
@@ -941,7 +966,7 @@ class BoxTripleModel(nn.Module):
 ############ QueryTransformer ############
 
 class QueryTransformer(torch.nn.Module):
-    def __init__(self, feat_dim, hidden_dim=128, num_layers=1, laplacian_pe_k=0):
+    def __init__(self, feat_dim, hidden_dim=128, num_layers=1, laplacian_pe_k=0, heads=4):
         super().__init__()
         self.feat_dim = feat_dim
         self.hidden_dim = hidden_dim
@@ -964,7 +989,7 @@ class QueryTransformer(torch.nn.Module):
                 Linear(hidden_dim, hidden_dim),
             )
 
-            conv = GPSConv(hidden_dim, GINEConv(mlp, edge_dim=feat_dim), heads=4)
+            conv = GPSConv(hidden_dim, GINEConv(mlp, edge_dim=feat_dim), heads=heads)
             self.convs.append(conv)
 
         self.readout = nn.Sequential(
