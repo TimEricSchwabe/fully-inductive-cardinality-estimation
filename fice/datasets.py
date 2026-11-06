@@ -2493,3 +2493,97 @@ class yago_path_queries_ranking(NTRankingQueries):
             type="path", **kwargs,
         )
 
+# ---------------------------------------------------------------------------
+# Controlled datasets (WS 2026/27), ported from mybranch / branch-natalia.
+# Class name = config key; dataset_name = folder under data/.
+# ---------------------------------------------------------------------------
+
+# --- Cycle / Path / Implication (from mybranch) ---
+
+class cycle_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="cycle_dataset", **kwargs)
+    def download(self):
+        pass
+
+class cycle_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://cycle_queries.json", dataset_name="cycle_queries", type="cycle", **kwargs)
+    def download(self):
+        pass
+
+class path_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="path_dataset", **kwargs)
+    def download(self):
+        pass
+
+class path_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file://localhost", dataset_name="path_queries", type="path", **kwargs)
+    def download(self):
+        pass
+
+class implication_dataset(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="http://localhost", dataset_name="implication_dataset", **kwargs)
+    def download(self):
+        pass
+
+# --- Fano / Ising / Orthogonal / Two clusters (from branch-natalia) ---
+# Folder layout from scripts/generate_controlled.py:
+#   data/<name>/raw/<name>.nt, data/<name>_queries/raw/queries.json
+
+class fano(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///fano.nt", dataset_name="fano", **kwargs)
+    def download(self):
+        pass
+
+class fano_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="fano_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class ising(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///ising.nt", dataset_name="ising", **kwargs)
+    def download(self):
+        pass
+
+class ising_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="ising_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class orthogonal(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///orthogonal.nt", dataset_name="orthogonal", **kwargs)
+    def download(self):
+        pass
+
+class orthogonal_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="orthogonal_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class two_clusters(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///two_clusters.nt", dataset_name="two_clusters", **kwargs)
+    def download(self):
+        pass
+
+class two_clusters_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="two_clusters_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+# Aliases for scripts/probe_controlled.py (branch-natalia naming)
+FanoDataset, FanoQueries = fano, fano_queries
+IsingDataset, IsingQueries = ising, ising_queries
+OrthogonalDataset, OrthogonalQueries = orthogonal, orthogonal_queries
+TwoClustersDataset, TwoClustersQueries = two_clusters, two_clusters_queries
