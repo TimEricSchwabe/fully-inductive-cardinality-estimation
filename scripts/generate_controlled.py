@@ -137,9 +137,25 @@ def gen_ising(seed):
     ising_queries = star_queries(ising_triples, m=10, prefix="ising", max_per_order=120, seed=seed)
     return "ising", ising_triples, ising_queries
 
+def gen_orthogonal(seed, m=7, n=120,fanout = 1):
+    # every subject carries exactly one predicate -> no two subjects share same predicate
+    blocks = [(p,) for p in range(m)]
+    triples = design_kg(blocks, prefix="orthogonal", n_per_block=n, fanout=fanout)
+    queries = star_queries(triples, m=m, prefix = "orthogonal", seed=seed)
+    return "orthogonal", triples, queries
+
+def gen_two_clusters(seed, clusters = ((0,1,2),(3,4,5,6)), n=120, fanout = 1):
+    # every subject carries all predicates of its cluster; unequal cluster sizes so they are not 1-WL equivalent
+    m = sum(len(c) for c in clusters)
+    triples = design_kg(list(clusters), prefix="two_clusters", n_per_block=n, fanout=fanout)
+    queries = star_queries(triples, m=m, prefix="two_clusters", seed=seed)
+    return "two_clusters", triples, queries
+
 GENERATORS = {
     "fano": gen_fano,
     "ising": gen_ising,
+    "orthogonal": gen_orthogonal,
+    "two_clusters": gen_two_clusters,
 }
 
 
