@@ -21,6 +21,7 @@ def design_kg(blocks, prefix="fano", n_per_block=40, fanout=1):
         for n in range(n_b):
             s = f"<http://fice/{prefix}/s_{bi}_{n}>"
             for p in block:
+                f = fanout if isinstance(fanout, int) else fanout[p]
                 for k in range(fanout):
                     o = f"<http://fice/{prefix}/o_s_{bi}_{n}_p{p}_{k}>"
                     triples.append((s, f"<http://fice/{prefix}/p{p}>", o))
@@ -125,10 +126,20 @@ def save_kg_and_queries(dataset_name, triples, queries):
 #------------------------------------------------------------------- datasets
 
 
-def gen_fano(seed):
-    triples = design_kg(FANO, prefix = "fano", n_per_block=40)
+def gen_fano(seed, n=40, fanout=1, name="fano"):
+    triples = design_kg(FANO, prefix = name, n_per_block=n, fanout=fanout)
     queries = star_queries(triples, m=7, prefix="fano", seed=seed)
     return "fano", triples, queries
+
+def gen_fano_unequal(seed):
+    #block sizes dependent on seed
+    rng = np.random.default_rng(seed)
+    sizes = [int(x) for x in rng.intgers(20,81,size = len(FANO))]
+    print(f"  fano_unequal block sizes: {sizes}")
+    return gen_fano(seed, n=sizes, name="fano_unequal")
+
+def gen_fano_fanout(seed):
+    return gen_fano(seed, fanout=[1,1,2,2,3,3,1], name="fano_fanout")
 
 def gen_ising(seed):
     # 10 predicates, two clusters [0,1,2] and [3,4,5,6], others isolated
@@ -161,6 +172,8 @@ def gen_implication(seed, fanout = 1):
 
 GENERATORS = {
     "fano": gen_fano,
+    "fano_unequal": gen_fano_unequal,
+    "fano_fanout": gen_fano_fanout,
     "ising": gen_ising,
     "orthogonal": gen_orthogonal,
     "two_clusters": gen_two_clusters,

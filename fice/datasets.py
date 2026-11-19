@@ -2588,6 +2588,30 @@ class two_clusters_queries(NTQueries):
     def download(self):
         pass
 
+class fano_unequal(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///fano_unequal.nt", dataset_name="fano_unequal", **kwargs)
+    def download(self):
+        pass
+
+class fano_unequal_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="fano_unequal_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class fano_fanout(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///fano_fanout.nt", dataset_name="fano_fanout", **kwargs)
+    def download(self):
+        pass
+
+class fano_fanout_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="fano_fanout_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
 # Aliases for scripts/probe_controlled.py (branch-natalia naming)
 FanoDataset, FanoQueries = fano, fano_queries
 IsingDataset, IsingQueries = ising, ising_queries
