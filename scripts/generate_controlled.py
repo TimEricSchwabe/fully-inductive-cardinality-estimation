@@ -151,11 +151,20 @@ def gen_two_clusters(seed, clusters = ((0,1,2),(3,4,5,6)), n=120, fanout = 1):
     queries = star_queries(triples, m=m, prefix="two_clusters", seed=seed)
     return "two_clusters", triples, queries
 
+def gen_implication(seed, fanout = 1):
+    # (p0=>p1): no equivalence, (p2=>p3): near-equivalence, (p4=>p5=>p6): chain implication; Block (p,q) are subjects with both predicates, block (q,) only with q
+    blocks = [(0,1), (1,), (2,3), (3,), (4,5,6), (5,6), (6,)]
+    sizes = [40, 80, 100, 20, 40, 40, 40]
+    triples = design_kg(blocks, prefix="implication",n_per_block=sizes, fanout=fanout)
+    queries = star_queries(triples, m=7, prefix="implication", seed=seed)
+    return "implication", triples, queries
+
 GENERATORS = {
     "fano": gen_fano,
     "ising": gen_ising,
     "orthogonal": gen_orthogonal,
     "two_clusters": gen_two_clusters,
+    "implication": gen_implication,
 }
 
 
