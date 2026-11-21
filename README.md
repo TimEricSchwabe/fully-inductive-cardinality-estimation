@@ -250,3 +250,21 @@ C++ API surface, and the runtime-measurement workflow are documented in
   `output/final/` referenced by the evaluation scripts):
   `[Results Link](https://zenodo.org/records/19854794?preview=1&token=eyJhbGciOiJIUzUxMiJ9.eyJpZCI6IjFiYWQ5NTc2LWE2Y2YtNGY0My1iZGVmLTY1MzdlNmQ2ODg3YiIsImRhdGEiOnt9LCJyYW5kb20iOiJlNzBhYzk3M2FhZmE2NzJlM2NjYzlhNDc1MzU3MDFiMSJ9.9KDTlA-LG8CLP7gqAcExr_CWpz3Th9huKj0hyJVUQNyT7xalnBVYCu5dky38L5ivjdD6nPpDGleQK4qW4BcYew)
 
+## Controlled datasets (WS 2026/27)
+
+Data under `data/` is not in git; regenerate it with:
+
+```sh
+python scripts/generate_controlled.py all        # fano, fano_unequal, fano_fanout, ising,
+                                                 # orthogonal, two_clusters, implication
+# path and cycle (old generators, need `uv pip install rdflib`):
+cd data/path_dataset/raw && python path_dataset.py && cd ../../..
+python "data/path_queries/raw/path queries.py"
+cd data/cycle_dataset/raw && python cycle_dataset.py && cd ../../..
+cd data/cycle_queries/raw && python "cycle queries.py" && cd ../../..
+```
+
+If a dataset is regenerated with different content (other seed or parameters, fixed generator), delete data/<name>/processed and data/<name>_queries/processed; the loader does not detect changed raw files and silently uses the cache.
+
+1-WL colour classes of relation nodes (unseeded and seeded): `python scripts/wl_colors.py <dataset>`.
+Predictions and results: `docs/preregistration.md`.

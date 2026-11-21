@@ -3,7 +3,7 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ]
     ],
@@ -15,12 +15,12 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ]
     ],
@@ -32,17 +32,17 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ]
     ],
@@ -54,22 +54,22 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ]
     ],
@@ -81,27 +81,27 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ]
     ],
@@ -113,32 +113,32 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ]
     ],
@@ -150,37 +150,37 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ]
     ],
@@ -192,42 +192,42 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ]
     ],
@@ -239,47 +239,47 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ]
     ],
@@ -291,52 +291,52 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ]
     ],
@@ -348,57 +348,57 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ]
     ],
@@ -410,62 +410,62 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ]
     ],
@@ -477,67 +477,67 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ]
     ],
@@ -549,72 +549,72 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ],
       [
         "?v13",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v14"
       ]
     ],
@@ -626,77 +626,77 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ],
       [
         "?v13",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v14"
       ],
       [
         "?v14",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v15"
       ]
     ],
@@ -708,17 +708,17 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -730,22 +730,22 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -757,27 +757,27 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -789,32 +789,32 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -826,37 +826,37 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -868,42 +868,42 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -915,47 +915,47 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -967,52 +967,52 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1024,57 +1024,57 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1086,62 +1086,62 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1153,67 +1153,67 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1225,72 +1225,72 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ],
       [
         "?v13",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1302,77 +1302,77 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ],
       [
         "?v13",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v14"
       ],
       [
         "?v14",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v0"
       ]
     ],
@@ -1384,12 +1384,12 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ]
     ],
@@ -1401,17 +1401,17 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ]
     ],
@@ -1423,22 +1423,22 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ]
     ],
@@ -1450,27 +1450,27 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ]
     ],
@@ -1482,32 +1482,32 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ]
     ],
@@ -1519,37 +1519,37 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ]
     ],
@@ -1561,42 +1561,42 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ]
     ],
@@ -1608,47 +1608,47 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ]
     ],
@@ -1660,52 +1660,52 @@
     "triples": [
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?center",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ]
     ],
@@ -1717,12 +1717,12 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v2"
       ]
     ],
@@ -1734,17 +1734,17 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v3"
       ]
     ],
@@ -1756,22 +1756,22 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v4"
       ]
     ],
@@ -1783,27 +1783,27 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v5"
       ]
     ],
@@ -1815,32 +1815,32 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v6"
       ]
     ],
@@ -1852,37 +1852,37 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v7"
       ]
     ],
@@ -1894,42 +1894,42 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v8"
       ]
     ],
@@ -1941,47 +1941,47 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v9"
       ]
     ],
@@ -1993,52 +1993,52 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v10"
       ]
     ],
@@ -2050,57 +2050,57 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v11"
       ]
     ],
@@ -2112,62 +2112,62 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v12"
       ]
     ],
@@ -2179,67 +2179,67 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v13"
       ]
     ],
@@ -2251,72 +2251,72 @@
     "triples": [
       [
         "?v0",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v1"
       ],
       [
         "?v1",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v2"
       ],
       [
         "?v2",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v3"
       ],
       [
         "?v3",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v4"
       ],
       [
         "?v4",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v5"
       ],
       [
         "?v5",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v6"
       ],
       [
         "?v6",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v7"
       ],
       [
         "?v7",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v8"
       ],
       [
         "?v8",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v9"
       ],
       [
         "?v9",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v10"
       ],
       [
         "?v10",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v11"
       ],
       [
         "?v11",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v12"
       ],
       [
         "?v12",
-        "https://project.org/data/friendsWith",
+        "<https://project.org/data/friendsWith>",
         "?v13"
       ],
       [
         "?v13",
-        "https://project.org/data/friendsWith_FAKE",
+        "<https://project.org/data/friendsWith_FAKE>",
         "?v14"
       ]
     ],

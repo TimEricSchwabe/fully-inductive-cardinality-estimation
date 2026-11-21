@@ -1,3 +1,4 @@
+import argparse
 import itertools
 import numpy as np
 from collections import defaultdict
@@ -10,12 +11,17 @@ FANO = [(0, 1, 2), (0, 3, 4), (0, 5, 6),
 
 def design_kg(blocks, prefix="fano", n_per_block=40, fanout=1):
     """Higher-order KG: each block's subjects carry exactly that block's predicates.
-    Returns a list of (subject, predicate, object) triples."""
+    Returns a list of (subject, predicate, object) triples. n_per_block can be int (same size for all blocks). or list (one size per block)."""
+    if isinstance(n_per_block, int):
+        n_per_block = [n_per_block]*len(blocks)
+    assert len(n_per_block) == len(blocks)
+
     triples = []
-    for bi, block in enumerate(blocks):
-        for n in range(n_per_block):
+    for bi, (block, n_b) in enumerate(zip(blocks, n_per_block)):
+        for n in range(n_b):
             s = f"<http://fice/{prefix}/s_{bi}_{n}>"
             for p in block:
+                f = fanout if isinstance(fanout, int) else fanout[p]
                 for k in range(fanout):
                     o = f"<http://fice/{prefix}/o_s_{bi}_{n}_p{p}_{k}>"
                     triples.append((s, f"<http://fice/{prefix}/p{p}>", o))
@@ -117,18 +123,74 @@ def save_kg_and_queries(dataset_name, triples, queries):
     print(f"[{dataset_name}] Saved {len(triples)} triples to {nt_path}")
     print(f"[{dataset_name}] Saved {len(queries)} queries to {json_path}")
 
-def main():
-    print("Generating Fano KG...")
-    fano_triples = design_kg(FANO, prefix="fano", n_per_block=40)
-    fano_queries = star_queries(fano_triples, m=7, prefix="fano")
-    save_kg_and_queries("fano", fano_triples, fano_queries)
+#------------------------------------------------------------------- datasets
 
-    print("Generating Ising KG...")
+
+def gen_fano(seed, n=40, fanout=1, name="fano"):
+    triples = design_kg(FANO, prefix = name, n_per_block=n, fanout=fanout)
+    queries = star_queries(triples, m=7, prefix=name, seed=seed)
+    return name, triples, queries
+
+def gen_fano_unequal(seed):
+    #block sizes dependent on seed
+    rng = np.random.default_rng(seed)
+    sizes = [int(x) for x in rng.integers(20,81,size = len(FANO))]
+    print(f"  fano_unequal block sizes: {sizes}")
+    return gen_fano(seed, n=sizes, name="fano_unequal")
+
+def gen_fano_fanout(seed):
+    return gen_fano(seed, fanout=2, name="fano_fanout")
+
+def gen_ising(seed):
     # 10 predicates, two clusters [0,1,2] and [3,4,5,6], others isolated
     h, J = cluster_coupling(10, clusters=[[0, 1, 2], [3, 4, 5, 6]])
     ising_triples = ising_kg(h, J, prefix="ising", n_subjects=12000)
-    ising_queries = star_queries(ising_triples, m=10, prefix="ising", max_per_order=120)
-    save_kg_and_queries("ising", ising_triples, ising_queries)
+    ising_queries = star_queries(ising_triples, m=10, prefix="ising", max_per_order=120, seed=seed)
+    return "ising", ising_triples, ising_queries
+
+def gen_orthogonal(seed, m=7, n=120,fanout = 1):
+    # every subject carries exactly one predicate -> no two subjects share same predicate
+    blocks = [(p,) for p in range(m)]
+    triples = design_kg(blocks, prefix="orthogonal", n_per_block=n, fanout=fanout)
+    queries = star_queries(triples, m=m, prefix = "orthogonal", seed=seed)
+    return "orthogonal", triples, queries
+
+def gen_two_clusters(seed, clusters = ((0,1,2),(3,4,5,6)), n=120, fanout = 1):
+    # every subject carries all predicates of its cluster; unequal cluster sizes so they are not 1-WL equivalent
+    m = sum(len(c) for c in clusters)
+    triples = design_kg(list(clusters), prefix="two_clusters", n_per_block=n, fanout=fanout)
+    queries = star_queries(triples, m=m, prefix="two_clusters", seed=seed)
+    return "two_clusters", triples, queries
+
+def gen_implication(seed, fanout = 1):
+    # (p0=>p1): no equivalence, (p2=>p3): near-equivalence, (p4=>p5=>p6): chain implication; Block (p,q) are subjects with both predicates, block (q,) only with q
+    blocks = [(0,1), (1,), (2,3), (3,), (4,5,6), (5,6), (6,)]
+    sizes = [40, 80, 100, 20, 40, 40, 40]
+    triples = design_kg(blocks, prefix="implication",n_per_block=sizes, fanout=fanout)
+    queries = star_queries(triples, m=7, prefix="implication", seed=seed)
+    return "implication", triples, queries
+
+GENERATORS = {
+    "fano": gen_fano,
+    "fano_unequal": gen_fano_unequal,
+    "fano_fanout": gen_fano_fanout,
+    "ising": gen_ising,
+    "orthogonal": gen_orthogonal,
+    "two_clusters": gen_two_clusters,
+    "implication": gen_implication,
+}
+
+
+def main():
+    ap = argparse.ArgumentParser(description="Generate controlled KGs and exact star queries.")
+    ap.add_argument("datasets", nargs = "+", choices=[*GENERATORS, "all"])
+    ap.add_argument("-s", "--seed", type = int, default = 0)
+    args = ap.parse_args()
+    names = list(GENERATORS) if "all" in args.datasets else args.datasets
+    for name in names:
+        print(f"Generating {name} (seed = {args.seed}) ...")
+        save_kg_and_queries(*GENERATORS[name](args.seed))
+
 
 if __name__ == "__main__":
     main()

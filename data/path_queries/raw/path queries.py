@@ -19,7 +19,7 @@ for length in range(1, 6):
         var1 = f"?v{i}"
         var2 = f"?v{i + 1}"
         sparql += f"  {var1} <{p}> {var2} .\n"
-        triples.append([var1, str(p), var2])
+        triples.append([var1, f"<{p}>", var2])
     sparql += "}"
 
     card = 0

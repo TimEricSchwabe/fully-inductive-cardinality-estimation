@@ -2524,9 +2524,15 @@ class path_queries(NTQueries):
     def download(self):
         pass
 
-class implication_dataset(NTDatasets):
+class implication(NTDatasets):
     def __init__(self, **kwargs):
-        super().__init__(url="http://localhost", dataset_name="implication_dataset", **kwargs)
+        super().__init__(url="file:///implication.nt", dataset_name="implication", **kwargs)
+    def download(self):
+        pass
+
+class implication_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="implication_queries", type="star", **kwargs)
     def download(self):
         pass
 
@@ -2579,6 +2585,30 @@ class two_clusters(NTDatasets):
 class two_clusters_queries(NTQueries):
     def __init__(self, **kwargs):
         super().__init__(url="file:///queries.json", dataset_name="two_clusters_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class fano_unequal(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///fano_unequal.nt", dataset_name="fano_unequal", **kwargs)
+    def download(self):
+        pass
+
+class fano_unequal_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="fano_unequal_queries", type="star", **kwargs)
+    def download(self):
+        pass
+
+class fano_fanout(NTDatasets):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///fano_fanout.nt", dataset_name="fano_fanout", **kwargs)
+    def download(self):
+        pass
+
+class fano_fanout_queries(NTQueries):
+    def __init__(self, **kwargs):
+        super().__init__(url="file:///queries.json", dataset_name="fano_fanout_queries", type="star", **kwargs)
     def download(self):
         pass
 
