@@ -7,16 +7,15 @@ decoder's input." This module provides that single interface:
   ``batch.x``, ``batch.edge_attr``, ``batch.edge_index``, ``batch.batch`` and
   ``graph_size``. ``FICE.forward`` overwrites ``batch.x`` / ``batch.edge_attr``
   in place before it calls the decoder, so the copies are taken *inside* the
-  hook, i.e. exactly what the decoder sees;
+  hook (exactly what the decoder sees)
 * a forward **hook** on ``model.query_gnn`` that stores the raw decoder output;
 * a forward hook on the top-level model that stores the value ``FICE.forward``
-  returns (the predicted log-cardinality, i.e. y_hat_FICE). With
-  ``prediction_mode: log-selectivity`` this differs from the raw decoder
+  returns (the predicted log-cardinality). With ``prediction_mode: log-selectivity``
+  this differs from the raw decoder
   output (log upper bound + logsigmoid(output)); Sec. 5.1 requires y_hat_FICE
-  as the distillation target;
-* :func:`verify_reproduction`, the one-off check from Sec. 5.2: re-run
-  ``query_gnn`` in eval mode on the captured inputs and compare with the
-  stored outputs.
+  as the regression target, but upper bound isn't trained;
+* :func:`verify_reproduction`, the one-off check: re-run``query_gnn`` in eval
+  mode on the captured inputs and compare with the stored outputs.
 
 Note: ``query_gnn`` is called with keyword arguments only
 (``self.query_gnn(graph_size=..., batch=...)``). A plain pre-hook only sees
