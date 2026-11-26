@@ -6,7 +6,7 @@ from pathlib import Path
 BASE = Path("configs/ws2627/base.yaml")
 OUT = Path("configs/ws2627/runs")
 
-EPOCHS = 400
+EPOCHS = 300
 SEEDS = [0, 1, 2]
 CONDITIONINGS = {"all": "all", "false": "false"}
 GNN_NEIGHBORHOOD = [-1, -1, -1, -1]

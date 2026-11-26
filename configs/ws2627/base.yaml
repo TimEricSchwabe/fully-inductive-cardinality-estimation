@@ -19,7 +19,7 @@ wandb_run_name: "RelationalGNN-local"
 learning_rate: 1e-4 #learning rate of FICE
 train_ratio: 0.8 # percent of queries from train-val datasets to train on
 output_dir: "output/" # parent folder where the run logs are stored
-save_every: 5 # after how many epochs to save all files to disk
+save_every: 50 # after how many epochs to save all files to disk
 save_metrics_every: 1
 eval_every: 1
 seed: 42
