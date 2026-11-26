@@ -30,9 +30,31 @@ DATASET_REGISTRY = {
     "aids": datasets.AIDS,
     "hetionet": datasets.Hetionet,
     "codex_l": datasets.CodexL,
+
+    "cycle_dataset": datasets.cycle_dataset,
+    "fano": datasets.fano,
+    "fano_fanout": datasets.fano_fanout,
+    "fano_unequal": datasets.fano_unequal,
+    "implication": datasets.implication,
+    "ising": datasets.ising,
+    "orthogonal": datasets.orthogonal,
+    "path_dataset": datasets.path_dataset,
+    "two_clusters": datasets.two_clusters,
+
 }
 
 QUERY_REGISTRY = {
+    # controlled datasets (WS 2026/27)
+    "cycle_queries": datasets.cycle_queries,
+    "fano_queries": datasets.fano_queries,
+    "fano_fanout_queries": datasets.fano_fanout_queries,
+    "fano_unequal_queries": datasets.fano_unequal_queries,
+    "implication_queries": datasets.implication_queries,
+    "ising_queries": datasets.ising_queries,
+    "orthogonal_queries": datasets.orthogonal_queries,
+    "path_queries": datasets.path_queries,
+    "two_clusters_queries": datasets.two_clusters_queries,
+
     # LUBM
     "LUBMQueries": datasets.LUBMQueries,
     "lubm_path_queries": datasets.lubm_path_queries,
